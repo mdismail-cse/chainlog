@@ -1,0 +1,14 @@
+# chainlog
+
+> Bookmark, find and resume Claude Code and Codex sessions for QA chain testing. One command after
+> /exit saves the session with a note; `chainlog next <PR>` resumes the latest round of a PR's test chain.
+
+- [Install (for agents)](https://raw.githubusercontent.com/mdismail-cse/chainlog/main/INSTALL.md): step-by-step, consent first
+- [README](https://raw.githubusercontent.com/mdismail-cse/chainlog/main/README.md): commands and examples
+- [Data formats](https://raw.githubusercontent.com/mdismail-cse/chainlog/main/SCHEMA.md): spool, events, session JSON
+
+Agent-friendly commands: `chainlog find TEXT --json`, `chainlog show REF --json`, `chainlog ls --json`,
+`chainlog save --args-stdin` (note on stdin), `chainlog doctor --json`.
+Exit code 2 means "ask the user first": for `save`/`show`/`next` the session is ambiguous (the JSON
+lists the candidates; re-run with `--id <short>`); for `setup`/`uninstall` nothing was applied because
+there was no terminal and no `--yes`. Never pass `--yes` before the user agreed.

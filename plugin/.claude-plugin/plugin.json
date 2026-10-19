@@ -1,0 +1,12 @@
+{
+  "name": "chainlog",
+  "version": "0.1.0",
+  "description": "Bookmark, find and resume Claude Code and Codex sessions for QA chain testing. One command after /exit saves the session with a note.",
+  "author": {
+    "name": "mdismail-cse"
+  },
+  "homepage": "https://github.com/mdismail-cse/chainlog",
+  "repository": "https://github.com/mdismail-cse/chainlog",
+  "license": "MIT",
+  "keywords": ["sessions", "resume", "bookmark", "qa", "codex", "herdr"]
+}

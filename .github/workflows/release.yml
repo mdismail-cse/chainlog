@@ -1,0 +1,20 @@
+name: release
+on:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: tag matches VERSION
+        run: test "v$(cat plugin/VERSION)" = "${GITHUB_REF_NAME}"
+      - run: make test
+      - run: make dist
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/chainlog-${{ github.ref_name }}.tar.gz
+            dist/checksums.txt

@@ -1,0 +1,17 @@
+{
+  "name": "chainlog",
+  "owner": {
+    "name": "mdismail-cse"
+  },
+  "metadata": {
+    "description": "chainlog: bookmark, find and resume Claude Code and Codex sessions for QA chain testing",
+    "version": "0.1.0"
+  },
+  "plugins": [
+    {
+      "name": "chainlog",
+      "source": "./plugin",
+      "description": "Bookmark, find and resume Claude Code and Codex sessions for QA chain testing"
+    }
+  ]
+}

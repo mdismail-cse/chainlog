@@ -1,0 +1,27 @@
+{
+  "description": "chainlog: spool session start/end for later lookup (no parsing, always exit 0)",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/spool.sh\" claude start",
+            "timeout": 2
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/spool.sh\" claude end",
+            "timeout": 2
+          }
+        ]
+      }
+    ]
+  }
+}

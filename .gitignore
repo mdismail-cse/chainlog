@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+dist/
+.DS_Store
+
+# planning material with machine-specific details (paths, session titles, PR numbers): kept local
+FINAL_DEVELOPMENT_PLAN.md
+docs/planning/

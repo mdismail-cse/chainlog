@@ -1,0 +1,25 @@
+#!/bin/sh
+# chainlog launcher. On the Bash tool's PATH while the Claude plugin is enabled, and linked as
+# ~/.local/bin/chainlog by install.sh / `chainlog setup cli`. Runs the newer of this copy and the
+# installed app copy ($CHAINLOG_HOME/app/current), with the system python3 in isolated mode.
+self=$0
+while [ -L "$self" ]; do
+  l=$(readlink "$self"); case $l in /*) self=$l ;; *) self=$(dirname "$self")/$l ;; esac
+done
+here=$(cd "$(dirname "$self")/.." && pwd)
+home="${CHAINLOG_HOME:-${XDG_DATA_HOME:-$HOME/.local/share}/chainlog}"
+src="$here/src"
+mine=$(cat "$here/VERSION" 2>/dev/null)
+app="$home/app/current/plugin"
+if [ -f "$app/VERSION" ] && [ "$app" != "$here" ]; then
+  theirs=$(cat "$app/VERSION")
+  newer=$(printf '%s\n%s\n' "$mine" "$theirs" | awk -F. '{ printf "%05d%05d%05d %s\n", $1, $2, $3, $0 }' | sort | tail -1 | cut -d' ' -f2)
+  [ "$newer" = "$theirs" ] && [ "$newer" != "$mine" ] && src="$app/src" && self="$app/bin/chainlog"
+fi
+py=$(command -v python3 2>/dev/null)
+if [ -z "$py" ] || ! "$py" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 9) else 1)' 2>/dev/null; then
+  echo "chainlog needs Python 3.9+ (macOS: xcode-select --install, or brew install python)." >&2
+  exit 127
+fi
+CHAINLOG_LAUNCHER="$self"; export CHAINLOG_LAUNCHER
+exec "$py" -I -c 'import sys, runpy; sys.path.insert(0, sys.argv.pop(1)); runpy.run_module("chainlog", run_name="__main__", alter_sys=True)' "$src" "$@"
