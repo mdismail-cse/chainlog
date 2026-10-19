@@ -1,5 +1,6 @@
 import json
 import unittest
+from unittest import mock
 
 from helpers import NOW, Home
 
@@ -71,7 +72,8 @@ class Policy(Home):
         self.ended_session()
         rt = self.make_rt()
         self.recorder.responses[("osascript",)] = (0, "", "")
-        sweep.run(load(rt, cfg), mode="cron")
+        with mock.patch("chainlog.notify.sys.platform", "darwin"):  # the macOS path, on any CI runner
+            sweep.run(load(rt, cfg), mode="cron")
         calls = [c for c in self.recorder.calls if c[0] == "osascript"]
         self.assertTrue(calls, "osascript was not called")
         self.assertIn("chainlog: unsaved session", calls[0])  # passed as argv, not AppleScript source
