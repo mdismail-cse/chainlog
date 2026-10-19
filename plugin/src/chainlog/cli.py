@@ -111,6 +111,34 @@ def _candidates_json(error, cands, hint):
         for c in cands]}, indent=2)
 
 
+def _interactive(rt, args):
+    """Offer "type a number to open it" only to a person at a real terminal (never to scripts,
+    pipes, --json or AI agents)."""
+    return rt.isatty() and not getattr(args, "json", False) and not rt.env.get("CHAINLOG_NO_PROMPT")
+
+
+def _choose(rt, st, index, refs):
+    """After a list: a row number opens that session; any other text searches and shows new rows;
+    Enter quits."""
+    while True:
+        ans = _ask(st.bold("› ") + "Type a number to open it, or words to search (Enter = quit): ")
+        if ans is None:
+            return 0
+        ans = ans.strip()
+        if not ans or ans.lower() in ("q", "quit", "exit"):
+            return 0
+        num = ans.lstrip("@")
+        if num.isdigit() and 1 <= int(num) <= len(refs) and refs[int(num) - 1] in index.sessions:
+            return _do_resume(rt, index.sessions[refs[int(num) - 1]])
+        hits = query.find(index, _text(ans), limit=15)  # e.g. a PR number or a word
+        if not hits:
+            _p("  nothing matches %r — try other words, or press Enter to quit" % ans)
+            continue
+        refs = [h["ref"] for h in hits]
+        print_rows(rt, st, hits, rt.now())
+        resolve.save_last_list(rt, refs)
+
+
 def one(index, ref, as_json=False, hint="use a longer id or the full chain key"):
     hits = resolve.resolve_ref(index, ref)
     if not hits:
@@ -167,6 +195,9 @@ def cmd_default(rt, args):
     _p(st.bold("Recent"))
     refs += print_rows(rt, st, recent, now, len(refs) + 1, widths)
     resolve.save_last_list(rt, refs)
+    if _interactive(rt, args):
+        _p(st.dim(" (● saved · ◐ auto-saved · ○ not saved · ▶ running)"))
+        return _choose(rt, st, index, refs)
     _p(st.dim(" (● saved · ◐ auto-saved · ○ not saved · ▶ running)   chainlog resume @N · chainlog save \"note\" · chainlog find TEXT"))
     return 0
 
@@ -325,10 +356,10 @@ def cmd_ls(rt, args):
     filtered = any((args.chain, args.pr, args.here, args.since, args.harness, args.unsaved, args.saved))
     empty = ("no sessions match these filters" + ("" if args.all else " — try chainlog ls --all")) if filtered \
         else "no sessions indexed yet — run a Claude or Codex session first"
-    return _emit_list(rt, out[: args.n], args.json, empty, more=len(out) - args.n)
+    return _emit_list(rt, out[: args.n], args.json, empty, more=len(out) - args.n, index=index, args=args)
 
 
-def _emit_list(rt, sessions, as_json, empty_msg, more=0):
+def _emit_list(rt, sessions, as_json, empty_msg, more=0, index=None, args=None):
     if as_json:  # agents' --json calls must not replace the user's @N list
         _p(json.dumps([session_json(s) for s in sessions], indent=2))
         return 0
@@ -340,6 +371,8 @@ def _emit_list(rt, sessions, as_json, empty_msg, more=0):
     print_rows(rt, st, sessions, rt.now())
     if more > 0:
         _p(st.dim(" … %d more (use -n %d)" % (more, len(sessions) + more)))
+    if index is not None and args is not None and _interactive(rt, args):
+        return _choose(rt, st, index, [s["ref"] for s in sessions])
     _p(st.dim(" chainlog resume @N · chainlog show @N"))
     return 0
 
@@ -351,7 +384,7 @@ def cmd_find(rt, args):
     hits = query.find(index, text, limit=args.n + 200)
     return _emit_list(rt, hits[: args.n], args.json,
                       "nothing matches %r — try fewer words, a PR number, or chainlog ls" % text,
-                      more=len(hits) - args.n)
+                      more=len(hits) - args.n, index=index, args=args)
 
 
 def cmd_show(rt, args):
@@ -507,6 +540,9 @@ def cmd_chain(rt, args):
                                           ui.fit(ui.headline(s), 70)))
         refs.append(s["ref"])
     resolve.save_last_list(rt, refs)
+    if _interactive(rt, args):
+        _p(st.dim(" @N = round N"))
+        return _choose(rt, st, index, refs)
     _p(st.dim(" @N = round N · reopen the latest round: chainlog next %s" % c["id"]))
     return 0
 

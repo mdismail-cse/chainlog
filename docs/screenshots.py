@@ -267,13 +267,16 @@ def main():
         found = run(demo, ["4321"]).splitlines()
         story = (prompt('chainlog save "r4: rounding fixed, all 14 refund cases pass" -s pass') + saved_line + "\n\n"
                  + "\x1b[2m# … next week …\x1b[0m\n" + prompt("chainlog 4321") + "\n".join(found[:-1]) + "\n\n"
-                 + prompt("chainlog resume @1")
+                 + "\x1b[1m› \x1b[0mType a number to open it, or words to search (Enter = quit): \x1b[1m1\x1b[0m\n"
                  + "\x1b[2m→ Claude Code opens in ~/code/shop, exactly where you stopped\x1b[0m\n")
         svg(story, "save it · find it · continue it", OUT / "hero.svg")
 
-        svg(prompt("chainlog") + run(demo, []), "chainlog — your sessions", OUT / "list.svg")
-        svg(prompt("chainlog 4321") + run(demo, ["4321"]), "find by PR number, word, branch or folder", OUT / "find.svg")
-        svg(prompt("chainlog chain 4321") + run(demo, ["chain", "4321"]), "one PR, every round, both tools", OUT / "chain.svg")
+        # in a real terminal the list ends with "type a number to open it" (here: Enter = quit)
+        svg(prompt("chainlog") + run(demo, [], tty=True, answers=[""]), "chainlog — your sessions", OUT / "list.svg")
+        svg(prompt("chainlog 4321") + run(demo, ["4321"], tty=True, answers=[""]),
+            "find by PR number, word, branch or folder", OUT / "find.svg")
+        svg(prompt("chainlog chain 4321") + run(demo, ["chain", "4321"], tty=True, answers=[""]),
+            "one PR, every round, both tools", OUT / "chain.svg")
         svg(prompt("chainlog next 4321 --print") + run(demo, ["next", "4321", "--print"])
             + prompt("chainlog next 4321") + "\x1b[2m→ cd ~/code/shop && claude --resume 9b8c7d6e-6666-…   (opens the session)\x1b[0m\n",
             "resume the newest round", OUT / "next.svg")

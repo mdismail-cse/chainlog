@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Open a session straight from the list: `chainlog`, `find`, `ls` and `chain KEY` end with
+  "Type a number to open it, or words to search" in a terminal (`CHAINLOG_NO_PROMPT=1` turns it off).
+
 - README rewrite: install paths, a 3-command quick start, chain-testing walkthrough, every command
   explained, settings, FAQ. Screenshots are generated from real output by `docs/screenshots.py`.
 - `install.sh` falls back to the latest `main` branch while no release is published.

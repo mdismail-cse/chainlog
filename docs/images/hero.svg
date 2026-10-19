@@ -13,6 +13,6 @@
 <text x="18" y="206" xml:space="preserve"><tspan fill="#e6edf3"> </tspan><tspan fill="#8b949e">@3 </tspan><tspan fill="#e6edf3"> </tspan><tspan fill="#79c0ff">●</tspan><tspan fill="#e6edf3"> </tspan><tspan fill="#8b949e">a01c77d4</tspan><tspan fill="#e6edf3"> claude shop#4321 r2 </tspan><tspan fill="#ff7b72">fail</tspan><tspan fill="#e6edf3">  r2: partial refund + coupon -&gt; HTTP 500  </tspan><tspan fill="#8b949e">1d</tspan></text>
 <text x="18" y="227" xml:space="preserve"><tspan fill="#e6edf3"> </tspan><tspan fill="#8b949e">@4 </tspan><tspan fill="#e6edf3"> </tspan><tspan fill="#79c0ff">●</tspan><tspan fill="#e6edf3"> </tspan><tspan fill="#8b949e">3f9a1c2e</tspan><tspan fill="#e6edf3"> claude shop#4321 r1 </tspan><tspan fill="#7ee787">pass</tspan><tspan fill="#e6edf3">  r1: checkout with saved cards OK  </tspan><tspan fill="#8b949e">2d</tspan></text>
 <text x="18" y="248" xml:space="preserve"></text>
-<text x="18" y="269" xml:space="preserve"><tspan fill="#e6edf3"><tspan fill="#7ee787">$</tspan> chainlog resume @1</tspan></text>
+<text x="18" y="269" xml:space="preserve"><tspan fill="#e6edf3" font-weight="700">› </tspan><tspan fill="#e6edf3">Type a number to open it, or words to search (Enter = quit): </tspan><tspan fill="#e6edf3" font-weight="700">1</tspan></text>
 <text x="18" y="290" xml:space="preserve"><tspan fill="#8b949e">→ Claude Code opens in ~/code/shop, exactly where you stopped</tspan></text>
 </svg>

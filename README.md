@@ -31,7 +31,7 @@ flowchart LR
     A["1 · Get chainlog<br/>(once, 2 min)"] --> B["2 · Work in Claude<br/>or Codex as usual"]
     B --> C["3 · Leave and save<br/>chainlog save 'note'"]
     C --> D["4 · Later: find it<br/>chainlog"]
-    D --> E["5 · Continue it<br/>chainlog resume @N"]
+    D --> E["5 · Continue it<br/>type its number"]
     E --> B
 ```
 
@@ -41,7 +41,7 @@ flowchart LR
 | 2. [Work as usual](#step-2-work-as-usual) | Nothing new | — |
 | 3. [Save](#step-3-save-when-you-leave) | `chainlog save "what you did"` | 5 seconds |
 | 4. [Find](#step-4-find-it-later) | `chainlog` | 2 seconds |
-| 5. [Continue](#step-5-continue-where-you-stopped) | `chainlog resume @N` | 2 seconds |
+| 5. [Continue](#step-5-continue-where-you-stopped) | Type the session's number | 2 seconds |
 
 ## What you need
 
@@ -152,6 +152,7 @@ chainlog
 
 - Each row has a **number**: `@1`, `@2` …
 - **Unsaved** (at the top) lists sessions you left without a note.
+- Below the list, chainlog asks **"Type a number to open it"**. See [Step 5](#step-5-continue-where-you-stopped).
 
 | Symbol | Meaning |
 |---|---|
@@ -160,7 +161,7 @@ chainlog
 | `○` | Not saved |
 | `▶` | Open right now |
 
-**Search** with a PR number or any word you remember. The search results get their own numbers:
+**Search** with a PR number or any word you remember. Type it at the prompt below the list, or add it to the command. The results get their own numbers:
 
 ```sh
 chainlog 4321
@@ -171,18 +172,19 @@ chainlog refund
 
 ## Step 5: Continue where you stopped
 
-Pick your session's **number from the list you just printed**, and type:
+At the prompt below the list, **type the session's number and press Enter**:
 
-```sh
-chainlog resume @1
+```text
+› Type a number to open it, or words to search (Enter = quit): 1
 ```
 
 chainlog opens that session again in the right folder, with the right tool (Claude Code or Codex).
 The AI remembers your whole conversation.
 It opens **in the Terminal** where you typed the command. In VS Code, type it in VS Code's built-in terminal.
 
-> The numbers always come from the **last list you printed in this tab**, so show the list first.
-> To only *see* the command without running it, add `--print`.
+> - **Not the right list?** Type a word or PR number at the same prompt to search, then pick a number from the results.
+> - **Press Enter** to leave without opening anything.
+> - **Prefer one command?** `chainlog resume @1` opens row 1 of the last list printed in this tab. Add `--print` to only *see* the command.
 
 ---
 
@@ -206,7 +208,7 @@ flowchart LR
 
 <img src="docs/images/chain.svg" alt="All rounds of PR 4321">
 
-In `chainlog chain`, `@1` means round 1, `@2` round 2, and so on.
+In `chainlog chain`, `@1` means round 1, `@2` round 2, and so on. Type a round's number at the prompt to open it.
 
 A session joins a chain **by itself** when chainlog can see the PR number: from the PR link Claude saw, or from "PR 4321" in the session title.
 If it didn't, use `-c 4321` when you save. Wrong chain? Save again with the right `-c` number.
@@ -274,9 +276,9 @@ Read the titles and the "last work" lines. Press **Enter** for the first one, ty
 |---|---|
 | Save the session I just left | `chainlog save "what I did"` |
 | …with a result | add `-s pass` / `-s fail` / `-s blocked` / `-s wip` |
-| See my sessions (with numbers) | `chainlog` |
-| Search | `chainlog <PR number or word>` |
-| Continue a session | `chainlog resume @N` (N = its number) |
+| See my sessions and open one | `chainlog`, then type its number |
+| Search | `chainlog <PR number or word>`, then type a number to open it |
+| Open a session in one command | `chainlog resume @N` (N = its number in the last list) |
 | Continue a PR's latest round | `chainlog next 4321` |
 | See a PR's rounds | `chainlog chain 4321` |
 | Save a note on another session | `chainlog save --id @N "note"` |

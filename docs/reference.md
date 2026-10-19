@@ -86,6 +86,17 @@ chainlog save "note" [-s STATUS] [-c CHAIN] [-t TAG] [--id REF | --pick] [--url 
 | `○` | not saved yet |
 | `▶` | still running |
 
+In a terminal, the list ends with a prompt:
+
+| You type | What happens |
+|---|---|
+| A number | Opens that session (like `chainlog resume @N`) |
+| Words or a PR number | Searches, then shows new numbered results |
+| Enter | Quits |
+
+`find`, `ls` and `chain KEY` end with the same prompt.
+Scripts, pipes, `--json` and AI agents never get it; set `CHAINLOG_NO_PROMPT=1` to turn it off.
+
 `chainlog ls` adds filters:
 
 ```sh
@@ -241,6 +252,7 @@ chainlog setup all --yes --policy list    # no questions (scripts / agents, afte
 |---|---|
 | `CHAINLOG_CHAIN=shop#4321` | Set before starting a session to put it in that chain |
 | `CHAINLOG_HOME` | Where chainlog keeps its data (default `~/.local/share/chainlog`) |
+| `CHAINLOG_NO_PROMPT=1` | Lists never ask "type a number to open it" |
 | `NO_COLOR` | Colours off |
 | `CHAINLOG_COLOR=always` | Colours on even when piped |
 
