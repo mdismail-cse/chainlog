@@ -24,9 +24,13 @@ def safe(text):
     return " ".join(_CTRL.sub(" ", str(text)).split())
 
 
+_SGR = re.compile(r"\x1b\[[0-9;]*m")
+
+
 def cells(text):
+    """Terminal cells `text` occupies: colour codes take none, CJK / wide characters take two."""
     n = 0
-    for ch in text:
+    for ch in _SGR.sub("", text):
         if unicodedata.combining(ch):
             continue
         n += 2 if unicodedata.east_asian_width(ch) in ("W", "F") else 1
@@ -139,8 +143,13 @@ def chain_label(s):
     return "%s r%s" % (c["id"], c.get("round") or "?")
 
 
+def term_width():
+    w = shutil.get_terminal_size((110, 20)).columns
+    return w if w >= 40 else 100  # some terminals / ptys report 0 columns
+
+
 def row(st, n, s, now, short_w=8, mid_w=None):
-    width = shutil.get_terminal_size((110, 20)).columns
+    width = term_width()
     mark = MARK.get(s["saved"], "○")
     if s.get("live"):
         mark = st.green("▶")
@@ -169,7 +178,7 @@ def layout(sessions):
 
 def preview_lines(st, s, indent="    "):
     out = []
-    width = shutil.get_terminal_size((110, 20)).columns
+    width = term_width()
     if s.get("last_ask"):
         out.append("%s%s %s" % (indent, st.dim("last ask: "), '"%s"' % fit(safe(s["last_ask"]), width - 20)))
     if s.get("last_work"):

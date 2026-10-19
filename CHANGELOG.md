@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased
+
+- README rewrite: install paths, a 3-command quick start, chain-testing walkthrough, every command
+  explained, settings, FAQ. Screenshots are generated from real output by `docs/screenshots.py`.
+- `install.sh` falls back to the latest `main` branch while no release is published.
+- `FORCE_COLOR` / `CHAINLOG_COLOR=always` force colours (e.g. when piping).
+- Fix: colour codes no longer break column alignment in `chainlog chain`.
+- Beginner-friendly README (user journey, simple words), tested with 5 non-technical personas; full
+  reference moved to docs/reference.md.
+- Setup asks one plain question per step (`d` shows the exact file changes); clearer policy question.
+- Uninstall: explicit `y`, prints "Cancelled" on no, keeps the command and notes and says so.
+- `config set unsaved.action remind|summarize` offers to turn on the background timer it needs.
+- `@N` numbers are remembered per terminal tab / pane; the chain view shows `@N` too.
+- Plain wording in save, scan, doctor (verdict line + plain names) and review (`f` = hide).
+- Saving onto a session that already has a note asks first (guessed matches and `--id`).
+- Fix: previews showed "…" in terminals that report 0 columns.
+
 ## 0.1.0 (unreleased)
 
 First version.

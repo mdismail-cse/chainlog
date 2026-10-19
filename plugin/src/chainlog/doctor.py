@@ -9,6 +9,7 @@ import stat
 import sys
 
 from chainlog import __version__
+from chainlog import config as config_mod
 from chainlog.integrations import components as comp
 from chainlog.paths import safe_open
 
@@ -30,7 +31,14 @@ def herdr_hashes(rt):
 
 
 def codex_hook_trusted(rt):
-    """Codex keys hook trust by file and position: '.../hooks.json:session_end:<group>:<hook>'."""
+    """Codex keys hook trust by file and position: '.../hooks.json:session_end:<group>:<hook>'.
+    A hook that has already fired counts as approved too."""
+    try:
+        with safe_open(rt.data_home / "events.jsonl") as f:
+            if '"src":"hook:codex"' in f.read():
+                return True
+    except OSError:
+        pass
     try:
         with safe_open(rt.codex_dir / "hooks.json") as f:
             idx = comp.our_session_end_index(f.read())
@@ -56,24 +64,26 @@ def run(rt, index, cfg):
     fix = "chainlog setup cli   (or run install.sh)"
     if not on_path and os.path.exists(link):
         fix = 'add to ~/.zshrc:  export PATH="$HOME/.local/bin:$PATH"   (then open a new terminal)'
-    checks.append(_check("cli_on_path", on_path, on_path or "chainlog is not on PATH", fix, "warn"))
+    checks.append(_check("cli_on_path", on_path, "ready" if on_path else "not available in your Terminal yet", fix, "warn"))
     app = rt.data_home / "app" / "current" / "plugin" / "VERSION"
     try:
         app_v = app.read_text().strip()
     except OSError:
         app_v = None
     checks.append(_check("version_skew", app_v in (None, __version__),
-                         "running %s%s" % (__version__, ", app copy %s" % app_v if app_v else ""),
+                         "%s%s" % (__version__, " (installed copy: %s)" % app_v if app_v and app_v != __version__ else ""),
                          "re-run install.sh or update the plugin", "warn"))
+    has_claude = bool(shutil.which("claude", path=rt.env.get("PATH"))) or (rt.claude_dir / "projects").is_dir()
     installed = rt.claude_dir / "plugins" / "installed_plugins.json"
     try:
         with safe_open(installed) as f:
             has_plugin = "chainlog@" in f.read()
     except OSError:
         has_plugin = False
-    checks.append(_check("claude_plugin", has_plugin,
-                         "Claude plugin installed" if has_plugin else "Claude plugin not installed",
-                         "chainlog setup claude", "warn"))
+    if has_claude:
+        checks.append(_check("claude_plugin", has_plugin,
+                             "connected" if has_plugin else "not connected: chainlog can't tell exactly which session you left",
+                             "chainlog setup claude", "warn"))
     hooks_json = rt.codex_dir / "hooks.json"
     try:
         with safe_open(hooks_json) as f:
@@ -83,8 +93,8 @@ def run(rt, index, cfg):
     present = comp.our_session_end_index(hj) is not None
     if shutil.which("codex") or rt.codex_dir.is_dir():
         checks.append(_check("codex_hook_present", present,
-                             "SessionEnd entry in ~/.codex/hooks.json" if present else
-                             "no chainlog SessionEnd entry in ~/.codex/hooks.json (a herdr reinstall may have removed it)",
+                             "connected" if present else
+                             "not connected (sessions are still listed and searchable)",
                              "chainlog setup codex", "warn"))
         trusted = False
         idx = comp.our_session_end_index(hj) if present else None
@@ -97,9 +107,9 @@ def run(rt, index, cfg):
                 pass
         fired = any(e.get("type") == "hook.end" and e.get("src") == "hook:codex" for e in index.events)
         checks.append(_check("codex_hooks_trusted", trusted or fired or not present,
-                             "n/a (hook not installed)" if not present else
-                             ("trusted" if trusted else ("fired" if fired else "not trusted yet")),
-                             "open codex, type /hooks, trust the chainlog SessionEnd hook", "warn"))
+                             "not needed yet" if not present else
+                             ("approved" if trusted else ("working" if fired else "waiting for your approval")),
+                             "open codex, type /hooks, and approve the chainlog entry", "warn"))
         stale = []
         for name in ("chainlog-save", "chainlog-find"):
             mine = comp.plugin_root() / "codex" / "skills" / name / "SKILL.md"
@@ -116,8 +126,8 @@ def run(rt, index, cfg):
                 ok_stub = comp.stable_hook(rt).read_text() == comp._stub_text(rt)
             except OSError:
                 ok_stub = False
-            checks.append(_check("codex_hook_stub", ok_stub, "hook stub up to date" if ok_stub else
-                                 "hook stub missing or from an older version", "chainlog setup codex"))
+            checks.append(_check("codex_hook_stub", ok_stub, "up to date" if ok_stub else
+                                 "missing or from an older version", "chainlog setup codex"))
     recorded = (cfg.get("herdr_hashes") or {})
     now_h = herdr_hashes(rt)
     if any(now_h.values()):
@@ -135,20 +145,19 @@ def run(rt, index, cfg):
     checks.append(_check("store_perms", perms_ok, "%s is private" % rt.data_home if perms_ok else
                          "%s is readable by others" % rt.data_home, "chmod 700 %s" % rt.data_home))
     from chainlog.sources.claude import retention_days
-    days = retention_days(rt)
+    days = retention_days(rt) if has_claude else 365
     saved_claude = [x for x in index.sessions.values() if x["harness"] == "claude" and x["saved"] != "none"]
     soon = [x for x in saved_claude if x["transcript"].get("present")
             and (rt.now() - (x["times"].get("last_activity_at") or rt.now())) > (days - 7) * 86400]
-    checks.append(_check("claude_retention", days >= 60 and not soon,
-                         "Claude deletes transcripts %d days after last use%s" % (
-                             days, "; %d saved session%s will be deleted within a week" % (len(soon), "" if len(soon) == 1 else "s")
-                             if soon else ""),
-                         'ask the user whether to keep transcripts longer: they can set "cleanupPeriodDays": 90 (or more) '
-                         "in ~/.claude/settings.json themselves (chainlog never edits it). Saved notes survive either "
-                         "way; deleted sessions just cannot be resumed", "warn"))
+    if has_claude:
+        checks.append(_check("claude_retention", days >= 60 and not soon,
+                             "Claude Code deletes sessions %d days after last use, so older ones can't be reopened%s" % (
+                                 days, "; %d saved session%s go within a week" % (len(soon), "" if len(soon) == 1 else "s")
+                                 if soon else " (optional)"),
+                             'to keep them longer, add "cleanupPeriodDays": 90 to ~/.claude/settings.json', "info"))
     from chainlog.store.events import torn_lines
     torn = torn_lines(rt)
-    checks.append(_check("event_log", torn == 0, "events.jsonl ok" if not torn else
+    checks.append(_check("event_log", torn == 0, "ok" if not torn else
                          "%d unreadable line%s in events.jsonl (a crash mid-write; later saves are safe)"
                          % (torn, "" if torn == 1 else "s"), None, "warn"))
     backlog = 0
@@ -156,22 +165,22 @@ def run(rt, index, cfg):
         backlog = len([n for n in os.listdir(rt.data_home / "spool") if n.endswith(".json")])
     except OSError:
         pass
-    checks.append(_check("spool_backlog", backlog < 50, "%d pending hook files" % backlog,
+    checks.append(_check("spool_backlog", backlog < 50, "none waiting" if not backlog else "%d waiting" % backlog,
                          "run any chainlog command with write access", "warn"))
     vis = index.visible()
     counts = {}
     for s in vis:
         counts[s["harness"]] = counts.get(s["harness"], 0) + 1
     warn = sum(1 for s in vis if s.get("warnings"))
-    checks.append(_check("parse_rate", warn == 0, "%s sessions indexed%s" % (
-        ", ".join("%d %s" % (n, h) for h, n in sorted(counts.items())) or "0",
+    checks.append(_check("parse_rate", warn == 0, "%s%s" % (
+        ", ".join("%d %s" % (n, h.capitalize()) for h, n in sorted(counts.items())) or "none yet",
         ", %d with warnings" % warn if warn else ""), None, "warn"))
     try:
         with safe_open(comp.zshrc(rt)) as f:
             shell = comp.MARK_BEGIN in f.read()
     except OSError:
         shell = False
-    checks.append(_check("shell_hint", shell, "zsh prompt hook installed" if shell else "zsh prompt hook not installed",
+    checks.append(_check("shell_hint", shell, "on" if shell else "off (optional)",
                          "chainlog setup shell", "info"))
     action = cfg["unsaved"]["action"]
     engine = cfg["summary"]["engine"]
@@ -179,9 +188,10 @@ def run(rt, index, cfg):
     loaded = comp.scheduler_loaded(rt) if needs else True
     if needs and sys.platform == "darwin" and not comp.plist_path(rt).exists():
         loaded = False
-    checks.append(_check("unsaved_policy", loaded, "action=%s after=%ss engine=%s%s" % (
-        action, cfg["unsaved"]["after"], engine,
-        "" if not needs else (", scheduler running" if loaded else ", scheduler NOT running")),
+    plain = {"summarize": "auto-save with a summary", "list": "keep a list", "remind": "remind you", "off": "nothing"}
+    checks.append(_check("unsaved_policy", loaded, "%s, %s after a session ends%s" % (
+        plain.get(action, action), config_mod.fmt_duration(cfg["unsaved"]["after"]),
+        "" if not needs else ("" if loaded else " — but the background timer is off")),
         "chainlog setup policy", "warn"))
     if action == "summarize" and engine != "local":
         bins = ["claude", "codex"] if engine == "auto" else [engine]
@@ -192,13 +202,32 @@ def run(rt, index, cfg):
     return {"schema": "chainlog.doctor/1", "ok": ok, "version": __version__, "checks": checks}
 
 
+LABELS = {
+    "python3": "Python", "cli_on_path": "chainlog command", "version_skew": "version",
+    "claude_plugin": "Claude Code", "codex_hook_present": "Codex", "codex_hooks_trusted": "Codex approval",
+    "codex_skill": "Codex skills", "codex_hook_stub": "Codex connection file", "herdr_untouched": "herdr files",
+    "store_perms": "private notes folder", "claude_retention": "old sessions", "event_log": "notes file",
+    "spool_backlog": "pending updates", "parse_rate": "sessions found", "shell_hint": "Terminal reminder",
+    "unsaved_policy": "if you forget to save", "summarizer": "summaries",
+}
+
+
 def render(report, st):
-    lines = []
+    problems = [c for c in report["checks"] if not c["ok"] and c["severity"] == "error"]
+    tips = [c for c in report["checks"] if not c["ok"] and c["severity"] != "error"]
+    if problems:
+        head = st.red("✗ %d problem%s to fix" % (len(problems), "" if len(problems) == 1 else "s"))
+    elif tips:
+        head = st.green("✓ chainlog works.") + " %d suggestion%s below (marked !), all optional." % (
+            len(tips), "" if len(tips) == 1 else "s")
+    else:
+        head = st.green("✓ Everything is set up.")
+    lines = [head, ""]
     for c in report["checks"]:
         mark = st.green("✓") if c["ok"] else (st.yellow("!") if c["severity"] in ("warn", "info") else st.red("✗"))
-        lines.append(" %s %-20s %s" % (mark, c["id"], c["detail"]))
+        lines.append(" %s %-22s %s" % (mark, LABELS.get(c["id"], c["id"]), c["detail"]))
         if not c["ok"] and c.get("fix"):
-            lines.append("   %s %s" % (" " * 20, st.dim("fix: " + c["fix"])))
+            lines.append("   %s %s" % (" " * 22, st.dim("→ " + c["fix"])))
     return "\n".join(lines)
 
 

@@ -110,7 +110,11 @@ class Runtime:
         return ""
 
     def color(self) -> bool:
-        return self.isatty() and not self.env.get("NO_COLOR") and self.env.get("TERM") != "dumb"
+        if self.env.get("NO_COLOR"):
+            return False
+        if self.env.get("CHAINLOG_COLOR") == "always" or self.env.get("FORCE_COLOR"):
+            return True  # e.g. when piping into a pager or capturing screenshots
+        return self.isatty() and self.env.get("TERM") != "dumb"
 
 
 def _default_run(argv, timeout=5.0, input=None, env=None, cwd=None):

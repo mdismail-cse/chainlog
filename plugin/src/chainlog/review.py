@@ -5,7 +5,7 @@ from chainlog import ui
 from chainlog.store.events import new_event
 from chainlog.summarize import summarize
 
-KEYS = "[s] save with note  [a] auto-summary  [r] resume  [f] forget  [n] next  [q] quit"
+KEYS = "[s] save with a note  [a] save with a summary  [r] reopen  [f] hide (nothing is deleted)  [n] skip  [q] stop"
 
 
 def unsaved(index, include_all=False):

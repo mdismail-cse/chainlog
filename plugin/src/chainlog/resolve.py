@@ -27,21 +27,42 @@ FP_ORDER = ("herdr_pane", "tmux", "iterm", "term", "tty")  # most specific first
 
 
 # --- @N refs -----------------------------------------------------------------------------------
+def _terminal_key(rt):
+    """@N numbers belong to the terminal / pane that printed the list, so a list printed in another
+    herdr or tmux pane never changes what @1 means here."""
+    fp = _current_fp(rt)
+    for k in FP_ORDER:
+        if fp.get(k):
+            return "%s:%s" % (k, fp[k])
+    return "_any"
+
+
+def _read_lists(rt):
+    try:
+        with safe_open(rt.data_home / "last-list.json") as f:
+            data = json.load(f)
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {"_any": data if isinstance(data, list) else []}
+
+
 def save_last_list(rt, refs):
+    lists = _read_lists(rt)
+    lists[_terminal_key(rt)] = refs
+    lists["_any"] = refs
     try:
         from chainlog.paths import atomic_write
-        atomic_write(rt.data_home / "last-list.json", json.dumps(refs), rt=rt)
+        atomic_write(rt.data_home / "last-list.json", json.dumps(lists), rt=rt)
     except OSError:
         pass
 
 
 def load_last_list(rt):
-    try:
-        with safe_open(rt.data_home / "last-list.json") as f:
-            data = json.load(f)
-        return data if isinstance(data, list) else []
-    except (OSError, ValueError):
-        return []
+    lists = _read_lists(rt)
+    refs = lists.get(_terminal_key(rt))
+    if refs is None:
+        refs = lists.get("_any", [])
+    return refs if isinstance(refs, list) else []
 
 
 # --- REF resolution ----------------------------------------------------------------------------
@@ -266,9 +287,9 @@ def which(index, via=None):
                 s = index.sessions.get(parent) or _placeholder(index, parent)
                 return "exact", [_cand(s, "exact", "inside the session (parent of a sub-agent thread)")]
             s = s or _placeholder(index, ref)
-            return "exact", [_cand(s, "exact", "inside the session (%s)" % ("skill" if via else "env"))]
+            return "exact", [_cand(s, "exact", "you are inside this session")]
         if reg is not None:
-            return "exact", [_cand(reg, "exact", "inside the session (Claude registry)")]
+            return "exact", [_cand(reg, "exact", "you are inside this session")]
         return _inside(index, harness, now)
 
     ppid = rt.ppid()
@@ -304,7 +325,7 @@ def which(index, via=None):
     hits = _prefer_prompted([x for x in ends if ppid in (x[2].get("anc") or [])])
     if hits:
         _at, s, h = hits[0]
-        reason = "same shell (process ancestry), ended %s" % _ago(now - h["at"])
+        reason = "it ran in this terminal window, ended %s" % _ago(now - h["at"])
         return superseded(s, h["at"], "exact", reason) or ("exact", [_cand(s, "exact", reason)])
     # 5: same pane / tab / terminal, most specific key first; any conflicting key vetoes
     fp_hits = []
@@ -328,7 +349,7 @@ def which(index, via=None):
         _r, _a, s, h, key = fp_hits[0]
         label = {"herdr_pane": "herdr pane", "tmux": "tmux pane", "iterm": "iTerm pane",
                  "term": "terminal tab", "tty": "terminal (%s)" % mine.get("tty")}[key]
-        reason = "same %s, ended %s" % (label, _ago(now - h["at"]))
+        reason = "it ran in this %s, ended %s" % (label, _ago(now - h["at"]))
         return superseded(s, h["at"], "strong", reason) or ("strong", [_cand(s, "strong", reason)])
     # 6: herdr says this pane runs (or just ran) an agent session
     pane = herdr.current_pane(rt)

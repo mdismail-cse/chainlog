@@ -21,14 +21,23 @@ from chainlog.paths import atomic_write
 
 ORDER = ("cli", "claude", "codex", "shell", "policy", "scheduler")
 
+# what each part is, in plain words (interactive setup asks these instead of showing raw files)
+QUESTIONS = {
+    "cli": "Add the `chainlog` command to your Terminal?",
+    "claude": "Connect chainlog to Claude Code? (saves which session you leave, adds /chainlog:save)",
+    "codex": "Connect chainlog to Codex? (saves which session you leave, adds a 'save to chainlog' skill)",
+    "shell": "Show a one-line note in Terminal right after you leave a session without saving?",
+    "scheduler": "Turn on the small background timer? (needed for reminders and auto-save; checks every 2 min)",
+}
+
 POLICY_Q = """When a session ends and you haven't saved it within {after}, chainlog should:
   1) Auto-save it with a short summary of the session    (nothing is ever lost)
   2) Keep it in your "unsaved" list with a preview of the last work   (you decide later)
-  3) Remind you: desktop notification + herdr toast + one line in that terminal
+  3) Remind you with a pop-up notification
   4) Do nothing"""
-ENGINE_Q = """Summaries are written by:
-  a) chainlog itself, from the title, last ask, last reply, PR and branch   (instant, free, offline)
-  b) the same AI that ran the session (Claude Haiku / Codex), from a short redacted excerpt   (better, uses a little of your plan)"""
+ENGINE_Q = """Who writes the summary?
+  a) chainlog, from the session's title and last messages   (instant, free, works offline)
+  b) the AI that ran the session   (a better summary; uses a little of your Claude/Codex usage)"""
 
 
 class Aborted(Exception):
@@ -107,8 +116,9 @@ def _policy(rt, args, cfg, out, interactive):
     cfg = config_mod.set_value(cfg, "unsaved.action", action)
     if engine:
         cfg = config_mod.set_value(cfg, "summary.engine", engine)
-    out("✓ unsaved.action = %s%s · unsaved.after = %s" % (
-        action, " · summary.engine = %s" % cfg["summary"]["engine"] if action == "summarize" else "", after))
+    plain = {"summarize": "auto-save with a summary", "list": "keep them in the Unsaved list",
+             "remind": "remind you", "off": "do nothing"}[action]
+    out("✓ Forgotten sessions: %s (%s after the session ends).   [unsaved.action = %s]" % (plain, after, action))
     return cfg, action in ("summarize", "remind")
 
 
@@ -174,7 +184,7 @@ def _run(rt, args, out):
                         % (config_mod.fmt_duration(cfg["unsaved"]["after"]), cfg["unsaved"]["action"]))
                 needs_timer = action in ("summarize", "remind")
             else:
-                say("\n[policy]")
+                say("\nWhat should happen when you forget to save a session?" if interactive else "\n[policy]")
                 cfg, needs_timer = _policy(rt, args, cfg, say, interactive)
                 config_mod.save(rt, cfg)
                 report.append({"component": "policy", "action": cfg["unsaved"]["action"],
@@ -195,29 +205,42 @@ def _run(rt, args, out):
                 say("\n[%s] %s" % (name, why))
             report.append({"component": name, "results": [why]})
             continue
-        say("\n[%s]" % name)
-        for ch in changes:
-            _render(rt, ch, say)
+        if interactive and not all(ch.noop for ch in changes):
+            # people get one plain question; the exact file changes are one keypress away
+            say("\n" + QUESTIONS.get(name, "Set up %s?" % name))
+            while True:
+                ans = _ask("  [Y/n/d]  (Enter = yes, n = skip, d = show the exact changes) ", "y")
+                if ans and ans.lower().startswith("d"):
+                    for ch in changes:
+                        _render(rt, ch, say)
+                    continue
+                break
+            if not ans or not ans.lower().startswith("y"):
+                say("  skipped")
+                report.append({"component": name, "declined": True})
+                continue
+        else:
+            say("\n[%s]" % name)
+            for ch in changes:
+                _render(rt, ch, say)
         if all(ch.noop for ch in changes):
             report.append({"component": name, "changes": [c.to_json() for c in changes], "results": ["already done"]})
             continue
         if args.dry_run:
             report.append({"component": name, "changes": [c.to_json() for c in changes], "dry_run": True})
             continue
-        if interactive:
-            ans = _ask("  apply %s? [Y/n] " % name, "y")
-            if not ans or not ans.lower().startswith("y"):
-                report.append({"component": name, "declined": True})
-                continue
         try:
             results = base.apply(rt, [c for c in changes if not c.noop])
         except base.ConflictError as e:
             say("  ! %s" % e)
             report.append({"component": name, "error": str(e), "failed": [str(e)]})
             continue
-        for r in results:
-            say("    " + r)
         failed = [r for r in results if r.startswith("FAILED")]
+        if interactive and not failed:
+            say("  ✓ done")
+        else:
+            for r in results:
+                say("    " + r)
         report.append({"component": name, "results": results, "failed": failed})
     if not args.dry_run:
         config_mod.save(rt, cfg)
@@ -236,8 +259,8 @@ def _run(rt, args, out):
     from chainlog.doctor import codex_hook_trusted
     wrote_hook = any(r.get("component") == "codex" and any("written" in x and "hooks.json" in x for x in r.get("results", []))
                      for r in report)
-    if not args.dry_run and (wrote_hook or _present(rt, "codex_hook")) and not codex_hook_trusted(rt):
-        say("\nOne manual step: open `codex`, type /hooks, and trust the chainlog SessionEnd hook.")
+    if not args.dry_run and wrote_hook and not codex_hook_trusted(rt):
+        say("\nOne more step for Codex: open `codex`, type /hooks, and approve the chainlog entry (only once).")
     if not args.dry_run:
         say("Check everything with: chainlog doctor")
     return 1 if failures else 0
@@ -247,28 +270,38 @@ def uninstall(rt, args, out):
     m = base.load_manifest(rt)
     entries = list(reversed(m.get("entries") or []))
     if not entries and not args.purge:
-        out("nothing chainlog installed was found (manifest empty)")
+        out("chainlog is not set up, so there is nothing to remove. (To delete your notes too: chainlog uninstall --purge)")
         return 0
     if not args.yes:
         if not rt.isatty():
             out("chainlog uninstall needs --yes when there is no terminal to confirm in (%d recorded changes%s)."
                 % (len(entries), ", and --purge deletes all data" if args.purge else ""))
             return 2
-        out("This removes chainlog's integrations (%d recorded changes)%s." % (
-            len(entries), " AND deletes all chainlog data" if args.purge else "; your saved notes are kept"))
+        if args.purge:
+            out("This turns chainlog off AND deletes all your chainlog notes and the chainlog command.")
+        else:
+            out("This turns chainlog off: it removes what setup added to Claude Code, Codex, Terminal and the timer.\n"
+                "Your notes and the `chainlog` command stay, so you can still read old notes.")
         try:
-            ans = _ask("Continue? [y/N] ", "n")
+            ans = _ask("Continue? Type y and press Enter (Enter alone = no): ", "n")
         except Aborted:
             return 130
         if not ans or not ans.lower().startswith("y"):
+            out("Cancelled: nothing was changed.")
             return 1
     done, problems, removed_dirs = set(), [], set()
+    parts_done = []
     for e in entries:
+        if e.get("component") == "cli" and not args.purge:
+            continue  # the command stays (so notes stay readable) unless everything is purged
+        if e.get("component") and e["component"] not in parts_done:
+            parts_done.append(e["component"])
         if e.get("command"):
             undo = e.get("undo_command")
             if undo:
                 rc, o, err = rt.run(undo, timeout=60)
-                out("%s  %s" % ("undone " if rc == 0 else "skipped", " ".join(undo)))
+                if rc != 0:
+                    problems.append("could not run: %s" % " ".join(undo))
             continue
         path = e.get("path")
         if not path or path in done:
@@ -284,26 +317,24 @@ def uninstall(rt, args, out):
                     with open(e["backup"], encoding="utf-8", errors="surrogateescape", newline="") as f:
                         original = f.read()
                     atomic_write(p, original, rt=rt, allow_harness_write=allow)
-                    out("restored %s" % _home(rt, p))
                     continue  # an older entry for the same file restores further back if it matches
                 p.unlink()
                 removed_dirs.add(p.parent)
-                out("removed  %s" % _home(rt, p))
                 done.add(path)
                 continue
             # changed since install: remove only our part
             if p.name == "hooks.json":
                 try:
                     atomic_write(p, comp.remove_codex_entry(current), rt=rt, allow_harness_write=True)
-                    out("removed  our SessionEnd entry from %s (file had other changes)" % _home(rt, p))
+                    out("✓ took chainlog's entry out of %s (you had changed that file, so the rest stays as you left it)" % _home(rt, p))
                 except ValueError:
                     problems.append("%s is not valid JSON any more: remove the chainlog SessionEnd entry by hand"
                                     % _home(rt, p))
             elif p.name == ".zshrc" or p == comp.zshrc(rt):
                 atomic_write(p, comp.remove_shell_block(current), rt=rt)
-                out("removed  the chainlog block from %s (file had other changes)" % _home(rt, p))
+                out("✓ took chainlog's lines out of %s (the rest of the file is untouched)" % _home(rt, p))
             else:
-                out("left     %s (changed since install)" % _home(rt, p))
+                out("! left %s alone: it changed after setup; remove chainlog's part by hand if you want" % _home(rt, p))
         except OSError as err:
             problems.append("%s: %s" % (_home(rt, p), err))
         done.add(path)
@@ -321,7 +352,18 @@ def uninstall(rt, args, out):
             out("removed  %s" % _home(rt, link))
         shutil.rmtree(rt.data_home, ignore_errors=True)
         out("deleted  %s" % _home(rt, rt.data_home))
+    labels = {"claude": "disconnected from Claude Code", "codex": "disconnected from Codex",
+              "shell": "Terminal reminder removed from ~/.zshrc (rest of the file untouched)",
+              "scheduler": "background timer removed", "cli": "chainlog command removed"}
+    for part in parts_done:
+        if part in labels:
+            out("✓ " + labels[part])
     for msg in problems:
         out("! " + msg)
-    out("chainlog integrations removed%s." % ("" if args.purge else "; data kept in %s" % _home(rt, rt.data_home)))
+    if args.purge:
+        out("chainlog is removed, notes included.")
+    else:
+        out("chainlog is turned off. Your notes are kept in %s and `chainlog` still works for reading them.\n"
+            "To remove the command too: rm ~/.local/bin/chainlog   (or delete everything: chainlog uninstall --purge)"
+            % _home(rt, rt.data_home))
     return 1 if problems else 0

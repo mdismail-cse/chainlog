@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="764" height="293" viewBox="0 0 764 293" font-family="SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace" font-size="14">
+<rect width="100%" height="100%" rx="10" fill="#0d1117"/>
+<rect width="100%%" height="32" rx="10" fill="#161b22"/><rect y="22" width="100%%" height="10" fill="#161b22"/>
+<circle cx="20" cy="16" r="6" fill="#ff5f56"/><circle cx="40" cy="16" r="6" fill="#ffbd2e"/><circle cx="60" cy="16" r="6" fill="#27c93f"/>
+<text x="382" y="21" fill="#8b949e" font-size="12" text-anchor="middle">everything about one session</text>
+<text x="18" y="59" xml:space="preserve"><tspan fill="#e6edf3"><tspan fill="#7ee787">$</tspan> chainlog show 4321/2</tspan></text>
+<text x="18" y="80" xml:space="preserve"><tspan fill="#e6edf3" font-weight="700">claude</tspan><tspan fill="#e6edf3"> a01c77d4-2222-4a00-8000-000000000002  </tspan><tspan fill="#e6edf3" font-weight="700">"Shop PR 4321 partial refund"</tspan></text>
+<text x="18" y="101" xml:space="preserve"><tspan fill="#e6edf3">  </tspan><tspan fill="#8b949e">where </tspan><tspan fill="#e6edf3">  ~/code/shop  fix/4321</tspan></text>
+<text x="18" y="122" xml:space="preserve"><tspan fill="#e6edf3">  </tspan><tspan fill="#8b949e">when  </tspan><tspan fill="#e6edf3">  started 2d ago · last activity 1d ago</tspan></text>
+<text x="18" y="143" xml:space="preserve"><tspan fill="#e6edf3">  </tspan><tspan fill="#8b949e">saved </tspan><tspan fill="#e6edf3">  yes  status </tspan><tspan fill="#ff7b72">fail</tspan></text>
+<text x="18" y="164" xml:space="preserve"><tspan fill="#e6edf3">  </tspan><tspan fill="#8b949e">chain </tspan><tspan fill="#e6edf3">  shop#4321 round 2</tspan></text>
+<text x="18" y="185" xml:space="preserve"><tspan fill="#e6edf3">  </tspan><tspan fill="#8b949e">pr    </tspan><tspan fill="#e6edf3">  https://github.com/acme/shop/pull/4321</tspan></text>
+<text x="18" y="206" xml:space="preserve"><tspan fill="#e6edf3">  </tspan><tspan fill="#8b949e">note  </tspan><tspan fill="#e6edf3">  r2: partial refund + coupon -&gt; HTTP 500 </tspan><tspan fill="#8b949e">(just now)</tspan></text>
+<text x="18" y="227" xml:space="preserve"><tspan fill="#e6edf3">  </tspan><tspan fill="#8b949e">last ask: </tspan><tspan fill="#e6edf3"> "now test a partial refund with a coupon applied"</tspan></text>
+<text x="18" y="248" xml:space="preserve"><tspan fill="#e6edf3">  </tspan><tspan fill="#8b949e">last work:</tspan><tspan fill="#e6edf3"> "Partial refund with a 10% coupon returns HTTP 500 from Order::refund()."</tspan></text>
+<text x="18" y="269" xml:space="preserve"><tspan fill="#e6edf3">  </tspan><tspan fill="#8b949e">resume</tspan><tspan fill="#e6edf3">  cd ~/code/shop &amp;&amp; claude --resume a01c77d4-2222-4a00-8000-000000000002</tspan></text>
+</svg>

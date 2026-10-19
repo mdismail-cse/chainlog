@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1017" height="398" viewBox="0 0 1017 398" font-family="SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace" font-size="14">
+<rect width="100%" height="100%" rx="10" fill="#0d1117"/>
+<rect width="100%%" height="32" rx="10" fill="#161b22"/><rect y="22" width="100%%" height="10" fill="#161b22"/>
+<circle cx="20" cy="16" r="6" fill="#ff5f56"/><circle cx="40" cy="16" r="6" fill="#ffbd2e"/><circle cx="60" cy="16" r="6" fill="#27c93f"/>
+<text x="508" y="21" fill="#8b949e" font-size="12" text-anchor="middle">triage sessions you forgot to save</text>
+<text x="18" y="59" xml:space="preserve"><tspan fill="#e6edf3"><tspan fill="#7ee787">$</tspan> chainlog review</tspan></text>
+<text x="18" y="80" xml:space="preserve"><tspan fill="#e6edf3">3 unsaved sessions</tspan></text>
+<text x="18" y="101" xml:space="preserve"></text>
+<text x="18" y="122" xml:space="preserve"><tspan fill="#e6edf3"> </tspan><tspan fill="#e6edf3" font-weight="700">1</tspan><tspan fill="#e6edf3">  claude f2f2f2f2  </tspan><tspan fill="#8b949e">~/code/tracker · main · ended 2m ago · 11m</tspan></text>
+<text x="18" y="143" xml:space="preserve"><tspan fill="#e6edf3">    "Tracker import validation"</tspan></text>
+<text x="18" y="164" xml:space="preserve"><tspan fill="#e6edf3">    </tspan><tspan fill="#8b949e">last ask: </tspan><tspan fill="#e6edf3"> "try importing a CSV with a bad header"</tspan></text>
+<text x="18" y="185" xml:space="preserve"><tspan fill="#e6edf3">    </tspan><tspan fill="#8b949e">last work:</tspan><tspan fill="#e6edf3"> "Bad headers are rejected with a clear message."</tspan></text>
+<text x="18" y="206" xml:space="preserve"><tspan fill="#e6edf3">    </tspan><tspan fill="#8b949e">[s] save with a note  [a] save with a summary  [r] reopen  [f] hide (nothing is deleted)  [n] skip  [q] stop</tspan><tspan fill="#e6edf3"> › </tspan><tspan fill="#e6edf3" font-weight="700">s</tspan></text>
+<text x="18" y="227" xml:space="preserve"><tspan fill="#e6edf3">    note: </tspan><tspan fill="#e6edf3" font-weight="700">sprint item 342: filters OK, toggle bug -s fail</tspan></text>
+<text x="18" y="248" xml:space="preserve"><tspan fill="#e6edf3">    </tspan><tspan fill="#7ee787">✓</tspan><tspan fill="#e6edf3"> saved · fail</tspan></text>
+<text x="18" y="269" xml:space="preserve"></text>
+<text x="18" y="290" xml:space="preserve"><tspan fill="#e6edf3"> </tspan><tspan fill="#e6edf3" font-weight="700">2</tspan><tspan fill="#e6edf3">  claude 7d4be3ab  </tspan><tspan fill="#8b949e">~/code/tracker · main · ended 2h ago · 30m</tspan></text>
+<text x="18" y="311" xml:space="preserve"><tspan fill="#e6edf3">    "Tracker sprint 22 item 342"</tspan></text>
+<text x="18" y="332" xml:space="preserve"><tspan fill="#e6edf3">    </tspan><tspan fill="#8b949e">last ask: </tspan><tspan fill="#e6edf3"> "verify the sprint board filters"</tspan></text>
+<text x="18" y="353" xml:space="preserve"><tspan fill="#e6edf3">    </tspan><tspan fill="#8b949e">last work:</tspan><tspan fill="#e6edf3"> "Filters work; the 'assigned to me' toggle resets after reload."</tspan></text>
+<text x="18" y="374" xml:space="preserve"><tspan fill="#e6edf3">    </tspan><tspan fill="#8b949e">[s] save with a note  [a] save with a summary  [r] reopen  [f] hide (nothing is deleted)  [n] skip  [q] stop</tspan><tspan fill="#e6edf3"> › </tspan><tspan fill="#e6edf3" font-weight="700">q</tspan></text>
+</svg>

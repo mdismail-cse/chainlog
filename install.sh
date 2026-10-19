@@ -2,7 +2,8 @@
 # chainlog installer
 #   curl -fsSL https://raw.githubusercontent.com/mdismail-cse/chainlog/main/install.sh | sh
 #   … | sh -s -- --no-setup            install the CLI only (agents: run `chainlog setup` after asking)
-#   … | sh -s -- --version v0.1.0      pin a release
+#   … | sh -s -- --version v0.1.0      pin a release (default: the latest release, else the main branch)
+#   … | sh -s -- --version main         the latest main branch
 #   CHAINLOG_SOURCE=/path/to/checkout sh install.sh   install from a local checkout (offline / dev)
 # Installs into ${CHAINLOG_HOME:-~/.local/share/chainlog}/app/<version> and links ~/.local/bin/chainlog.
 # Never touches ~/.claude or ~/.codex itself; `chainlog setup` does that, showing a diff and asking first.
@@ -48,22 +49,30 @@ if [ -n "${CHAINLOG_SOURCE:-}" ]; then
 else
   # 2b. tagged release tarball, verified against checksums.txt
   if [ "$VERSION" = latest ]; then
-    TAG=$(curl -fsSL "https://api.github.com/repos/$REPO/releases/latest" \
+    TAG=$(curl -fsSL "https://api.github.com/repos/$REPO/releases/latest" 2>/dev/null \
       | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -1)
-    [ -n "$TAG" ] || die "could not find the latest release of $REPO"
+    [ -n "$TAG" ] || VERSION=main   # no release published yet: use the main branch
   else
     TAG="$VERSION"
   fi
-  URL="https://github.com/$REPO/releases/download/$TAG"
-  say "Downloading chainlog $TAG…"
-  curl -fsSL "$URL/chainlog-$TAG.tar.gz" -o "$TMP/chainlog.tar.gz" || die "download failed: $URL/chainlog-$TAG.tar.gz"
-  curl -fsSL "$URL/checksums.txt" -o "$TMP/checksums.txt" || die "download failed: $URL/checksums.txt"
-  want=$(grep " chainlog-$TAG.tar.gz\$" "$TMP/checksums.txt" | cut -d' ' -f1)
-  if command -v shasum >/dev/null 2>&1; then got=$(shasum -a 256 "$TMP/chainlog.tar.gz" | cut -d' ' -f1)
-  else got=$(sha256sum "$TMP/chainlog.tar.gz" | cut -d' ' -f1); fi
-  [ -n "$want" ] && [ "$want" = "$got" ] || die "checksum mismatch for chainlog-$TAG.tar.gz"
   mkdir -p "$TMP/src"
-  tar xzf "$TMP/chainlog.tar.gz" -C "$TMP/src" --strip-components 1
+  if [ "$VERSION" = main ]; then
+    say "No release published yet — installing the latest main branch (no checksum file for branch snapshots)."
+    curl -fsSL "https://codeload.github.com/$REPO/tar.gz/refs/heads/main" -o "$TMP/chainlog.tar.gz" \
+      || die "download failed: https://github.com/$REPO (main)"
+    tar xzf "$TMP/chainlog.tar.gz" -C "$TMP/src" --strip-components 1
+    TAG="v$(cat "$TMP/src/plugin/VERSION")-main"
+  else
+    URL="https://github.com/$REPO/releases/download/$TAG"
+    say "Downloading chainlog $TAG…"
+    curl -fsSL "$URL/chainlog-$TAG.tar.gz" -o "$TMP/chainlog.tar.gz" || die "download failed: $URL/chainlog-$TAG.tar.gz"
+    curl -fsSL "$URL/checksums.txt" -o "$TMP/checksums.txt" || die "download failed: $URL/checksums.txt"
+    want=$(grep " chainlog-$TAG.tar.gz\$" "$TMP/checksums.txt" | cut -d' ' -f1)
+    if command -v shasum >/dev/null 2>&1; then got=$(shasum -a 256 "$TMP/chainlog.tar.gz" | cut -d' ' -f1)
+    else got=$(sha256sum "$TMP/chainlog.tar.gz" | cut -d' ' -f1); fi
+    [ -n "$want" ] && [ "$want" = "$got" ] || die "checksum mismatch for chainlog-$TAG.tar.gz"
+    tar xzf "$TMP/chainlog.tar.gz" -C "$TMP/src" --strip-components 1
+  fi
 fi
 
 # 3. unpack to app/<tag>, point app/current at it, link the launcher
@@ -83,5 +92,5 @@ if [ "$SETUP" = 1 ] && (exec </dev/tty) 2>/dev/null; then   # a real terminal we
   say "Next: chainlog setup shows every change it would make and asks before each one."
   "$BIN/chainlog" setup </dev/tty || true
 else
-  say "Run \`chainlog setup\` to add the Claude plugin, the Codex hook + skills, the zsh hint and your unsaved-session policy."
+  say "Next, type:  chainlog setup    (a few yes/no questions; press Enter for yes)"
 fi

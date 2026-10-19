@@ -141,10 +141,11 @@ def cmd_default(rt, args):
     st = ui.Style(rt.color())
     now = rt.now()
     if not index.visible():
-        _p("No Claude Code or Codex sessions found yet (looked in %s and %s)." % (
-            ui.home(rt, str(rt.claude_dir / "projects")), ui.home(rt, str(rt.codex_dir / "sessions"))))
-        _p("Run a session, then after /exit:  chainlog save \"what you tested\"")
-        _p("Set up hooks and the in-session /chainlog:save:  chainlog setup")
+        _p("No Claude Code or Codex sessions yet.")
+        _p("Use Claude Code or Codex as usual. When you leave a session (/exit), type:  chainlog save \"what you did\"")
+        from chainlog.integrations import base as _base
+        if not _base.load_manifest(rt).get("entries"):
+            _p("Not set up yet? Run:  chainlog setup")
         return 0
     all_unsaved = review.unsaved(index)
     unsaved = all_unsaved[:5]
@@ -218,6 +219,11 @@ def cmd_save(rt, args):
                 raise Exit(1, "cancelled")
             reason = "picked"
 
+    if (kind in ("strong", "weak") or args.id) and s["saved"] == "user" and rt.isatty() and not args.json:
+        last = next((n["text"] for n in reversed(s["notes"]) if n.get("kind") == "note"), "")
+        ans = _ask('  This session already has a note ("%s").\n  Add another note to it? [Y/n] ' % ui.fit(ui.safe(last), 50))
+        if ans is None or ans.strip().lower().startswith("n"):
+            raise Exit(1, "cancelled — to pick another session: chainlog save --pick \"note\"")
     raw_note = parsed["note"]
     trimmed = len(raw_note) > NOTE_MAX
     note, n_red = redact(raw_note) if raw_note else ("", 0)  # redact first: a token must not straddle the cut
@@ -278,15 +284,18 @@ def cmd_save(rt, args):
                                      ui.fit(fresh["title"]["value"], 70),
                                      ("  status " + ui.status_text(st, status)) if status else ""))
     if c:
-        src = {"pr-link": "from pr-link", "title": "from title", "branch": "from branch", "flag": "-c",
-               "CHAINLOG_CHAIN": "from CHAINLOG_CHAIN"}.get(chain_src, "existing")
+        src = {"pr-link": "found the PR link", "title": "PR number in the title", "branch": "PR number in the branch",
+               "flag": "you chose it", "CHAINLOG_CHAIN": "from CHAINLOG_CHAIN"}.get(chain_src, "already in it")
         _p("  chain  %s · round %s %s%s" % (ui.safe(c["id"]), c.get("round", "?"), st.dim("(%s)" % src),
-                                         st.dim("   — wrong chain? chainlog save --id %s -c KEY" % fresh["short"])
+                                         st.dim("   — wrong PR? chainlog save --id %s -c <PR number>" % fresh["short"])
                                          if chain_src not in (None, "flag") else ""))
-    line = "  match  %s" % reason
+    line = "  how    %s" % reason
     if kind == "weak":
         line += st.yellow("   — wrong one? chainlog undo")
     _p(line)
+    if len([n for n in fresh["notes"] if n.get("kind") == "note"]) > 1:
+        _p(st.dim("  notes  this session now has %d notes (see them: chainlog show %s)"
+                  % (len([n for n in fresh["notes"] if n.get("kind") == "note"]), fresh["short"])))
     if n_red:
         _p("  note   %d secret%s redacted" % (n_red, "" if n_red == 1 else "s"))
     if trimmed:
@@ -296,9 +305,15 @@ def cmd_save(rt, args):
                   "the next chainlog command picks it up)"))
     p = resume.plan(fresh)
     import shlex as _shlex
-    nxt = "chainlog next %s" % _shlex.quote(c["id"]) if c else "chainlog resume %s" % fresh["short"]
-    _p("  resume %s   %s   %s" % (ui.safe(nxt), st.dim("|"), st.dim(ui.safe(resume.shell_command(p)))))
+    latest = c and index_after_save_latest(rt, cfg, c["id"]) == fresh["ref"]
+    nxt = "chainlog next %s" % _shlex.quote(c["id"]) if latest else "chainlog resume %s" % fresh["short"]
+    _p("  reopen %s" % ui.safe(nxt))
     return 0
+
+
+def index_after_save_latest(rt, cfg, chain_id):
+    chain = load(rt, cfg).chains.get(chain_id)
+    return chain["members"][-1]["ref"] if chain and chain["members"] else None
 
 
 def cmd_ls(rt, args):
@@ -487,12 +502,12 @@ def cmd_chain(rt, args):
         when = s["times"].get("started_at") or s["times"].get("last_activity_at")
         day = time.strftime("%b %d", time.localtime(when)) if when else "?"
         mark = st.green("▶") if s.get("live") else " "
-        _p(" %2d %s %s  %-6s %s  %s %s" % (m["round"], mark, st.dim(ui.pad(s["short"], w)), s["harness"], day,
+        _p(" %s %s %s  %-6s %s  %s %s" % (st.dim("@%-2d" % m["round"]), mark, st.dim(ui.pad(s["short"], w)), s["harness"], day,
                                           ui.pad(ui.status_text(st, s.get("status")) or st.dim("—"), 8),
                                           ui.fit(ui.headline(s), 70)))
         refs.append(s["ref"])
     resolve.save_last_list(rt, refs)
-    _p(st.dim(" chainlog next %s · chainlog resume @N (N = round)" % c["id"]))
+    _p(st.dim(" @N = round N · reopen the latest round: chainlog next %s" % c["id"]))
     return 0
 
 
@@ -620,8 +635,17 @@ def cmd_config(rt, args):
         sweep.run(load(rt, cfg), mode="cmd")  # recompute the pending due time with the new setting
     if args.key == "unsaved.action" and args.value in ("summarize", "remind"):
         from chainlog.integrations import components as comp
-        if not comp.scheduler_loaded(rt):
-            _p("  tip: chainlog setup scheduler   (so this happens on time even when no terminal is in use)")
+        if not (comp.scheduler_loaded(rt) and (sys.platform != "darwin" or comp.plist_path(rt).exists())):
+            _p("  %s needs the small background timer (it checks every 2 minutes)." % (
+                "Reminding" if args.value == "remind" else "Auto-saving"))
+            if rt.isatty():
+                ans = _ask("  Turn it on now? [Y/n] ")
+                if ans is not None and not ans.strip().lower().startswith("n"):
+                    from chainlog import setup as setup_mod
+                    ns = argparse.Namespace(components=["scheduler"], dry_run=False, yes=True, skip=[], policy=None,
+                                            engine=None, local=False, json=False)
+                    return setup_mod.run(rt, ns, _p)
+            _p("  Turn it on with:  chainlog setup scheduler")
     return 0
 
 
@@ -631,8 +655,11 @@ def cmd_scan(rt, args):
     counts = {}
     for s in index.visible():
         counts[s["harness"]] = counts.get(s["harness"], 0) + 1
-    _p("indexed %s in %.2fs" % (", ".join("%d %s" % (n, h) for h, n in sorted(counts.items())) or "nothing",
-                                 time.time() - t))
+    if counts:
+        _p("Found %s." % " and ".join("%d %s session%s" % (n, h.capitalize(), "" if n == 1 else "s")
+                                      for h, n in sorted(counts.items())))
+    else:
+        _p("No sessions found yet. They will show up after you use Claude Code or Codex.")
     return 0
 
 
@@ -670,8 +697,9 @@ def cmd_nudge(rt, args):
     key, _src = chain_mod.suggest_key(s)
     action = cfg["unsaved"]["action"]
     after = config_mod.fmt_duration(cfg["unsaved"]["after"])
-    then = {"summarize": "auto-summary in %s" % after, "remind": "reminder in %s" % after,
-            "list": "listed as unsaved in %s" % after, "off": ""}.get(action, "")
+    then = {"summarize": "if you don't, chainlog auto-saves it in %s" % after,
+            "remind": "if you don't, you get a reminder in %s" % after,
+            "list": "or later: chainlog review", "off": ""}.get(action, "")
     _p(st.cyan("chainlog ▸ ended unsaved: ") + "%s %s \"%s\"%s%s — %s%s" % (
         s["harness"], s["short"], ui.fit(s["title"]["value"], 50), " · " + dur if dur else "", " · " + key if key else "",
         st.bold('chainlog save "…"'), st.dim("  (%s)" % then) if then else ""))
@@ -790,7 +818,9 @@ def build_parser():
     fg.add_argument("ref", metavar="REF")
     sub.add_parser("undo", help="revert your last save / note / status / tag / forget")
 
-    rv = sub.add_parser("review", help="triage unsaved sessions with previews")
+    rv = sub.add_parser("review", help="go through unsaved sessions one by one",
+                        description="For each unsaved session: s = save with a note, a = save with a summary, "
+                                    "r = reopen it, f = hide it from lists (nothing is deleted), n = skip, q = stop.")
     rv.add_argument("--all", action="store_true", help="include sessions from before install / older than lookback")
     rv.add_argument("--json", action="store_true", help="machine-readable output")
 
