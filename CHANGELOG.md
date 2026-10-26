@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Fix: secrets in `NAME=value` form were not redacted when the name had a prefix or suffix
+  (`DB_PASSWORD`, `AWS_SECRET_ACCESS_KEY`, `MY_API_TOKEN`, `client_secret`). Also redacted now: quoted JSON keys
+  (`"password": "…"`), `--password x`, `sshpass -p`, `mysql -pSECRET`, `--user_pass=`, `Authorization: Basic …`.
+  `max_tokens=500` and similar are left alone, and redacting twice changes nothing.
 - Open a session straight from the list: `chainlog`, `find`, `ls` and `chain KEY` end with
   "Type a number to open it, or words to search" in a terminal (`CHAINLOG_NO_PROMPT=1` turns it off).
 

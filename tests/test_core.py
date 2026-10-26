@@ -46,6 +46,36 @@ class Redaction(unittest.TestCase):
         self.assertNotIn("u:p@", text)
         self.assertEqual(n, 4)
 
+    def test_secret_names_with_prefixes_and_suffixes(self):
+        for text in ("DB_PASSWORD=hunter2", "export AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG",
+                     "MY_API_TOKEN=abc123xyz", "client_secret=abc123", "wp user create bob b@x.io --user_pass=abc",
+                     "--admin_password=\"tr0ub4dor\"", "WP_ADMIN_PASSWORD: 'p@ss word'"):
+            red, n = redact(text)
+            self.assertEqual(n, 1, text)
+            self.assertIn("[REDACTED:secret]", red)
+            self.assertNotRegex(red, r"hunter2|wJalr|abc123|tr0ub4dor|p@ss")
+
+    def test_json_headers_flags_and_command_lines(self):
+        for text, leaked in (('{"password": "hunter2", "user": "bob"}', "hunter2"),
+                             ("curl -H 'X-Api-Key: abcdef1234567890abcd' https://x", "abcdef1234"),
+                             ("Authorization: Basic dXNlcjpwYXNzd29yZA==", "dXNlcjpw"),
+                             ("run it with --password hunter2 now", "hunter2"),
+                             ("sshpass -p 's3cretPassw0rd' ssh root@1.2.3.4", "s3cretP"),
+                             ("mysql -pSecret123 -u root", "Secret123")):
+            red, n = redact(text)
+            self.assertEqual(n, 1, text)
+            self.assertNotIn(leaked, red)
+
+    def test_plain_words_are_left_alone(self):
+        for text in ("max_tokens=500", "bypass=1", "tokens: 12", "the password reset email is broken",
+                     "mysql -P3306 -h db", "mysql -u root -p", "status=pass", "set the token budget to 5"):
+            self.assertEqual(redact(text), (text, 0), text)
+
+    def test_redacting_twice_changes_nothing(self):
+        once, _n = redact("DB_PASSWORD=hunter2 OPENAI_API_KEY=sk-proj-abc123def456ghi789jkl")
+        self.assertEqual(redact(once), (once, 0))
+        self.assertEqual(once.count("[REDACTED"), 2)
+
 
 class Chains(unittest.TestCase):
     def test_keys(self):
