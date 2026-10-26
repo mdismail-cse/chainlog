@@ -58,5 +58,36 @@ class EmptySave(UxHome):
         self.assertIn("nothing to save", err)
 
 
+class DidYouMean(UxHome):
+    def setUp(self):
+        super().setUp()
+        self.claude_session(A, NOW - 900, NOW - 600, title="Shop PR 4321 refund", pr=4321)
+
+    def test_typo_with_no_hits_says_what_you_meant(self):
+        code, out, _err, _n = self.run_cli(["svae", "zzz", "qqq"])
+        self.assertEqual(code, 1)
+        self.assertIn('did you mean:  chainlog save "zzz qqq"', out)
+
+    def test_typo_that_still_finds_sessions_hints_on_stderr(self):
+        code, out, err, _n = self.run_cli(["svae", "r2", "refund"])
+        self.assertEqual(code, 0)  # the refund session is listed
+        self.assertIn("refund", out)
+        self.assertIn('chainlog save "r2 refund"', err)
+
+    def test_other_command_names_keep_their_arguments(self):
+        _code, out, _err, _n = self.run_cli(["shwo", "@1"])
+        self.assertIn("did you mean:  chainlog show @1", out)
+
+    def test_ordinary_searches_get_no_guess(self):
+        for words in (["checkout"], ["4999"], ["refund", "flow", "zzz"]):
+            _code, out, _err, _n = self.run_cli(words)
+            self.assertNotIn("did you mean", out, words)
+
+    def test_a_real_match_is_never_second_guessed(self):
+        code, out, err, _n = self.run_cli(["refund"])
+        self.assertEqual(code, 0)
+        self.assertNotIn("did you mean", out + err)
+
+
 if __name__ == "__main__":
     unittest.main()

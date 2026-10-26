@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import difflib
 import json
 import os
 import re
@@ -380,9 +381,28 @@ def cmd_find(rt, args):
     index = load(rt, cfg)
     text = _text(" ".join(args.text))
     hits = query.find(index, text, limit=args.n + 200)
-    return _emit_list(rt, hits[: args.n], args.json,
-                      "nothing matches %r — try fewer words, a PR number, or chainlog ls" % text,
+    empty = "nothing matches %r — try fewer words, a PR number, or chainlog ls" % text
+    guess = _command_guess(index, args.text)
+    if guess and hits and not args.json:
+        sys.stderr.write("chainlog: searching for %r. If you meant a command, try:  chainlog %s\n" % (text, guess))
+    elif guess:
+        empty = "nothing matches %r — did you mean:  chainlog %s" % (text, guess)
+    return _emit_list(rt, hits[: args.n], args.json, empty,
                       more=len(hits) - args.n, index=index, args=args)
+
+
+def _command_guess(index, words):
+    """`chainlog svae "r2 done"` is searched as text. If the first word is a near-miss of a command
+    and matches no session by itself, return the command line to suggest, else None."""
+    if not words:
+        return None
+    near = difflib.get_close_matches(words[0].lower(), VISIBLE, n=1, cutoff=0.75)
+    if not near or near[0] == words[0].lower() or query.find(index, words[0], limit=1):
+        return None
+    rest = " ".join(words[1:])
+    if near[0] == "save" and rest:
+        return 'save "%s"' % rest
+    return " ".join([near[0]] + list(words[1:]))
 
 
 def cmd_show(rt, args):
