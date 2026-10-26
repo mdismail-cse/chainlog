@@ -245,6 +245,7 @@ chainlog setup all --yes --policy list    # no questions (scripts / agents, afte
 | `summary.timeout` | `60` | Seconds to wait for an AI summary before falling back to `local` |
 | `snippets` | `true` | Store short, redacted previews of the last ask and last answer, which `find` searches |
 | `auto_chain` | `true` | Link saves to a PR chain automatically |
+| `hints` | `true` | One-line tips under the list, such as "Claude Code isn't connected". Only shown in a terminal |
 
 ## Environment variables
 

@@ -197,11 +197,30 @@ def cmd_default(rt, args):
     _p(st.bold("Recent"))
     refs += print_rows(rt, st, recent, now, len(refs) + 1, widths)
     resolve.save_last_list(rt, refs)
+    tip = _setup_tip(rt, cfg, index) if rt.isatty() else None  # people at a terminal only, never scripts or agents
     if _interactive(rt, args):
         _p(st.dim(" (● saved · ◐ auto-saved · ○ not saved · ▶ running)"))
+        if tip:
+            _p(st.yellow(" tip: ") + tip)
         return _choose(rt, st, index, refs)
     _p(st.dim(" (● saved · ◐ auto-saved · ○ not saved · ▶ running)   chainlog resume @N · chainlog save \"note\" · chainlog find TEXT"))
+    if tip:
+        _p(st.yellow(" tip: ") + tip)
     return 0
+
+
+def _setup_tip(rt, cfg, index):
+    """One line that fixes the biggest gap, or None. Without the Claude Code plugin, `chainlog save`
+    can only guess which session you just left. `chainlog config set hints off` silences it."""
+    if not cfg.get("hints", True):
+        return None
+    from chainlog.integrations import components as comp
+    if not shutil.which("claude", path=rt.env.get("PATH")) or comp.claude_plugin_installed(rt):
+        return None
+    if not any(s["harness"] == "claude" for s in index.visible()):
+        return None
+    return ("Claude Code isn't connected, so chainlog can only guess which session you left. "
+            "Fix it in 30 seconds: chainlog setup claude")
 
 
 def _status_arg(value):

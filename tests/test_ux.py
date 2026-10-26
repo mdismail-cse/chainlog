@@ -89,5 +89,46 @@ class DidYouMean(UxHome):
         self.assertNotIn("did you mean", out + err)
 
 
+class ConnectTip(UxHome):
+    def setUp(self):
+        super().setUp()
+        self.claude_session(A, NOW - 900, NOW - 600, title="Shop PR 4321 refund", pr=4321)
+        self.bin = self.root / "bin"
+        self.bin.mkdir()
+        claude = self.bin / "claude"
+        claude.write_text("#!/bin/sh\n")
+        claude.chmod(0o755)
+
+    def plugin_installed(self):
+        d = self.home / ".claude" / "plugins"
+        d.mkdir(parents=True)
+        (d / "installed_plugins.json").write_text(json.dumps({"plugins": {"chainlog@chainlog": [{"scope": "user"}]}}))
+
+    def list_view(self, tty=True, env=None):
+        rt = self.make_rt(tty=tty, env=dict({"PATH": str(self.bin)}, **(env or {})))
+        return self.run_cli([], rt, answers=[""])[1]
+
+    def test_tip_names_the_one_command_that_fixes_it(self):
+        out = self.list_view()
+        self.assertIn("tip:", out)
+        self.assertIn("chainlog setup claude", out)
+
+    def test_no_tip_once_connected(self):
+        self.plugin_installed()
+        self.assertNotIn("tip:", self.list_view())
+
+    def test_no_tip_for_scripts_and_agents(self):
+        self.assertNotIn("tip:", self.list_view(tty=False))
+
+    def test_no_tip_when_claude_is_not_installed(self):
+        (self.bin / "claude").unlink()
+        self.assertNotIn("tip:", self.list_view())
+
+    def test_hints_off_silences_it(self):
+        rt = self.make_rt()
+        self.run_cli(["config", "set", "hints", "off"], rt)
+        self.assertNotIn("tip:", self.list_view())
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -61,19 +61,26 @@ def _read_json(path, rt):
 
 
 # --- claude ------------------------------------------------------------------------------------
+def claude_plugin_installed(rt):
+    """Is the chainlog plugin installed in Claude Code (so its hooks tell us which session ended)?"""
+    try:
+        return '"chainlog@' in (read_text(rt.claude_dir / "plugins" / "installed_plugins.json", rt) or "")
+    except OSError:
+        return False
+
+
 def plan_claude(rt, source=None):
     """Install the plugin through Claude's own CLI. source: GitHub slug (default) or a local path."""
     if not shutil.which("claude", path=rt.env.get("PATH")):
         return []
     src = source or "mdismail-cse/chainlog"
     known = _read_json(rt.claude_dir / "plugins" / "known_marketplaces.json", rt) or {}
-    installed = read_text(rt.claude_dir / "plugins" / "installed_plugins.json", rt) or ""
     changes = []
     if "chainlog" not in known:
         changes.append(Change("claude", "add the chainlog plugin marketplace (%s)" % src,
                               command=["claude", "plugin", "marketplace", "add", src],
                               undo_command=["claude", "plugin", "marketplace", "remove", "chainlog"]))
-    if '"chainlog@' not in installed:
+    if not claude_plugin_installed(rt):
         changes.append(Change("claude", "install the chainlog plugin for your user",
                               command=["claude", "plugin", "install", "chainlog@chainlog", "--scope", "user"],
                               undo_command=["claude", "plugin", "uninstall", "chainlog@chainlog"]))

@@ -74,12 +74,7 @@ def run(rt, index, cfg):
                          "%s%s" % (__version__, " (installed copy: %s)" % app_v if app_v and app_v != __version__ else ""),
                          "re-run install.sh or update the plugin", "warn"))
     has_claude = bool(shutil.which("claude", path=rt.env.get("PATH"))) or (rt.claude_dir / "projects").is_dir()
-    installed = rt.claude_dir / "plugins" / "installed_plugins.json"
-    try:
-        with safe_open(installed) as f:
-            has_plugin = "chainlog@" in f.read()
-    except OSError:
-        has_plugin = False
+    has_plugin = comp.claude_plugin_installed(rt)
     if has_claude:
         checks.append(_check("claude_plugin", has_plugin,
                              "connected" if has_plugin else "not connected: chainlog can't tell exactly which session you left",

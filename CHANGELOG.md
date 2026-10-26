@@ -9,7 +9,9 @@
 - `chainlog save` with nothing to save (no note, status, tag, title, URL or chain) is refused with an example,
   instead of silently marking the session saved.
 - A mistyped command (`chainlog svae "note"`) is no longer just searched for: chainlog suggests `chainlog save "note"`.
-- `save` reloads the index once instead of three times, and drops dead code.
+- `chainlog` shows one tip when Claude Code is installed but not connected (`chainlog setup claude`), in a
+  terminal only. `chainlog config set hints off` hides it.
+- `save` reloads the index once instead of three times; `doctor` and the tip share one "is it connected" check.
 
 - Open a session straight from the list: `chainlog`, `find`, `ls` and `chain KEY` end with
   "Type a number to open it, or words to search" in a terminal (`CHAINLOG_NO_PROMPT=1` turns it off).

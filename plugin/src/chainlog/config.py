@@ -15,6 +15,7 @@ DEFAULTS = {
     "v": 1,
     "snippets": True,
     "auto_chain": True,
+    "hints": True,
     "unsaved": {"action": "list", "after": 600, "lookback": 86400},
     "summary": {"engine": "local", "timeout": 60},
     "installed_at": None,
@@ -29,6 +30,7 @@ KEYS = {
     "summary.timeout": "seconds",
     "snippets": "true/false (store redacted last-ask / last-work previews)",
     "auto_chain": "true/false (link saves to a PR chain automatically)",
+    "hints": "true/false (one-line tips under the list, e.g. when Claude Code is not connected)",
 }
 
 
@@ -64,7 +66,8 @@ _TYPES = {"unsaved.action": lambda v: v in ACTIONS, "summary.engine": lambda v: 
           "unsaved.after": lambda v: isinstance(v, int) and 60 <= v <= 86400,
           "unsaved.lookback": lambda v: isinstance(v, int) and v >= 60,
           "summary.timeout": lambda v: isinstance(v, int) and 5 <= v <= 600,
-          "snippets": lambda v: isinstance(v, bool), "auto_chain": lambda v: isinstance(v, bool)}
+          "snippets": lambda v: isinstance(v, bool), "auto_chain": lambda v: isinstance(v, bool),
+          "hints": lambda v: isinstance(v, bool)}
 
 
 def load(rt) -> dict:
