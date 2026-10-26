@@ -142,7 +142,7 @@ class ReviewAuto(UxHome):
 
     def test_saves_every_unsaved_session_and_chains_the_pr(self):
         rt = self.make_rt()
-        code, out, _err, asked = self.run_cli(["review", "--auto"], rt)
+        code, out, _err, asked = self.run_cli(["review", "--auto", "--yes"], rt)
         self.assertEqual((code, asked), (0, 0))  # no terminal: no question
         self.assertIn("auto-saved 2 sessions", out)
         idx = load(rt)
@@ -166,10 +166,17 @@ class ReviewAuto(UxHome):
 
     def test_nothing_unsaved_is_not_an_error(self):
         rt = self.make_rt()
-        self.run_cli(["review", "--auto"], rt)
-        code, out, _err, _n = self.run_cli(["review", "--auto"], rt)
+        self.run_cli(["review", "--auto", "--yes"], rt)
+        code, out, _err, _n = self.run_cli(["review", "--auto", "--yes"], rt)
         self.assertEqual(code, 0)
         self.assertIn("nothing to review", out)
+
+    def test_without_a_terminal_it_needs_yes_and_saves_nothing_otherwise(self):
+        rt = self.make_rt()
+        code, out, _err, asked = self.run_cli(["review", "--auto"], rt)
+        self.assertEqual((code, asked), (2, 0))
+        self.assertIn("run it again with --yes", out)
+        self.assertEqual(self.saves(rt), [])
 
     def test_cannot_be_combined_with_json(self):
         code, _out, err, _n = self.run_cli(["review", "--auto", "--json"])
@@ -198,6 +205,31 @@ class PrLinkAndTitleDisagree(UxHome):
         self.assertEqual(chain_mod.suggest_key(s), (None, None))
         self.assertEqual(chain_mod.key_conflict(s), (4321, 999, "title"))
 
+    def test_a_link_in_another_repo_is_not_a_conflict(self):
+        # the PR link is to acme/Shop#4321; "PR 777" in the title belongs to whatever repo this folder is: not comparable
+        s = dict(self.session(B))
+        s["git"] = {"remote": "git@github.com:acme/Other.git"}
+        s["prs"] = [{"source": "pr-link", "number": 4321, "repo": "acme/Shop"}]
+        s["titles"] = {"ai": "Follow-up to PR 777"}
+        self.assertEqual(chain_mod._text_pr(s)[1], 777)  # the title really does name a PR
+        self.assertIsNone(chain_mod.key_conflict(s))
+        self.assertEqual(chain_mod.suggest_key(s), ("shop#4321", "pr-link"))
+
+    def test_nothing_is_said_about_linking_when_auto_chain_is_off(self):
+        rt = self.make_rt()
+        self.run_cli(["config", "set", "auto_chain", "off"], rt)
+        code, out, _err, _n = self.run_cli(["save", "--id", A[:8], "retest done"], rt)
+        self.assertEqual(code, 0)
+        self.assertNotIn("not linked", out)
+
+    def test_an_automatic_save_honours_the_chain_hint_from_the_hook_everywhere(self):
+        from chainlog import review as review_mod
+        s = dict(self.session(A))
+        s["hooks"] = [{"type": "hook.end", "at": NOW, "chain": "4999", "anc": [], "tty": "", "fp": {}}]
+        event, *_rest, chain, conflict = review_mod.build_auto_save(self.make_rt(), config_mod.load(self.make_rt()), s, {})
+        self.assertEqual((chain, event["data"]["chain_source"]), ("shop#4999", "CHAINLOG_CHAIN"))
+        self.assertIsNone(conflict)
+
     def test_agreeing_evidence_still_links(self):
         s = self.session(B)
         self.assertEqual(chain_mod.suggest_key(s), ("shop#4321", "pr-link"))
@@ -218,7 +250,7 @@ class PrLinkAndTitleDisagree(UxHome):
 
     def test_review_auto_saves_it_but_leaves_it_unlinked_and_says_so(self):
         rt = self.make_rt()
-        code, out, _err, _n = self.run_cli(["review", "--auto"], rt)
+        code, out, _err, _n = self.run_cli(["review", "--auto", "--yes"], rt)
         self.assertEqual(code, 0)
         self.assertIn("not linked to a PR", out)
         self.assertIn("1 of them could not be linked", out)

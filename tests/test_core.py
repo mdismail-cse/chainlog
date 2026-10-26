@@ -71,6 +71,39 @@ class Redaction(unittest.TestCase):
                      "mysql -P3306 -h db", "mysql -u root -p", "status=pass", "set the token budget to 5"):
             self.assertEqual(redact(text), (text, 0), text)
 
+    def test_camel_case_names_and_the_places_a_secret_hides(self):
+        for text in ("authToken=abc123def", "accessToken: 'abc'", 'clientSecret="x y"', "secretKey=abc", "APIKey=abc123",
+                     "db.password=hunter2", "foo=password=hunter2", "{ accessToken: \"abc123\" }"):
+            red, n = redact(text)
+            self.assertEqual(n, 1, text)
+            self.assertNotRegex(red, r"abc123|hunter2|x y|=abc\b|'abc'", text)
+
+    def test_ordinary_words_and_prose_are_left_alone(self):
+        for text in ("token_count: 5", "password_reset_url=https://x.io/reset", "Enter password:\nnextline word",
+                     "the basic configuration-management-system-guide is fine", "tokenizer=bpe", "--api-key $(cat file)",
+                     "--token --verbose", "see --token-file for details"):
+            self.assertEqual(redact(text), (text, 0), text)
+
+    def test_the_one_secret_is_counted_once_and_keeps_its_specific_marker(self):
+        red, n = redact('password="ghp_abcdefghijklmnopqrstuvwxyz0123"')
+        self.assertEqual(n, 1)
+        self.assertIn("[REDACTED:github]", red)
+        self.assertNotIn("[REDACTED:secret]", red)
+
+    def test_a_long_line_cannot_make_redaction_slow(self):
+        import time
+        for text in ("a_" * 100000, "a-" * 100000, "a." * 100000, "a=b=" * 50000, "token=x " * 20000, "--token x " * 20000,
+                     "mysql " * 40000, "sshpass -p " * 20000, "lorem_ipsum-dolor.sit " * 50000, ":" * 1000000):
+            t = time.time()
+            redact(text)
+            self.assertLess(time.time() - t, 3.0, "%r... took %.1fs" % (text[:12], time.time() - t))
+
+    def test_the_control_character_filter_is_spelled_with_escapes(self):
+        from chainlog import redact as redact_mod
+        src = open(redact_mod.__file__, encoding="utf-8").read()
+        self.assertEqual(sorted({hex(ord(c)) for c in src if ord(c) > 127}), ["0x2026"])  # only the ellipsis
+        self.assertIn("\\u2028", src)
+
     def test_redacting_twice_changes_nothing(self):
         once, _n = redact("DB_PASSWORD=hunter2 OPENAI_API_KEY=sk-proj-abc123def456ghi789jkl")
         self.assertEqual(redact(once), (once, 0))

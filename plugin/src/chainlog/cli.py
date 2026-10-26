@@ -339,7 +339,7 @@ def cmd_save(rt, args):
     _p("%s saved  %s %s  \"%s\"%s" % (st.green("✓"), fresh["harness"], fresh["short"],
                                      ui.fit(fresh["title"]["value"], 70),
                                      ("  status " + ui.status_text(st, status)) if status else ""))
-    if not c and not no_chain and not chain_arg:
+    if not c and not no_chain and not chain_arg and cfg.get("auto_chain", True):
         conflict = chain_mod.key_conflict(s)
         if conflict:
             _p("  chain  " + st.yellow("not linked: ") + _conflict_text(conflict, fresh["short"]))
@@ -670,7 +670,7 @@ def cmd_review(rt, args):
     index = load(rt, cfg)
     sessions = review.unsaved(index, include_all=args.all)
     if args.auto:
-        return _review_auto(rt, cfg, sessions, args)
+        return _review_auto(rt, cfg, sessions, args, index.chains)
     if args.json or not rt.isatty():
         if not args.json:
             sys.stderr.write("chainlog: not a terminal, so printing the unsaved sessions as JSON (review is interactive)\n")
@@ -708,7 +708,7 @@ def cmd_review(rt, args):
     return 0
 
 
-def _review_auto(rt, cfg, sessions, args):
+def _review_auto(rt, cfg, sessions, args, chains):
     """`chainlog review --auto`: clear the whole backlog at once with automatic summaries."""
     if args.json:
         raise Exit(1, "--auto and --json can't be combined")
@@ -718,7 +718,11 @@ def _review_auto(rt, cfg, sessions, args):
         return 0
     st = ui.Style(rt.color())
     n = len(sessions)
-    if rt.isatty() and not args.yes:
+    if not args.yes:
+        if not rt.isatty():  # a script or an agent: nobody to ask, so nothing is saved without --yes
+            _p("chainlog review --auto would save %d unsaved session%s with an automatic summary. There is no terminal "
+               "to ask in: run it again with --yes if that is what you want." % (n, "" if n == 1 else "s"))
+            return 2
         ans = _ask("Save %d unsaved session%s with an automatic summary? You can still add your own note later. [Y/n] "
                    % (n, "" if n == 1 else "s"))
         if ans is None or ans.strip().lower().startswith("n"):
@@ -726,7 +730,7 @@ def _review_auto(rt, cfg, sessions, args):
             return 1
     done = unlinked = 0
     for s in sessions:
-        _summary, _engine, chain, conflict = review.auto_save(rt, cfg, s, lambda evs: write_events(rt, evs))
+        _summary, _engine, chain, conflict = review.auto_save(rt, cfg, s, lambda evs: write_events(rt, evs), chains)
         done += 1
         _p("  %s %s %s  \"%s\"%s" % (st.cyan("◐"), s["harness"], s["short"], ui.fit(s["title"]["value"], 60),
                                     " → " + ui.safe(chain) if chain else ""))
@@ -983,7 +987,7 @@ def build_parser():
     rv.add_argument("--all", action="store_true", help="include sessions from before install / older than lookback")
     rv.add_argument("--json", action="store_true", help="machine-readable output")
     rv.add_argument("--auto", action="store_true",
-                    help="save every unsaved session with an automatic summary (asks first)")
+                    help="save every unsaved session with an automatic summary (asks first; needs --yes without a terminal)")
     rv.add_argument("--yes", action="store_true", help="with --auto: do not ask")
 
     cf = sub.add_parser("config", help="show or change settings, e.g. config set unsaved.action remind")

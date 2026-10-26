@@ -76,7 +76,7 @@ def key_conflict(session):
     """(number in the PR link, number in the title or branch, 'title' | 'branch') when the two name
     different PRs, else None. A session that looked at one PR while testing another is common."""
     link, text = _link_pr(session), _text_pr(session)
-    if link and text and link[1] != text[1]:
+    if link and text and link[0] == text[0] and link[1] != text[1]:  # numbers of different repos are not comparable
         return link[1], text[1], text[2]
     return None
 

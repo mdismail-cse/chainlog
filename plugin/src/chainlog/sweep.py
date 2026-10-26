@@ -143,23 +143,14 @@ def _run_locked(index, mode, write, started=None):
                     len(sessions), "" if len(sessions) == 1 else "s"))
             set_due(now + 300)  # the background run rewrites it
             return lines
+        from chainlog.review import build_auto_save  # the same rules as `chainlog review`
         for s in sessions:
-            text, used, why = summarize(rt, s, cfg)
-            data = {"summary": text, "summary_engine": used}
-            if why:
-                data["fallback_reason"] = why
-            if cfg.get("auto_chain", True) and not s["chains"]:
-                hinted = next((h["chain"] for h in reversed(s["hooks"]) if h.get("chain")), None)
-                key, src = (chain_mod.key_from_arg(hinted, s, index.chains), "CHAINLOG_CHAIN") if hinted \
-                    else chain_mod.suggest_key(s)
-                if key:
-                    data["chain"], data["chain_source"] = key, src
+            event, _text, _used, why, chain, _conflict = build_auto_save(rt, cfg, s, index.chains)
             # one session at a time: a slow AI summary never holds back the others' results
-            write([new_event(rt, "save", s["ref"], "auto", data),
-                   _handled(rt, s, "summarize", "fallback" if why else "ok", s["times"].get("ended_at"))])
+            write([event, _handled(rt, s, "summarize", "fallback" if why else "ok", s["times"].get("ended_at"))])
             lines.append('chainlog ▸ auto-saved: %s %s "%s"%s' % (
                 s["harness"], s["short"], ui.fit(s["title"]["value"], 60),
-                " → %s" % data["chain"] if data.get("chain") else ""))
+                " → %s" % chain if chain else ""))
     elif action == "list":
         if mode == "tty":
             write([_handled(rt, s, "list", "shown", s["times"].get("ended_at")) for s in sessions])
