@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Fixes from a code review of the menu bar work: one event for a tool chainlog does not know no longer crashes
+  `_menu`; the age is the last activity (as in `chainlog ls`); a session in several chains is labelled with the chain
+  it is listed under; `_menu` counts all chains (lists 30) and a search answers with just the search, starred-only on
+  the Starred tab; the app asks before opening a running session, keeps a half-written note when the popover closes,
+  remembers which chains are expanded, opens the newest round on Enter in Chains, and searches for text that starts
+  with a dash; `chainlog uninstall` removes the Login Items entry; a damaged `Info.plist` no longer crashes setup.
 - Starred sessions: `chainlog star REF…` / `unstar REF…` mark favourites, `chainlog ls --starred` lists them, and a
   ★ shows in every list and in `show`. A star is an event like any other (`chainlog undo` takes it back) and
   keeps a session in your lists even if it has no prompt. `chainlog _menu` now also returns the starred sessions

@@ -240,11 +240,11 @@ Click the icon to open the popover.
 | **Search** | Searches every session (not only the listed ones) for titles, your notes, PR numbers, branches, folders and what was said, best match first (`chainlog _menu --find`). Enter opens the first match; Esc clears it, then closes. In the Starred tab it only shows starred matches; in Chains it filters the chains |
 | **Sessions** tab | **Unsaved · N** (the 8 newest, then "Review all N unsaved…", which runs `chainlog review` in a terminal), then **Recent**. A saved session shows its result as a pill (pass, fail, wip, blocked) |
 | **Starred** tab | Every starred session. Starring is `chainlog star` / `unstar`, so the terminal and the app always agree |
-| **Chains** tab | Each PR chain, newest first; the newest starts expanded, with "Continue the latest round" and every round |
-| Click a session | Opens it in a new window of the terminal you picked, in its own folder (the same command as `chainlog resume`) |
+| **Chains** tab | The newest 30 PR chains (the header says "newest 30 of N", with "All N chains in Terminal…" which runs `chainlog chain`); the newest starts expanded, with "Continue the latest round" and every round. Which chains you expanded is remembered. Enter opens the newest round of the newest chain |
+| Click a session | Opens it in a new window of the terminal you picked, in its own folder (the same command as `chainlog resume`). Where `chainlog resume` would ask first (the session is running now, an archived Codex session, an unknown folder) the app asks too, and Cancel is the default |
 | ⌥-click, or right-click → Copy command | Copies that command instead |
 | Hover: ☆ / ★ | Star or unstar. Shown at once; if `chainlog` refuses, it flips back and says why |
-| Hover: pencil | Save the session with a note and a result: `chainlog save --id REF [-s STATUS] -- NOTE`. A note that starts with a dash stays a note |
+| Hover: pencil | Save the session with a note and a result: `chainlog save --id REF [-s STATUS] -- NOTE`. A note that starts with a dash stays a note. What you type is kept if the popover closes, and given back if the save fails |
 | ⚙ → **Open sessions in** | Terminal (default), iTerm2 (if installed) or "Only copy the command". Remembered |
 | ⚙ → **Open at login** | Starts the app when you log in |
 
@@ -256,8 +256,10 @@ are found on the same PATH as in your own Terminal.
 
 Debugging and tests: `CHAINLOG_MENUBAR_DEBUG=1` prints what the app does to stderr. `Chainlog --dump [FILE]
 [--tab starred] [--query TEXT]` prints what the popover shows, as text, without opening a window; `--render OUT.png
-[--dark]` draws it to an image; `--act star|unstar|save …` does what a button does. `sh plugin/menubar/build.sh --check`
-builds and checks all of it; `--shots DIR` redraws the README images from the sample data.
+[--dark]` draws it to an image; `--act star|unstar|save …` does what a button does; `--selftest SAMPLE.json` runs the
+model's own checks; `--unregister` removes the app from Login Items (`chainlog uninstall` does this before deleting
+it). `sh plugin/menubar/build.sh --check` builds and checks all of it; `--shots DIR` redraws the README images from
+the sample data.
 
 ## doctor, scan, uninstall
 
