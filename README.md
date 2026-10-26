@@ -225,15 +225,30 @@ To find an old session from inside, type `/chainlog:find 4321` in Claude Code, o
 
 ## See your sessions from the menu bar (Mac)
 
-<img src="docs/images/menubar.svg" alt="The chainlog menu bar app" width="470">
+<p align="center">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/menubar-sessions-dark.png">
+  <img src="docs/images/menubar-sessions-light.png" alt="The chainlog menu bar app: search, tabs, sessions" width="300">
+</picture>
+&nbsp;
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/menubar-search-dark.png">
+  <img src="docs/images/menubar-search-light.png" alt="Searching all sessions" width="300">
+</picture>
+</p>
 
-A small icon at the top of your screen shows how many sessions are unsaved. Click it to see your **unsaved** and **recent** sessions and your **PR chains**.
-Click a session to reopen it in a new Terminal window, in its own folder. Hold **⌥** while clicking to copy the command instead.
+A small icon at the top of your screen shows how many sessions are unsaved. Click it:
+
+- **Search** (top) looks through *all* your sessions: titles, your notes, PR numbers, branches, and what the assistant did.
+  Press **Enter** to open the first match.
+- **Sessions** shows what is unsaved, then what you used recently. **Starred** keeps the sessions you want close. **Chains** lists every PR with its rounds.
+- **Click** a session to reopen it in a new Terminal window, in its own folder. Hold **⌥** while clicking to copy the command instead.
+- **Hover** a session: the **★** stars it (the same as `chainlog star`), and the **pencil** saves it with a note and a result (pass, fail …) without leaving the app.
 
 Get it once: `chainlog setup menubar`. It builds a tiny app on your Mac in about 5 seconds and puts it in `~/Applications`.
 It needs Apple's command line tools (`xcode-select --install`). Nothing is sent anywhere: the app only runs `chainlog` on your computer.
 
-In its menu: **Open at login** starts it with your Mac, and **Open sessions in** chooses Terminal, iTerm2 or "only copy the command".
+The ⚙ menu has **Open at login** and **Open sessions in** (Terminal, iTerm2, or "only copy the command").
 Remove it with `chainlog uninstall`.
 
 ## If you forget to save

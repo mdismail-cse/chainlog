@@ -238,92 +238,6 @@ def prompt(cmd):
     return "$ " + cmd + "\n"
 
 
-# --- the Mac menu bar app, drawn from the JSON it reads (`chainlog _menu`) -----------------------------
-def menubar_svg(menu_json, path):
-    """An illustration of the menu bar app: same lists, wording and order as the real menu."""
-    d = json.loads(menu_json)
-    W, RH, X = 470, 23, 18
-    TEXT, SUB, LINE, BODY = "#f2f2f7", "#9a9aa2", "#48484c", "#2a2a2d"
-    out, y = [], 38  # y of the next row's top; the body starts below the menu bar strip
-
-    def header(txt):
-        nonlocal y
-        out.append('<text x="%d" y="%d" fill="%s" font-size="11" font-weight="600">%s</text>' % (X, y + 15, SUB, esc(txt)))
-        y += 22
-
-    def sep():
-        nonlocal y
-        y += 5
-        out.append('<line x1="0" y1="%d" x2="%d" y2="%d" stroke="%s"/>' % (y, W, y, LINE))
-        y += 6
-
-    def text(label, right="", chevron=False, dim=False, bold=False, icon=None, indent=0):
-        nonlocal y
-        cy = y + RH / 2
-        if icon == "none":
-            out.append('<circle cx="%d" cy="%.1f" r="4.5" fill="none" stroke="%s" stroke-width="1.5"/>' % (X + 6, cy, TEXT))
-        elif icon == "saved":
-            out.append('<circle cx="%d" cy="%.1f" r="5" fill="%s"/>' % (X + 6, cy, TEXT))
-        elif icon == "auto":
-            out.append('<circle cx="%d" cy="%.1f" r="4.5" fill="none" stroke="%s" stroke-width="1.5"/>'
-                       '<path d="M%d %.1f a4.5 4.5 0 0 0 0 9z" fill="%s"/>' % (X + 6, cy, TEXT, X + 6, cy - 4.5, TEXT))
-        elif icon == "live":
-            out.append('<path d="M%d %.1f l9 5.5 l-9 5.5z" fill="%s"/>' % (X + 2, cy - 5.5, TEXT))
-        out.append('<text x="%d" y="%.1f" fill="%s" font-size="13.5"%s>%s</text>' % (
-            X + 28 - (0 if icon else 28) + indent, cy + 4.7, SUB if dim else TEXT, ' font-weight="600"' if bold else "", esc(label)))
-        if right:
-            out.append('<text x="%d" y="%.1f" fill="%s" font-size="11.5" text-anchor="end">%s</text>' % (
-                W - 16 - (12 if chevron else 0), cy + 4.2, SUB, esc(right)))
-        if chevron:
-            out.append('<path d="M%d %.1f l4 4 l-4 4" fill="none" stroke="%s" stroke-width="1.6"/>' % (W - 20, cy - 4, SUB))
-        y += RH
-
-    def row(r):
-        right = "  ".join(x for x in ((r["chain"] + (" r%s" % r["round"] if r.get("round") else "")) if r["chain"] else None,
-                                       r["status"], r["ago"]) if x)
-        icon = "live" if r["live"] else {"user": "saved", "auto": "auto"}.get(r["saved"], "none")
-        text(r["title"][:44], right, icon=icon)
-
-    y += 2
-    header("Unsaved · %d" % d["counts"]["unsaved"])
-    for r in d["unsaved"]:
-        row(r)
-    if d["counts"]["unsaved"] > len(d["unsaved"]):
-        text("Review all %d unsaved…" % d["counts"]["unsaved"])
-    sep()
-    header("Recent")
-    for r in d["recent"]:
-        row(r)
-    if d["chains"]:
-        sep()
-        header("PR chains")
-        for c in d["chains"]:
-            text(c["id"], "  ".join(x for x in (c["status"], "%d rounds" % c["rounds"], c["ago"]) if x), chevron=True)
-    sep()
-    text("Click a session to reopen it · ⌥-click copies its command", dim=True)
-    sep()
-    text("Open chainlog in Terminal")
-    text("Open sessions in", chevron=True)
-    text("Open at login")
-    text("Refresh now", "⌘R")
-    sep()
-    text("Quit Chainlog", "⌘Q")
-    y += 8
-    n = d["counts"]["unsaved"]
-    svg_ = ['<svg xmlns="http://www.w3.org/2000/svg" width="%d" height="%d" viewBox="0 0 %d %d" '
-            'font-family="-apple-system, BlinkMacSystemFont, \'SF Pro Text\', \'Helvetica Neue\', Arial, sans-serif">' % (W, y, W, y),
-            '<rect width="100%" height="100%" rx="12" fill="#0d1117"/>',
-            '<rect width="100%" height="34" rx="12" fill="#3a3a3f"/><rect y="20" width="100%" height="14" fill="#3a3a3f"/>',
-            # the menu bar item: a chain-link icon and the number of unsaved sessions
-            '<g fill="none" stroke="%s" stroke-width="1.7" stroke-linecap="round"><rect x="%d" y="11" width="11" height="8" rx="4"/>'
-            '<rect x="%d" y="15" width="11" height="8" rx="4"/></g>' % (TEXT, W - 70, W - 63),
-            '<text x="%d" y="23" fill="%s" font-size="13" font-weight="500">%d</text>' % (W - 46, TEXT, n),
-            '<rect x="%d" y="34" width="%d" height="%d" rx="9" fill="%s" stroke="%s"/>' % (6, W - 12, y - 40, BODY, LINE)]
-    # shift the rows right by the 6px body inset so text and lines sit inside the rounded box
-    svg_.append('<g transform="translate(6 0)">' + "".join(out).replace('x2="%d"' % W, 'x2="%d"' % (W - 12)) + "</g>")
-    svg_.append("</svg>")
-    path.write_text("\n".join(svg_) + "\n")
-
 
 def main():
     global PREVIEW
@@ -383,7 +297,6 @@ def main():
                                              answers=["s", "sprint item 342: filters OK, toggle bug -s fail", "q"]),
             "triage sessions you forgot to save", OUT / "review.svg")
 
-        menubar_svg(run(demo, ["_menu"]), OUT / "menubar.svg")
         svg(prompt("chainlog doctor") + run(demo, ["doctor"]), "health check", OUT / "doctor.svg")
         svg(prompt("chainlog setup policy") + run(demo, ["setup", "policy"], tty=True, answers=[""]),
             "choose what happens to forgotten sessions", OUT / "policy.svg")
