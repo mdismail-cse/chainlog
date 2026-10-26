@@ -20,5 +20,8 @@ jobs:
         run: sudo apt-get install -y zsh dash shellcheck
       - run: make lint
       - run: make version-check
+      - name: menu bar app compiles and draws its menu
+        if: runner.os == 'macOS'
+        run: make menubar-check
       - run: make test
       - run: make dist

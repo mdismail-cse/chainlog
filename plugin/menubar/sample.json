@@ -1,0 +1,225 @@
+{
+ "schema": "chainlog.menu/1",
+ "chainlog": "0.1.0",
+ "generated_at": 1792400000.0,
+ "counts": {
+  "unsaved": 3
+ },
+ "unsaved": [
+  {
+   "ref": "claude:00000006-0000-0000-0000-000000000000",
+   "short": "00000006",
+   "harness": "claude",
+   "title": "Shop PR 4402 invoice emails",
+   "saved": "none",
+   "status": null,
+   "live": false,
+   "chain": null,
+   "round": null,
+   "at": 1792398800.0,
+   "ago": "20m",
+   "last_work": "Emails go out twice",
+   "resume": {
+    "cwd": "/Users/you/work/shop",
+    "command": "cd /Users/you/work/shop && claude --resume 00000006-0000-0000-0000-000000000000",
+    "blockers": [],
+    "notes": []
+   }
+  },
+  {
+   "ref": "claude:00000005-0000-0000-0000-000000000000",
+   "short": "00000005",
+   "harness": "claude",
+   "title": "Tracker CSV export",
+   "saved": "none",
+   "status": null,
+   "live": false,
+   "chain": null,
+   "round": null,
+   "at": 1792395800.0,
+   "ago": "1h",
+   "last_work": "Export drops the last row",
+   "resume": {
+    "cwd": "/Users/you/work/tracker",
+    "command": "cd /Users/you/work/tracker && claude --resume 00000005-0000-0000-0000-000000000000",
+    "blockers": [],
+    "notes": []
+   }
+  },
+  {
+   "ref": "claude:00000004-0000-0000-0000-000000000000",
+   "short": "00000004",
+   "harness": "claude",
+   "title": "Shop PR 4388 coupon stacking",
+   "saved": "none",
+   "status": null,
+   "live": false,
+   "chain": null,
+   "round": null,
+   "at": 1792392800.0,
+   "ago": "2h",
+   "last_work": "Two coupons stack when they should not",
+   "resume": {
+    "cwd": "/Users/you/work/shop",
+    "command": "cd /Users/you/work/shop && claude --resume 00000004-0000-0000-0000-000000000000",
+    "blockers": [],
+    "notes": []
+   }
+  }
+ ],
+ "recent": [
+  {
+   "ref": "codex:01a2b3c4-0000-0000-0000-000000000003",
+   "short": "01a2b3c4",
+   "harness": "codex",
+   "title": "Shop PR 4321 refund, round 3",
+   "saved": "user",
+   "status": "wip",
+   "live": false,
+   "chain": "shop#4321",
+   "round": 3,
+   "at": 1792385600.0,
+   "ago": "4h",
+   "last_work": "Refunds fixed; one rounding case left",
+   "resume": {
+    "cwd": "/Users/you/work/shop",
+    "command": "cd /Users/you/work/shop && codex resume 01a2b3c4-0000-0000-0000-000000000003",
+    "blockers": [],
+    "notes": []
+   }
+  },
+  {
+   "ref": "claude:00000002-0000-0000-0000-000000000000",
+   "short": "00000002",
+   "harness": "claude",
+   "title": "Shop PR 4321 refund, round 2",
+   "saved": "user",
+   "status": "fail",
+   "live": false,
+   "chain": "shop#4321",
+   "round": 2,
+   "at": 1792310000.0,
+   "ago": "1d",
+   "last_work": "Partial refund with a coupon returns 500",
+   "resume": {
+    "cwd": "/Users/you/work/shop",
+    "command": "cd /Users/you/work/shop && claude --resume 00000002-0000-0000-0000-000000000000",
+    "blockers": [],
+    "notes": []
+   }
+  },
+  {
+   "ref": "claude:00000001-0000-0000-0000-000000000000",
+   "short": "00000001",
+   "harness": "claude",
+   "title": "Shop PR 4321 refund",
+   "saved": "user",
+   "status": "pass",
+   "live": false,
+   "chain": "shop#4321",
+   "round": 1,
+   "at": 1792223600.0,
+   "ago": "2d",
+   "last_work": "Checkout with saved cards works",
+   "resume": {
+    "cwd": "/Users/you/work/shop",
+    "command": "cd /Users/you/work/shop && claude --resume 00000001-0000-0000-0000-000000000000",
+    "blockers": [],
+    "notes": []
+   }
+  },
+  {
+   "ref": "claude:00000007-0000-0000-0000-000000000000",
+   "short": "00000007",
+   "harness": "claude",
+   "title": "Release 3.2 smoke test",
+   "saved": "user",
+   "status": "pass",
+   "live": false,
+   "chain": null,
+   "round": null,
+   "at": 1792115600.0,
+   "ago": "3d",
+   "last_work": "All green",
+   "resume": {
+    "cwd": "/Users/you/work/shop",
+    "command": "cd /Users/you/work/shop && claude --resume 00000007-0000-0000-0000-000000000000",
+    "blockers": [
+     "the transcript file is gone, so this session cannot be resumed (notes are kept)."
+    ],
+    "notes": []
+   }
+  }
+ ],
+ "chains": [
+  {
+   "id": "shop#4321",
+   "rounds": 3,
+   "status": "wip",
+   "title": "Shop PR 4321 refund, round 3",
+   "ago": "4h",
+   "members": [
+    {
+     "ref": "claude:00000001-0000-0000-0000-000000000000",
+     "short": "00000001",
+     "harness": "claude",
+     "title": "Shop PR 4321 refund",
+     "saved": "user",
+     "status": "pass",
+     "live": false,
+     "chain": "shop#4321",
+     "round": 1,
+     "at": 1792223600.0,
+     "ago": "2d",
+     "last_work": "Checkout with saved cards works",
+     "resume": {
+      "cwd": "/Users/you/work/shop",
+      "command": "cd /Users/you/work/shop && claude --resume 00000001-0000-0000-0000-000000000000",
+      "blockers": [],
+      "notes": []
+     }
+    },
+    {
+     "ref": "claude:00000002-0000-0000-0000-000000000000",
+     "short": "00000002",
+     "harness": "claude",
+     "title": "Shop PR 4321 refund, round 2",
+     "saved": "user",
+     "status": "fail",
+     "live": false,
+     "chain": "shop#4321",
+     "round": 2,
+     "at": 1792310000.0,
+     "ago": "1d",
+     "last_work": "Partial refund with a coupon returns 500",
+     "resume": {
+      "cwd": "/Users/you/work/shop",
+      "command": "cd /Users/you/work/shop && claude --resume 00000002-0000-0000-0000-000000000000",
+      "blockers": [],
+      "notes": []
+     }
+    },
+    {
+     "ref": "codex:01a2b3c4-0000-0000-0000-000000000003",
+     "short": "01a2b3c4",
+     "harness": "codex",
+     "title": "Shop PR 4321 refund, round 3",
+     "saved": "user",
+     "status": "wip",
+     "live": false,
+     "chain": "shop#4321",
+     "round": 3,
+     "at": 1792385600.0,
+     "ago": "4h",
+     "last_work": "Refunds fixed; one rounding case left",
+     "resume": {
+      "cwd": "/Users/you/work/shop",
+      "command": "cd /Users/you/work/shop && codex resume 01a2b3c4-0000-0000-0000-000000000003",
+      "blockers": [],
+      "notes": []
+     }
+    }
+   ]
+  }
+ ]
+}

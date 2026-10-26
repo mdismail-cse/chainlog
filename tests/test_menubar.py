@@ -117,6 +117,21 @@ class MenuCommand(MenuData):
         self.assertEqual(json.loads(out)["schema"], "chainlog.menu/1")
         self.assertNotIn("_menu", cli.build_parser().format_help())
 
+    def test_the_sample_the_app_is_checked_against_has_the_same_shape(self):
+        self.claude_session(ID[0], NOW - 30 * H, NOW - 29 * H, title="Shop PR 4321 refund", pr=4321)
+        self.run_cli(["save", "--id", ID[0][:8], "r1", "-s", "pass"])
+        live = self.build()
+        sample = json.loads((ROOT / "plugin" / "menubar" / "sample.json").read_text())
+        self.assertEqual(set(sample), set(live))
+        self.assertEqual(set(sample["recent"][0]), set(live["recent"][0]))
+        self.assertEqual(set(sample["recent"][0]["resume"]), set(live["recent"][0]["resume"]))
+        self.assertEqual(set(sample["chains"][0]), set(live["chains"][0]))
+        self.assertTrue(sample["schema"].startswith("chainlog.menu/1"))
+
+    def test_the_sample_holds_no_real_paths(self):
+        text = (ROOT / "plugin" / "menubar" / "sample.json").read_text()
+        self.assertNotIn(os.path.expanduser("~"), text)
+
 
 if __name__ == "__main__":
     unittest.main()

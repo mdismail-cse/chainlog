@@ -2,15 +2,19 @@ VERSION := $(shell cat plugin/VERSION)
 TAG := v$(VERSION)
 PY ?= python3
 
-.PHONY: test lint version-check dist clean
+.PHONY: test lint version-check dist clean menubar-check
 
 test:
 	cd tests && $(PY) -m unittest -v
 
 lint:
-	sh -n plugin/hooks/spool.sh plugin/bin/chainlog install.sh
-	command -v shellcheck >/dev/null && shellcheck -s sh plugin/hooks/spool.sh plugin/bin/chainlog install.sh || true
+	sh -n plugin/hooks/spool.sh plugin/bin/chainlog install.sh plugin/menubar/build.sh
+	command -v shellcheck >/dev/null && shellcheck -s sh plugin/hooks/spool.sh plugin/bin/chainlog install.sh plugin/menubar/build.sh || true
 	$(PY) -m py_compile $$(find plugin/src -name '*.py')
+
+# macOS only: compile the menu bar app and print its menu from plugin/menubar/sample.json
+menubar-check:
+	sh plugin/menubar/build.sh --check
 
 # VERSION, plugin.json, marketplace.json and chainlog --version must agree
 version-check:
