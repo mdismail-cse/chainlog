@@ -223,6 +223,8 @@ def cmd_save(rt, args):
     chain_arg = args.chain or parsed["chain"]
     no_chain = args.no_chain or parsed["no_chain"]
     tags = (args.tag or []) + parsed["tags"]
+    if not (parsed["note"] or status or tags or args.title or args.url or chain_arg):
+        raise Exit(1, 'nothing to save — add a note, for example:  chainlog save "what you did"')
     index = load(rt, cfg)
 
     reason, kind = "", "exact"
