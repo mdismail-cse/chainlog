@@ -133,5 +133,64 @@ class MenuCommand(MenuData):
         self.assertNotIn(os.path.expanduser("~"), text)
 
 
+class SetupMenubar(Home):
+    def setUp(self):
+        super().setUp()
+        self.bin = self.root / "bin"
+        self.bin.mkdir()
+        swiftc = self.bin / "swiftc"
+        swiftc.write_text("#!/bin/sh\n")
+        swiftc.chmod(0o755)
+        self.apps = self.root / "Applications"
+
+    def rt_(self, swiftc=True):
+        env = {"PATH": str(self.bin) if swiftc else str(self.root / "empty"), "CHAINLOG_APP_DIR": str(self.apps)}
+        return self.make_rt(env=env)
+
+    def darwin(self):
+        return mock.patch.object(comp.sys, "platform", "darwin")
+
+    def test_plans_one_build_and_a_matching_undo(self):
+        with self.darwin():
+            (ch,) = comp.plan_menubar(self.rt_())
+        self.assertEqual(ch.command[:2], ["env", "CHAINLOG_APP_DIR=%s" % self.apps])
+        self.assertTrue(ch.command[-2].endswith("menubar/build.sh") and ch.command[-1] == "--install")
+        self.assertIn(str(self.apps / "Chainlog.app"), ch.undo_command)
+        self.assertIn("build and install", ch.description)
+
+    def test_nothing_without_a_mac_or_swiftc(self):
+        with mock.patch.object(comp.sys, "platform", "linux"):
+            self.assertEqual(comp.plan_menubar(self.rt_()), [])
+        with self.darwin():
+            self.assertEqual(comp.plan_menubar(self.rt_(swiftc=False)), [])
+
+    def test_nothing_when_this_version_is_installed_and_an_update_when_older(self):
+        plist = self.apps / "Chainlog.app" / "Contents" / "Info.plist"
+        plist.parent.mkdir(parents=True)
+        for installed, expect in ((comp.version(), 0), ("0.0.1", 1)):
+            plist.write_text('<?xml version="1.0"?><plist version="1.0"><dict><key>CFBundleShortVersionString</key>'
+                             "<string>%s</string></dict></plist>" % installed)
+            with self.darwin():
+                changes = comp.plan_menubar(self.rt_())
+            self.assertEqual(len(changes), expect)
+        self.assertIn("update", changes[0].description)
+
+    def test_all_leaves_the_menu_bar_app_out_but_naming_it_asks_for_it(self):
+        out = []
+        with self.darwin():
+            setup_mod.run(self.rt_(), Args(dry_run=True, skip=["claude", "codex", "shell", "policy", "cli"]), out.append)
+            self.assertNotIn("[menubar]", "\n".join(out))
+            out.clear()
+            setup_mod.run(self.rt_(), Args(dry_run=True, components=["menubar"]), out.append)
+        self.assertIn("[menubar]", "\n".join(out))
+        self.assertIn("build.sh --install", "\n".join(out))
+
+    def test_asking_for_it_without_swiftc_says_what_is_missing(self):
+        out = []
+        with self.darwin():
+            setup_mod.run(self.rt_(swiftc=False), Args(dry_run=True, components=["menubar"]), out.append)
+        self.assertIn("Xcode command line tools", "\n".join(out))
+
+
 if __name__ == "__main__":
     unittest.main()

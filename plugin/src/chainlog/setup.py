@@ -19,7 +19,8 @@ from chainlog.integrations import base
 from chainlog.integrations import components as comp
 from chainlog.paths import atomic_write
 
-ORDER = ("cli", "claude", "codex", "shell", "policy", "scheduler")
+ORDER = ("cli", "claude", "codex", "shell", "policy", "scheduler", "menubar")
+OPT_IN = ("scheduler", "menubar")  # only when asked for by name (or pulled in by the policy), never by "all"
 
 # what each part is, in plain words (interactive setup asks these instead of showing raw files)
 QUESTIONS = {
@@ -28,6 +29,7 @@ QUESTIONS = {
     "codex": "Connect chainlog to Codex? (saves which session you leave, adds a 'save to chainlog' skill)",
     "shell": "Show a one-line note in Terminal right after you leave a session without saving?",
     "scheduler": "Turn on the small background timer? (needed for reminders and auto-save; checks every 2 min)",
+    "menubar": "Add the Mac menu bar app? (an icon at the top of the screen: click it to see your sessions and reopen one)",
 }
 
 POLICY_Q = """When a session ends and you haven't saved it within {after}, chainlog should:
@@ -67,6 +69,8 @@ def _plan(rt, name, args):
         return comp.plan_shell(rt)
     if name == "scheduler":
         return comp.plan_scheduler(rt)
+    if name == "menubar":
+        return comp.plan_menubar(rt)
     return []
 
 
@@ -132,6 +136,8 @@ def _present(rt, name):
         return comp.our_session_end_index(text) is not None
     if name == "scheduler":
         return sys.platform == "darwin" or bool(shutil.which("systemctl", path=rt.env.get("PATH")))
+    if name == "menubar":
+        return comp.menubar_ready(rt)
     return True
 
 
@@ -160,7 +166,7 @@ def _run(rt, args, out):
     cfg["herdr_hashes"] = cfg.get("herdr_hashes") or herdr_hashes(rt)
     wanted = list(args.components or ["all"])
     if "all" in wanted:
-        wanted = [c for c in ORDER if c != "scheduler"]
+        wanted = [c for c in ORDER if c not in OPT_IN]
     wanted = [c for c in ORDER if c in wanted and c not in args.skip]
     report = []
     interactive = rt.isatty() and not args.yes and not args.json
@@ -200,7 +206,8 @@ def _run(rt, args, out):
             continue
         if not changes:
             why = {"claude": "claude CLI not found on PATH", "codex": "codex not installed",
-                   "scheduler": "no launchd/systemd here"}.get(name) if not _present(rt, name) else "already done"
+                   "scheduler": "no launchd/systemd here",
+                   "menubar": "needs a Mac with the Xcode command line tools (xcode-select --install)"}.get(name) if not _present(rt, name) else "already done"
             if why != "already done" or name in (args.components or []):
                 say("\n[%s] %s" % (name, why))
             report.append({"component": name, "results": [why]})
@@ -354,7 +361,8 @@ def uninstall(rt, args, out):
         out("deleted  %s" % _home(rt, rt.data_home))
     labels = {"claude": "disconnected from Claude Code", "codex": "disconnected from Codex",
               "shell": "Terminal reminder removed from ~/.zshrc (rest of the file untouched)",
-              "scheduler": "background timer removed", "cli": "chainlog command removed"}
+              "scheduler": "background timer removed", "cli": "chainlog command removed",
+              "menubar": "menu bar app removed"}
     for part in parts_done:
         if part in labels:
             out("✓ " + labels[part])

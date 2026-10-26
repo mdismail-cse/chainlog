@@ -876,7 +876,7 @@ def build_parser():
 
     su = sub.add_parser("setup", help="install integrations (shows every change and asks first)")
     su.add_argument("components", nargs="*", metavar="PART",
-                    help="all | cli | claude | codex | shell | policy | scheduler (default: all)")
+                    help="all | cli | claude | codex | shell | policy | scheduler | menubar (default: all, which leaves out scheduler and menubar)")
     su.add_argument("--dry-run", action="store_true", help="show the plan, change nothing")
     su.add_argument("--yes", action="store_true", help="apply without asking (agents: only after the user agreed)")
     su.add_argument("--skip", action="append", default=[], metavar="PART")

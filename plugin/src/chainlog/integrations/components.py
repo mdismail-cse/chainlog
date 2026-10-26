@@ -1,6 +1,6 @@
 """Setup components: cli (~/.local/bin link + stable app copy), claude (plugin via the claude CLI),
 codex (user hooks.json SessionEnd entry + skills), shell (zsh prompt hook), scheduler (launchd /
-systemd timer). Every plan is idempotent: a part that is already in place plans nothing.
+systemd timer), menubar (the Mac menu bar app; opt-in, never part of "all"). Every plan is idempotent: a part that is already in place plans nothing.
 
 Never edited: herdr's hook scripts, herdr's hook entries, ~/.claude/settings.json.
 """
@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+import plistlib
 import re
 import shlex
 import shutil
@@ -422,6 +423,38 @@ def scheduler_loaded(rt):
         return rc == 0
     rc, _, _ = rt.run(["systemctl", "--user", "is-active", "chainlog-sweep.timer"], timeout=3)
     return rc == 0
+
+
+# --- menu bar app (macOS) ----------------------------------------------------------------------
+def menubar_ready(rt):
+    """The app is built from source on the user's own Mac, so it needs the Xcode command line tools."""
+    return sys.platform == "darwin" and bool(shutil.which("swiftc", path=rt.env.get("PATH")))
+
+
+def menubar_app(rt):
+    return Path(rt.env.get("CHAINLOG_APP_DIR") or rt.home / "Applications") / "Chainlog.app"
+
+
+def menubar_installed_version(rt):
+    try:
+        with open(menubar_app(rt) / "Contents" / "Info.plist", "rb") as f:
+            return plistlib.load(f).get("CFBundleShortVersionString")
+    except (OSError, ValueError, plistlib.InvalidFileException):
+        return None
+
+
+def plan_menubar(rt):
+    """Build menubar/Chainlog.swift into ~/Applications/Chainlog.app and open it. Nothing when this
+    version is already installed (or this is not a Mac with swiftc)."""
+    if not menubar_ready(rt) or menubar_installed_version(rt) == version():
+        return []
+    app = menubar_app(rt)
+    script = plugin_root() / "menubar" / "build.sh"
+    shown = "~" + str(app)[len(str(rt.home)):] if str(app).startswith(str(rt.home)) else str(app)
+    return [Change("menubar", "%s the menu bar app (%s)" % ("update" if app.exists() else "build and install", shown),
+                   display="sh %s --install" % script,
+                   command=["env", "CHAINLOG_APP_DIR=" + str(app.parent), "sh", str(script), "--install"],
+                   undo_command=["sh", "-c", 'pkill -x Chainlog; rm -rf "$1"', "sh", str(app)])]
 
 
 # --- cli link ----------------------------------------------------------------------------------
