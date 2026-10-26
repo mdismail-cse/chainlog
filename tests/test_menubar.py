@@ -136,14 +136,14 @@ class MenuCommand(MenuData):
         self.assertNotIn(os.path.expanduser("~"), text)
 
 
-SWIFT = (ROOT / "plugin" / "menubar" / "Chainlog.swift").read_text()
+SWIFT = "\n".join(p.read_text() for p in sorted((ROOT / "plugin" / "menubar").glob("*.swift")))
 
 
 def swift_struct(name):
     """{field: optional?} for `struct <name>: Decodable { let a: T ... let b: T? }` in the app's source."""
     body = re.search(r"struct %s: Decodable \{(.*?)\}" % name, SWIFT, re.S).group(1)  # these structs hold no nested braces
     return {m.group(1): m.group(2).strip().endswith("?")
-            for m in re.finditer(r"^\s*let (\w+): ([^/\n]+)", body, re.M)}
+            for m in re.finditer(r"^\s*(?:let|var) (\w+): ([^/\n]+)", body, re.M)}
 
 
 class AppContract(MenuData):

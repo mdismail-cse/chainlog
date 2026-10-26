@@ -3,7 +3,8 @@
 #   sh build.sh              build into a temporary folder and say where it is
 #   sh build.sh --install    build, copy to ~/Applications/Chainlog.app (or $CHAINLOG_APP_DIR) and open it
 #   sh build.sh --uninstall  quit the app and delete it
-#   sh build.sh --check      build, then print the menu from sample.json (a smoke test; no window)
+#   sh build.sh --check      build, then print the popover from sample.json and check it (no window)
+#   sh build.sh --shots DIR  build, then draw the popover from sample.json into DIR as PNGs (light and dark)
 set -eu
 
 here=$(cd "$(dirname "$0")" && pwd)
@@ -25,8 +26,8 @@ build() {  # build <output dir>  -> <output dir>/Chainlog.app
   rm -rf "$out"
   mkdir -p "$out/Contents/MacOS"
   sed "s/__VERSION__/$version/g" "$here/Info.plist" > "$out/Contents/Info.plist"
-  swiftc -Onone -swift-version 5 -parse-as-library -o "$out/Contents/MacOS/Chainlog" "$here/Chainlog.swift" \
-    -framework AppKit -framework ServiceManagement 2>&1 | grep -v "^$" || true
+  swiftc -Onone -swift-version 5 -parse-as-library -o "$out/Contents/MacOS/Chainlog" "$here"/*.swift \
+    -framework AppKit -framework SwiftUI -framework Combine -framework ServiceManagement 2>&1 | grep -v "^$" || true
   [ -x "$out/Contents/MacOS/Chainlog" ] || die "the build failed (see the messages above)."
   codesign --force --sign - "$out" >/dev/null 2>&1 || true   # ad-hoc: lets macOS run it and keep its login item
 }
@@ -59,14 +60,43 @@ case "${1:-build}" in
     trap 'rm -rf "$tmp"' EXIT INT TERM
     build "$tmp"
     bin="$tmp/Chainlog.app/Contents/MacOS/Chainlog"
-    out=$("$bin" --dump "$here/sample.json") || die "check failed: --dump exited with an error"
+    dump() { "$bin" --dump "$here/sample.json" "$@"; }
+    found="$here/sample-find.json"
+    want() {  # want TEXT WHAT-IS-WRONG: succeeds if stdin contains TEXT (use as: ... | want ... || exit 1)
+      grep -qF -- "$1" && return 0
+      printf 'chainlog menubar: check failed: %s (looking for "%s")\n' "$2" "$1" >&2
+      return 1
+    }
+    out=$(dump) || die "check failed: --dump exited with an error"
     printf '%s\n' "$out"
-    for want in "Unsaved · 3" "Recent" "PR chains" "Continue the latest round" "(off) "; do
-      printf '%s\n' "$out" | grep -qF -- "$want" || die "check failed: the menu has no \"$want\""
-    done
-    "$bin" --dump-problem notfound | grep -q "was not found" || die "check failed: the not-found menu is wrong"
+    printf '%s\n' "$out" | want "Unsaved · 3" "the Sessions tab has no Unsaved section" || exit 1
+    printf '%s\n' "$out" | want "Recent" "the Sessions tab has no Recent section" || exit 1
+    printf '%s\n' "$out" | want "(can't reopen)" "a session with a deleted transcript is not marked" || exit 1
+    printf '%s\n' "$out" | want "★ Tracker CSV export" "a starred session has no star" || exit 1
+    dump --tab starred | want "Starred · 2" "the Starred tab does not list the 2 starred sessions" || exit 1
+    dump --tab chains | want "Continue the latest round" "the Chains tab has no continue line" || exit 1
+    dump --query refund --find-file "$found" | want "Results · 7" "searching does not show the search results" || exit 1
+    dump --tab starred --query refund --find-file "$found" | want "Starred matching · 2" "the Starred tab does not filter the search" || exit 1
+    printf '{"schema":"chainlog.menu/1","query":"zzzz","results":[]}' > "$tmp/none.json"
+    dump --query zzzz --find-file "$tmp/none.json" | want "No session matches" "a search with no hits has no empty state" || exit 1
+    dump --query zzzz --find-file /dev/null | want "Search is not available" "a failed search is not reported" || exit 1
+    "$bin" --dump-problem notfound | want "chainlog was not found" "the not-found state is wrong" || exit 1
     "$bin" --print-script "echo hi" | head -1 | grep -q -- " -il$" || die "check failed: the terminal script is not an interactive login shell"
     printf 'menubar check ok\n'
+    ;;
+  --shots)
+    [ -n "${2:-}" ] || die "usage: sh build.sh --shots DIR"
+    mkdir -p "$2"
+    tmp=$(mktemp -d "${TMPDIR:-/tmp}/chainlog-menubar.XXXXXX")
+    trap 'rm -rf "$tmp"' EXIT INT TERM
+    build "$tmp"
+    bin="$tmp/Chainlog.app/Contents/MacOS/Chainlog"
+    for mode in light dark; do
+      flag=; [ "$mode" = dark ] && flag=--dark
+      "$bin" --render "$2/menubar-sessions-$mode.png" $flag --dump "$here/sample.json" >/dev/null || die "could not draw the popover (needs a macOS desktop session)"
+      "$bin" --render "$2/menubar-search-$mode.png" $flag --dump "$here/sample.json" --find-file "$here/sample-find.json" --query refund >/dev/null || die "could not draw the search"
+    done
+    printf 'wrote %s/menubar-{sessions,search}-{light,dark}.png\n' "$2"
     ;;
   build)
     tmp=$(mktemp -d "${TMPDIR:-/tmp}/chainlog-menubar.XXXXXX")
