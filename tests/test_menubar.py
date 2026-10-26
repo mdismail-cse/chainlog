@@ -386,6 +386,22 @@ class ReviewFindings(MenuData):
         self.assertEqual((d["counts"]["chains"], len(d["chains"])), (35, 30))
         self.assertEqual(d["chains"][0]["id"], "shop#7034")  # newest first
 
+    def test_starred_without_find_is_refused_not_silently_ignored(self):
+        code, _out, err = self.run_cli(["_menu", "--starred"])
+        self.assertEqual(code, 2)
+        self.assertIn("--find", err)
+
+    def test_a_bug_inside_a_known_tool_is_not_reported_as_an_unknown_tool(self):
+        from unittest import mock
+        from chainlog import resume as resume_mod
+        self.claude_session(ID[0], NOW - 3 * H, NOW - 2 * H, title="x")
+        s = load(self.rt).sessions["claude:" + ID[0]]
+        broken = mock.Mock()
+        broken.resume_argv.side_effect = KeyError("boom")
+        with mock.patch.object(resume_mod, "by_name", return_value=broken):
+            with self.assertRaises(KeyError):
+                resume_mod.plan(s, rt=self.rt)
+
     def test_a_search_answer_is_only_the_search(self):
         self.claude_session(ID[0], NOW - 3 * H, NOW - 2 * H, title="Shop PR 1 ok")
         code, out, _e = self.run_cli(["_menu", "--find", "shop"])

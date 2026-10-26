@@ -70,7 +70,9 @@ final class AppModel: ObservableObject {
     @Published var data: MenuData?
     @Published var problem: String?          // nil = fine (or still loading while data == nil)
     @Published var stale = false             // the last refresh failed; `data` is the last good one
-    @Published var tab: Tab = .sessions { didSet { if tab != oldValue && isSearching { queryChanged() } } }  // the search follows the tab
+    @Published var tab: Tab = .sessions {  // the search follows the tab; the old tab's results are not shown under the new one
+        didSet { if tab != oldValue { results = nil; searchFailed = false; if isSearching { queryChanged() } } }
+    }
     @Published var query = "" { didSet { if query != oldValue { queryChanged() } } }
     @Published private(set) var results: [Row]?
     @Published private(set) var searching = false
@@ -103,7 +105,8 @@ final class AppModel: ObservableObject {
     var chains: [ChainInfo] { data.map { Layout.chains(query: query, data: $0) } ?? [] }
     /// What Enter opens first: on Chains that is the newest round of the newest chain (the list shows rounds newest first).
     var visibleRows: [Row] { tab == .chains ? chains.flatMap { $0.members.reversed() } : sections.flatMap { $0.rows } }
-    var moreChains: Int { max(0, (data?.counts.chains ?? 0) - (data?.chains.count ?? 0)) }
+    var totalChains: Int { data.map { $0.counts.chains ?? $0.chains.count } ?? 0 }
+    var moreChains: Int { max(0, totalChains - (data?.chains.count ?? 0)) }
     var unsavedCount: Int { data?.counts.unsaved ?? 0 }
     var isSearching: Bool { !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 
@@ -112,7 +115,7 @@ final class AppModel: ObservableObject {
         switch tab {
         case .sessions: return d.counts.unsaved > 0 ? d.counts.unsaved : nil
         case .starred: return d.counts.starred > 0 ? d.counts.starred : nil
-        case .chains: return d.counts.chains > 0 ? d.counts.chains : nil
+        case .chains: let n = d.counts.chains ?? d.chains.count; return n > 0 ? n : nil
         }
     }
 
@@ -142,6 +145,9 @@ final class AppModel: ObservableObject {
             lastRaw = raw
         }
         loginEnabled = SMAppService.mainApp.status == .enabled
+        if let e = editing, let d = data, !(d.unsaved + d.recent + d.starred + d.chains.flatMap { $0.members }).contains(where: { $0.ref == e }) {
+            editing = nil
+        }
         dbg("state: list=\(data != nil) unsaved=\(data?.counts.unsaved ?? -1) starred=\(data?.counts.starred ?? -1) stale=\(stale) problem=\(problem ?? "none")")
         if refreshAgain { refreshAgain = false; refresh() }
         // a search that was typed before the first answer arrived
@@ -174,7 +180,7 @@ final class AppModel: ObservableObject {
     func answerSearchNow() {
         let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
         searchTask?.cancel()
-        guard !q.isEmpty, tab != .chains else { results = nil; searching = false; return }
+        guard !q.isEmpty, tab != .chains else { results = nil; searching = false; searchFailed = false; return }
         let rows = finder(q, tab == .starred)
         results = rows ?? []
         searchFailed = rows == nil
@@ -279,9 +285,9 @@ final class AppModel: ObservableObject {
                 MainActor.assumeIsolated {
                     if !r.ok {  // give the text back: the user should not have to type it again
                         self.drafts[row.ref] = Draft(note: text, status: status ?? "")
-                        self.editing = row.ref
+                        if self.editing == nil { self.editing = row.ref }  // not if they have started another note meanwhile
                     }
-                    self.say(r.ok ? "Saved" : "Could not save: " + clip(r.message, 80))
+                    self.say(r.ok ? "Saved" : "Could not save: " + clip(r.message, 80) + (self.editing == row.ref ? "" : " (your note is kept: click the pencil)"))
                     self.refresh()
                     if self.isSearching { self.queryChanged() }  // a saved note can change what the search finds
                 }

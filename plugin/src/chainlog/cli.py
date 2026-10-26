@@ -852,6 +852,8 @@ def cmd_nudge(rt, args):
 
 def cmd_menu(rt, args):
     """The Mac menu bar app polls this: sessions, chains and ready-made resume commands as JSON."""
+    if args.starred and args.find is None:
+        raise Exit(2, "--starred only narrows a search: use it with --find TEXT")
     index = load(rt, config_mod.load(rt))
     _p(json.dumps(menu_mod.build(index, find=args.find, find_starred=args.starred), indent=None, separators=(",", ":")))
     return 0

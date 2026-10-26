@@ -9,9 +9,10 @@ from chainlog.sources import by_name
 
 def plan(s, fork=False, here=False, rt=None):
     try:
-        argv = by_name(s["harness"]).resume_argv(s["native_id"], fork=fork)
+        src = by_name(s["harness"])
     except KeyError:  # an event for a tool chainlog does not know (hand-edited or from a newer version)
-        argv = []
+        src = None
+    argv = src.resume_argv(s["native_id"], fork=fork) if src else []  # a bug inside a real tool must surface, not hide
     cwd = s.get("cwd")
     notes, blockers = [], []
     if not argv:

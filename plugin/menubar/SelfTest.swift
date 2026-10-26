@@ -81,6 +81,42 @@ func selfTest(sample path: String?) -> Int {
         check("  ... it filters the chains it has", m.chains.count <= data.chains.count)
     }
 
+    // leaving a tab drops its results at once: they are never shown under the wrong tab
+    do {
+        let m = model()
+        let one: Row = { var r = row(); r.starred = true; return r }()
+        m.finder = { _, _ in [one] }
+        m.tab = .starred; m.query = "x"; m.answerSearchNow()
+        check("Starred search has its results", m.results?.count == 1)
+        m.tab = .sessions
+        check("switching tab clears them at once (not after the new search answers)", m.results == nil)
+    }
+
+    // a note editor whose row has left the lists is closed, its text kept for when the pencil is clicked again
+    do {
+        let m = model()
+        m.beginSave(row()); m.setDraft(Draft(note: "kept", status: ""), for: "claude:x")
+        m.apply(data, nil, raw)  // a refresh: "claude:x" is not in the sample's lists
+        check("a refresh closes an editor whose row is gone", m.editing == nil)
+        check("  ... and keeps what was typed", m.draft(for: "claude:x").note == "kept")
+        let there = data.unsaved[0]
+        m.beginSave(there); m.apply(data, nil, raw)
+        check("an editor whose row is still listed stays open", m.editing == there.ref)
+    }
+
+    // an older chainlog without the chain total still works
+    do {
+        var obj = try! JSONSerialization.jsonObject(with: raw) as! [String: Any]
+        var counts = obj["counts"] as! [String: Any]
+        counts.removeValue(forKey: "chains")
+        obj["counts"] = counts
+        let older = try! JSONSerialization.data(withJSONObject: obj)
+        let d = try? JSONDecoder().decode(MenuData.self, from: older)
+        check("a payload without counts.chains still decodes", d != nil)
+        let m = AppModel(); m.data = d
+        check("  ... the chain total falls back to what is listed", m.totalChains == d?.chains.count && m.moreChains == 0)
+    }
+
     // starred results are the server's, even beyond what is loaded locally
     do {
         let m = model()

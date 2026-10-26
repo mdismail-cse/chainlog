@@ -37,7 +37,7 @@ struct ChainInfo: Decodable {
 struct Counts: Decodable {
     var unsaved: Int
     var starred: Int
-    var chains: Int     // all of them; `chains` lists the newest 30
+    var chains: Int?    // all of them; `chains` lists the newest 30 (absent from an older chainlog)
 }
 
 struct MenuData: Decodable {

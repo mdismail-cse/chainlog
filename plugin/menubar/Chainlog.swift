@@ -185,9 +185,16 @@ struct ChainlogMain {
         }
         if args.contains("--unregister") {  // before the app is deleted: take it out of System Settings > Login Items
             let svc = SMAppService.mainApp
-            if svc.status == .enabled { try? svc.unregister() }
-            print("login item: \(svc.status == .enabled ? "still enabled" : "not registered")")
-            exit(0)
+            if svc.status == .enabled || svc.status == .requiresApproval { try? svc.unregister() }
+            let state: String
+            switch svc.status {
+            case .enabled: state = "still enabled"
+            case .requiresApproval: state = "still waiting for approval"
+            case .notRegistered: state = "not registered"
+            default: state = "not found"
+            }
+            print("login item: \(state)")
+            exit(svc.status == .enabled || svc.status == .requiresApproval ? 1 : 0)
         }
         if args.contains("--selftest") {
             let failures = selfTest(sample: arg("--selftest", in: args))

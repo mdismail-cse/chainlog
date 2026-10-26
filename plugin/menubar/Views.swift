@@ -137,7 +137,7 @@ struct ChainsList: View {
                     SectionHeader(text: more > 0 && !model.isSearching ? "PR chains · newest \(chains.count) of \(chains.count + more)" : "PR chains · \(chains.count)")
                 }
                 ForEach(Array(chains.enumerated()), id: \.element.id) { i, c in ChainBlock(model: model, chain: c, defaultOpen: i == 0) }
-                if more > 0 && !model.isSearching {
+                if more > 0 {
                     Button { model.runChainlog(["chain"], name: "chains") } label: {
                         Text("All \(chains.count + more) chains in Terminal…").font(.system(size: 12.5)).foregroundColor(.accentColor)
                     }
@@ -229,7 +229,9 @@ struct EmptyState: View {
         if !q.isEmpty { return model.searchFailed ? "Update chainlog and try again." : "Searches titles, your notes, PR numbers, branches and folders." }
         switch model.tab {
         case .starred: return "Hover a session and click the star to keep it here."
-        case .chains: return "Save sessions that mention a PR (say “PR 4321”) and chainlog groups the rounds."
+        case .chains: return model.isSearching && model.moreChains > 0
+            ? "Only the newest \(model.data?.chains.count ?? 30) chains are loaded here. “All \(model.totalChains) chains in Terminal…” below reaches the rest."
+            : "Save sessions that mention a PR (say “PR 4321”) and chainlog groups the rounds."
         case .sessions: return "Use Claude Code or Codex as usual and they show up here."
         }
     }
