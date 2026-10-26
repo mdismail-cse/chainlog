@@ -136,6 +136,99 @@ class MenuCommand(MenuData):
         self.assertNotIn(os.path.expanduser("~"), text)
 
 
+SWIFT = (ROOT / "plugin" / "menubar" / "Chainlog.swift").read_text()
+
+
+def swift_struct(name):
+    """{field: optional?} for `struct <name>: Decodable { let a: T ... let b: T? }` in the app's source."""
+    body = re.search(r"struct %s: Decodable \{(.*?)\}" % name, SWIFT, re.S).group(1)  # these structs hold no nested braces
+    return {m.group(1): m.group(2).strip().endswith("?")
+            for m in re.finditer(r"^\s*let (\w+): ([^/\n]+)", body, re.M)}
+
+
+class AppContract(MenuData):
+    """The Swift app decodes `_menu` with required fields; if the JSON drifts the app shows an error.
+    This reads the app's own struct definitions and holds the real output to them."""
+
+    def setUp(self):
+        super().setUp()
+        self.claude_session(ID[0], NOW - 30 * H, NOW - 29 * H, title="Shop PR 4321 refund", pr=4321)
+        self.claude_session(ID[1], NOW - 5 * H, NOW - 4 * H, title="Shop PR 4321 again", pr=4321)
+        self.claude_session(ID[2], NOW - 3 * H, NOW - 2 * H, title="Tracker CSV export")
+        self.run_cli(["save", "--id", ID[0][:8], "r1", "-s", "pass"])
+        self.codex_session("01a2b3c4-0000-0000-0000-000000000003", NOW - 6 * H, NOW - 5 * H, name="Shop PR 4321 retest")
+
+    def check(self, struct, obj, where):
+        fields = swift_struct(struct)
+        for name, optional in fields.items():
+            self.assertIn(name, obj, "%s: the app requires %r" % (where, name))
+            if not optional:
+                self.assertIsNotNone(obj[name], "%s: %r is not optional in the app" % (where, name))
+        return fields
+
+    def test_every_field_the_app_requires_is_always_present(self):
+        d = self.build()
+        self.check("MenuData", d, "top level")
+        self.check("Counts", d["counts"], "counts")
+        rows = d["unsaved"] + d["recent"] + [m for c in d["chains"] for m in c["members"]]
+        self.assertTrue(rows and d["chains"])
+        for r in rows:
+            self.check("Row", r, "row %s" % r["short"])
+            self.check("ResumeInfo", r["resume"], "resume of %s" % r["short"])
+        for c in d["chains"]:
+            self.check("ChainInfo", c, "chain %s" % c["id"])
+
+    def test_the_app_reads_the_schema_name_this_code_writes(self):
+        self.assertIn('hasPrefix("%s")' % menu_mod.SCHEMA, SWIFT)
+
+    def test_types_match_what_the_app_declares(self):
+        r = self.build()["recent"][0]
+        self.assertIsInstance(r["live"], bool)
+        self.assertIsInstance(r["ago"], str)
+        self.assertIsInstance(r["resume"]["blockers"], list)
+        self.assertIn(r["saved"], ("user", "auto", "none"))
+
+
+class HostileFolders(MenuData):
+    def test_every_command_runs_in_its_own_folder_and_names_execute_nothing(self):
+        flag = self.root / "INJECTED"
+        names = ["it's a dir", 'dq"dir', "dollar$(touch %s)dir" % flag, "back`touch %s`tick" % flag,
+                 "semi;touch %s;colon" % flag, "new\nline", "sp ace  double", "\u00fc\u00f1\u00ed-\u00e7\u00f8d\u00e9", "-leading-dash"]
+        made = []
+        for i, n in enumerate(names):
+            d = self.root / "work" / n
+            (d / ".git").mkdir(parents=True)
+            self.claude_session("%08x-2222-4000-8000-%012x" % (i, i), NOW - 3000 + i, NOW - 2000 + i, title="dir %d" % i, cwd=d)
+            made.append(os.path.realpath(str(d)))
+        data = self.build(unsaved_limit=20)
+        fake = self.root / "fakebin"
+        fake.mkdir()
+        log = self.root / "claude.log"
+        (fake / "claude").write_text('#!/bin/sh\nprintf "%s\\0%s\\0" "$PWD" "$*" >> "' + str(log) + '"\n')
+        (fake / "claude").chmod(0o755)
+        for row in data["unsaved"]:
+            p = subprocess.run(["sh", "-c", row["resume"]["command"]], env={"PATH": "%s:/usr/bin:/bin" % fake},
+                               capture_output=True, text=True)
+            self.assertEqual(p.returncode, 0, row["resume"]["command"] + p.stderr)
+        self.assertFalse(flag.exists(), "a folder name was executed")
+        parts = log.read_bytes().decode().split("\0")
+        ran_in = {os.path.realpath(c) for c in parts[0:-1:2]}
+        self.assertEqual(ran_in, set(made))
+
+
+class CorruptState(MenuData):
+    def test_damaged_files_never_break_the_json(self):
+        self.claude_session(ID[0], NOW - 3000, NOW - 2000, title="Shop PR 4321 ok")
+        for name, junk in (("config.json", "{ not json"), ("config.json", "[]"),
+                           ("events.jsonl", '{"v":1,"id":"x","ts":1,"type":"save","ref":"claude:aaaa\n{garbage\n\x00\x01\n'),
+                           ("factcache.json", "not json at all")):
+            (self.data / name).write_text(junk)
+            code, out, _err = self.run_cli(["_menu"])
+            self.assertEqual(code, 0, name)
+            self.assertEqual(json.loads(out)["schema"], "chainlog.menu/1", name)
+            self.assertEqual(len(out.strip().splitlines()), 1, name)
+
+
 @unittest.skipUnless(sys.platform == "darwin", "the menu bar app is macOS only")
 class BuildScript(Home):
     """plugin/menubar/build.sh with stand-ins for swiftc, open, pkill and codesign: installing, replacing

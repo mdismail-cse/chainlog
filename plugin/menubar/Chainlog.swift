@@ -4,8 +4,11 @@
 // It holds no data of its own. It runs `chainlog _menu` (JSON, schema chainlog.menu/1), draws the
 // lists, and runs the exact resume command chainlog gives it. Build: `sh build.sh`.
 //
-//   Chainlog --dump [sample.json]    print the menu as text and exit (no window; used by tests)
-//   Chainlog --open-on-launch        open the menu once at start (for screenshots)
+//   Chainlog --dump [sample.json]      print the menu as text and exit (no window; used by tests)
+//   Chainlog --dump-problem NAME       print the menu shown when chainlog can't be read (notfound|newer|failed|loading)
+//   Chainlog --print-script COMMAND    print the script a click would run in a terminal, and exit
+//   Chainlog --launch NAME COMMAND     do what a click does (open a terminal window) and exit
+//   Chainlog --open-on-launch          open the menu once at start (for screenshots)
 import AppKit
 import ServiceManagement
 
@@ -64,6 +67,7 @@ func dbg(_ text: @autoclosure () -> String) {
 
 enum CLI {
     static var overridePath: String? { ProcessInfo.processInfo.environment["CHAINLOG_BIN"] }
+    static var lastShellLookup: Date?
 
     /// The `chainlog` launcher. A menu bar app does not get the Terminal's PATH, so look in the usual places.
     static func locate() -> String? {
@@ -72,14 +76,28 @@ enum CLI {
         var candidates = ["\(home)/.local/bin/chainlog", "/opt/homebrew/bin/chainlog", "/usr/local/bin/chainlog"]
         if let o = overridePath { candidates.insert(o, at: 0) }
         for c in candidates where fm.isExecutableFile(atPath: c) { return c }
-        // last resort: ask a login shell, which has the PATH from ~/.zprofile
+        // last resort: ask a login shell, which has the PATH from ~/.zprofile (at most once every 5 minutes)
+        if let last = lastShellLookup, Date().timeIntervalSince(last) < 300 { return nil }
+        lastShellLookup = Date()
         let r = run("/bin/zsh", ["-lc", "command -v chainlog"], timeout: 5)
         if let out = r.out, let path = String(data: out, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
            !path.isEmpty, fm.isExecutableFile(atPath: path) { return path }
         return nil
     }
 
-    static func run(_ exe: String, _ args: [String], timeout: TimeInterval = 20) -> (out: Data?, status: Int32) {
+    /// Seconds between automatic refreshes (CHAINLOG_MENUBAR_INTERVAL overrides, for tests).
+    static var interval: TimeInterval {
+        ProcessInfo.processInfo.environment["CHAINLOG_MENUBAR_INTERVAL"].flatMap(TimeInterval.init) ?? 60
+    }
+
+    /// Seconds before a chainlog call is given up on (CHAINLOG_MENUBAR_TIMEOUT overrides, for tests).
+    static var timeout: TimeInterval {
+        ProcessInfo.processInfo.environment["CHAINLOG_MENUBAR_TIMEOUT"].flatMap(TimeInterval.init) ?? 20
+    }
+
+    /// Runs a program and returns what it printed. Never blocks past `timeout`, even when the program
+    /// leaves a child behind that keeps its output open: the read is event-driven, not "until EOF".
+    static func run(_ exe: String, _ args: [String], timeout: TimeInterval = CLI.timeout) -> (out: Data?, status: Int32) {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: exe)
         p.arguments = args
@@ -91,11 +109,30 @@ enum CLI {
         let pipe = Pipe()
         p.standardOutput = pipe
         p.standardError = FileHandle.nullDevice
-        do { try p.run() } catch { return (nil, -1) }
-        DispatchQueue.global().asyncAfter(deadline: .now() + timeout) { if p.isRunning { p.terminate() } }
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        p.waitUntilExit()
-        return (data, p.terminationStatus)
+
+        let lock = NSLock()
+        var buffer = Data()
+        let exited = DispatchSemaphore(value: 0)
+        let eof = DispatchSemaphore(value: 0)
+        pipe.fileHandleForReading.readabilityHandler = { h in
+            let d = h.availableData
+            if d.isEmpty { h.readabilityHandler = nil; eof.signal(); return }
+            lock.lock(); buffer.append(d); lock.unlock()
+        }
+        p.terminationHandler = { _ in exited.signal() }
+        do { try p.run() } catch { pipe.fileHandleForReading.readabilityHandler = nil; return (nil, -1) }
+
+        if exited.wait(timeout: .now() + timeout) == .timedOut {
+            dbg("timed out after \(Int(timeout))s: \(exe)")
+            p.terminate()
+            if exited.wait(timeout: .now() + 2) == .timedOut { kill(p.processIdentifier, SIGKILL) }
+            pipe.fileHandleForReading.readabilityHandler = nil
+            return (nil, -2)
+        }
+        _ = eof.wait(timeout: .now() + 1)  // normally immediate; a child that kept the pipe open costs one second
+        pipe.fileHandleForReading.readabilityHandler = nil
+        lock.lock(); defer { lock.unlock() }
+        return (buffer, p.terminationStatus)
     }
 
     /// nil when chainlog is missing or its answer cannot be read.
@@ -156,7 +193,8 @@ enum Launcher {
     static func userShell() -> String {
         if let pw = getpwuid(getuid()), let s = pw.pointee.pw_shell {
             let path = String(cString: s)
-            if FileManager.default.isExecutableFile(atPath: path) { return path }
+            let known = ["zsh", "bash", "sh", "dash", "ksh", "fish"]  // `-il` and `cd 'x' && cmd` work in these
+            if known.contains((path as NSString).lastPathComponent) && FileManager.default.isExecutableFile(atPath: path) { return path }
         }
         return "/bin/zsh"
     }
@@ -170,6 +208,12 @@ enum Launcher {
         }
     }
 
+    /// An interactive login shell, so the command finds `claude` / `codex` on the same PATH as your Terminal,
+    /// and a shell in the same folder once the session ends.
+    static func script(for command: String) -> String {
+        "#!\(userShell()) -il\n\(command)\nexec \"$SHELL\" -il\n"
+    }
+
     static func copy(_ text: String) {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
@@ -177,14 +221,13 @@ enum Launcher {
 
     /// Run `command` in a new terminal window. Returns false when it could only be copied.
     @discardableResult
-    static func open(_ command: String, name: String) -> Bool {
+    static func open(_ command: String, name: String, onFailure: @escaping @Sendable () -> Void = {}) -> Bool {
         let choice = TerminalChoice.current
         guard let id = choice.bundleID, let app = NSWorkspace.shared.urlForApplication(withBundleIdentifier: id) else {
             copy(command)
             return false
         }
-        // An interactive login shell, so the command finds `claude` / `codex` on the same PATH as your Terminal.
-        let script = "#!\(userShell()) -il\n\(command)\nexec \"$SHELL\" -il\n"
+        let script = script(for: command)
         let safe = name.filter { $0.isLetter || $0.isNumber || $0 == "-" }
         let file = runDir.appendingPathComponent("\(safe.isEmpty ? "session" : safe).command")
         do {
@@ -198,7 +241,10 @@ enum Launcher {
         }
         let cfg = NSWorkspace.OpenConfiguration()
         cfg.activates = true
-        NSWorkspace.shared.open([file], withApplicationAt: app, configuration: cfg) { _, _ in }
+        NSWorkspace.shared.open([file], withApplicationAt: app, configuration: cfg) { _, error in
+            dbg("open \(file.lastPathComponent) with \(app.lastPathComponent): \(error.map { "\($0)" } ?? "ok")")
+            if error != nil { DispatchQueue.main.async { copy(command); onFailure() } }
+        }
         return true
     }
 }
@@ -227,7 +273,19 @@ enum MenuBuilder {
         return img
     }
 
+    /// Shortens `text` with an ellipsis until it is at most `width` points wide in `font`.
+    static func fit(_ text: String, _ font: NSFont, _ width: CGFloat) -> String {
+        func w(_ t: String) -> CGFloat { (t as NSString).size(withAttributes: [.font: font]).width }
+        if w(text) <= width { return text }
+        var t = String(text.prefix(80))
+        while !t.isEmpty && w(t + "…") > width { t.removeLast() }
+        return t + "…"
+    }
+
     static func line(_ left: String, _ right: String, enabled: Bool = true) -> NSAttributedString {
+        let rightFont = NSFont.menuFont(ofSize: 11)
+        let rightWidth = right.isEmpty ? 0 : (right as NSString).size(withAttributes: [.font: rightFont]).width
+        let left = fit(left, NSFont.menuFont(ofSize: 0), rightEdge - rightWidth - 16)  // never run into the right-hand column
         let ps = NSMutableParagraphStyle()
         ps.tabStops = [NSTextTab(textAlignment: .right, location: rightEdge, options: [:])]
         ps.lineBreakMode = .byClipping
@@ -260,8 +318,8 @@ enum MenuBuilder {
 
     static func rowItem(_ r: Row, target: AnyObject?, action: Selector?) -> NSMenuItem {
         var right: [String] = []
-        if let c = r.chain { right.append(c + (r.round.map { " r\($0)" } ?? "")) }
-        if let s = r.status { right.append(s) }
+        if let c = r.chain { right.append(clip(c, 28) + (r.round.map { " r\($0)" } ?? "")) }
+        if let s = r.status { right.append(clip(s, 12)) }
         right.append(r.ago)
         let blocked = !r.resume.blockers.isEmpty
         let item = NSMenuItem(title: r.title, action: blocked ? nil : action, keyEquivalent: "")
@@ -279,9 +337,9 @@ enum MenuBuilder {
 
     static func chainItem(_ c: ChainInfo, target: AnyObject?, action: Selector?) -> NSMenuItem {
         let item = NSMenuItem(title: c.id, action: nil, keyEquivalent: "")
-        let tail = [c.status, "\(c.rounds) round\(c.rounds == 1 ? "" : "s")", c.ago].compactMap { $0 }
-        item.attributedTitle = line(c.id, tail.joined(separator: "  "))
-        let sub = NSMenu(title: c.id)
+        let tail = [c.status.map { clip($0, 12) }, "\(c.rounds) round\(c.rounds == 1 ? "" : "s")", c.ago].compactMap { $0 }
+        item.attributedTitle = line(clip(c.id, 40), tail.joined(separator: "  "))
+        let sub = NSMenu(title: clip(c.id, 40))
         sub.autoenablesItems = false
         if let latest = c.members.last, latest.resume.blockers.isEmpty {
             let go = rowItem(latest, target: target, action: action)
@@ -292,12 +350,31 @@ enum MenuBuilder {
         for m in c.members.reversed() {
             let it = rowItem(m, target: target, action: action)
             it.attributedTitle = line("r\(m.round ?? 0)  \(clip(m.title, 38))",
-                                      [m.status, m.harness, m.ago].compactMap { $0 }.joined(separator: "  "),
+                                      [m.status.map { clip($0, 12) }, m.harness, m.ago].compactMap { $0 }.joined(separator: "  "),
                                       enabled: m.resume.blockers.isEmpty)
             sub.addItem(it)
         }
         item.submenu = sub
         return item
+    }
+
+    /// What to show instead of the lists: nil = still loading, "notfound" / "newer" / anything else = unreadable.
+    static func problemItems(_ problem: String?, target: AnyObject?, help: Selector?) -> [NSMenuItem] {
+        var items = [header("chainlog")]
+        switch problem {
+        case "notfound":
+            items.append(note("The chainlog command was not found."))
+            let how = NSMenuItem(title: "How to install chainlog…", action: help, keyEquivalent: "")
+            how.target = target
+            items.append(how)
+        case "newer":
+            items.append(note("chainlog is newer than this app. Run: chainlog setup menubar"))
+        case nil:
+            items.append(note("Loading…"))
+        default:
+            items.append(note("Could not read chainlog's answer. Update chainlog, or try: chainlog doctor"))
+        }
+        return items
     }
 
     /// Everything but the footer (preferences, quit), which needs the app's own actions.
@@ -350,6 +427,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     var flashTimer: Timer?
     var menuIsOpen = false
     var lastRaw: Data?
+    var stale = false   // the last refresh failed; the list shown is the last good one
+    var inFlight = false
+    var refreshAgain = false
 
     func applicationDidFinishLaunching(_ note: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -362,7 +442,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         Launcher.tidy()
         refresh()
-        Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in Task { @MainActor in self?.refresh() } }
+        Timer.scheduledTimer(withTimeInterval: CLI.interval, repeats: true) { [weak self] _ in Task { @MainActor in self?.refresh() } }
         NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor in self?.refresh() }
         }
@@ -382,18 +462,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     /// Ask chainlog again off the main thread; the badge and the next menu use the answer.
     func refresh() {
+        if inFlight { refreshAgain = true; dbg("refresh queued (one is running)"); return }
+        inFlight = true
         dbg("refresh")
         DispatchQueue.global(qos: .utility).async {
             let r = CLI.fetch()
             dbg("fetched: data=\(r.data != nil) problem=\(r.problem ?? "none")")
             DispatchQueue.main.async {
                 MainActor.assumeIsolated {
-                    let changed = r.raw != self.lastRaw || r.problem != self.problem
-                    self.data = r.data
-                    self.problem = r.problem
-                    self.lastRaw = r.raw
+                    self.inFlight = false
+                    // A hiccup (chainlog busy, a timeout) must not blank a list that was fine a minute ago.
+                    let hiccup = r.data == nil && r.problem == "failed" && self.data != nil
+                    let changed = hiccup != self.stale || (!hiccup && (r.raw != self.lastRaw || r.problem != self.problem))
+                    self.stale = hiccup
+                    if !hiccup {
+                        self.data = r.data
+                        self.problem = r.problem
+                        self.lastRaw = r.raw
+                    }
                     self.updateBadge()
+                    dbg("state: list=\(self.data != nil) unsaved=\(self.data?.counts.unsaved ?? -1) stale=\(self.stale) problem=\(self.problem ?? "none")")
                     if self.menuIsOpen && changed { self.rebuild(self.menu) }  // an answer that arrives while the menu is open
+                    if self.refreshAgain { self.refreshAgain = false; self.refresh() }
                 }
             }
         }
@@ -432,22 +522,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 menu.addItem(it)
             }
             menu.addItem(.separator())
-            menu.addItem(MenuBuilder.note("Click a session to reopen it · ⌥-click copies its command"))
+            menu.addItem(MenuBuilder.note(stale ? "Could not refresh just now. This is the last list chainlog gave."
+                                                : "Click a session to reopen it · ⌥-click copies its command"))
         } else {
-            menu.addItem(MenuBuilder.header("chainlog"))
-            switch problem {
-            case "notfound":
-                menu.addItem(MenuBuilder.note("The chainlog command was not found."))
-                let how = NSMenuItem(title: "How to install chainlog…", action: #selector(openHelp), keyEquivalent: "")
-                how.target = self
-                menu.addItem(how)
-            case "newer":
-                menu.addItem(MenuBuilder.note("chainlog is newer than this app. Run: chainlog setup menubar"))
-            case nil:
-                menu.addItem(MenuBuilder.note("Loading…"))
-            default:
-                menu.addItem(MenuBuilder.note("Could not read chainlog's answer. Update chainlog, or try: chainlog doctor"))
-            }
+            for it in MenuBuilder.problemItems(problem, target: self, help: #selector(openHelp)) { menu.addItem(it) }
         }
         menu.addItem(.separator())
         let term = NSMenuItem(title: "Open chainlog in \(TerminalChoice.current == .copy ? "a terminal" : TerminalChoice.current.label)",
@@ -486,7 +564,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if copyOnly {
             Launcher.copy(r.resume.command)
             flash("copied")
-        } else if !Launcher.open(r.resume.command, name: "resume-" + r.short) {
+        } else if !Launcher.open(r.resume.command, name: "resume-" + r.short, onFailure: { [weak self] in
+            Task { @MainActor in self?.flash("copied") }
+        }) {
             flash("copied")  // no terminal to open: the command is on the clipboard
         }
     }
@@ -497,9 +577,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc func openHelp() { NSWorkspace.shared.open(URL(string: "https://github.com/mdismail-cse/chainlog#step-1-get-chainlog-once")!) }
 
     func runChainlog(_ args: [String], name: String) {
-        guard let exe = CLI.locate() else { problem = "notfound"; return }
+        guard let exe = CLI.locate() else { flash("chainlog not found"); return }
         let cmd = ([shellQuote(exe)] + args.map(shellQuote)).joined(separator: " ")
-        if !Launcher.open(cmd, name: name) { flash("copied") }
+        if !Launcher.open(cmd, name: name, onFailure: { [weak self] in Task { @MainActor in self?.flash("copied") } }) { flash("copied") }
     }
 
     @objc func pickTerminal(_ sender: NSMenuItem) {
@@ -524,6 +604,13 @@ struct ChainlogMain {
     @MainActor
     static func main() {
         let args = CommandLine.arguments
+        if let i = args.firstIndex(of: "--dump-problem") {
+            let name = i + 1 < args.count ? args[i + 1] : "failed"
+            let m = NSMenu()
+            for it in MenuBuilder.problemItems(name == "loading" ? nil : name, target: nil, help: nil) { m.addItem(it) }
+            dumpMenu(m)
+            exit(0)
+        }
         if let i = args.firstIndex(of: "--dump") {
             // headless: build the menu from a sample file (or from chainlog itself) and print it
             var d: MenuData?
@@ -538,6 +625,17 @@ struct ChainlogMain {
             for it in MenuBuilder.lists(data, target: nil, open: nil, review: nil) { m.addItem(it) }
             dumpMenu(m)
             exit(0)
+        }
+        if let i = args.firstIndex(of: "--print-script"), i + 1 < args.count {
+            print(Launcher.script(for: args[i + 1]), terminator: "")
+            exit(0)
+        }
+        if let i = args.firstIndex(of: "--launch"), i + 2 < args.count {
+            _ = NSApplication.shared  // a window server connection, as when the app runs
+            let opened = Launcher.open(args[i + 2], name: args[i + 1])
+            RunLoop.current.run(until: Date().addingTimeInterval(3))  // let the asynchronous open finish
+            print(opened ? "opened" : "copied")
+            exit(opened ? 0 : 3)
         }
         let app = NSApplication.shared
         let delegate = AppDelegate()
