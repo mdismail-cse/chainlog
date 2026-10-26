@@ -12,6 +12,7 @@ import time
 from chainlog import __version__
 from chainlog import chain as chain_mod
 from chainlog import config as config_mod
+from chainlog import menu as menu_mod
 from chainlog import query, resolve, resume, review, sweep, ui
 from chainlog.index import NotSaved, load, write_events
 from chainlog.noteargs import parse as parse_note_args
@@ -22,7 +23,7 @@ from chainlog.store.events import NOTE_MAX, new_event
 VISIBLE = ("save", "ls", "find", "show", "resume", "chain", "next", "note", "status", "tag", "forget",
            "undo", "review", "config", "setup", "uninstall", "doctor", "scan")
 ALIASES = {"list": "ls", "r": "resume", "chains": "chain"}
-HIDDEN = ("_sweep", "_nudge", "help")
+HIDDEN = ("_sweep", "_nudge", "_menu", "help")
 STATUSES = ("wip", "pass", "fail", "blocked")
 UNDOABLE = ("save", "note", "status", "tag", "chain.link", "chain.unlink", "forget")
 
@@ -742,6 +743,13 @@ def cmd_nudge(rt, args):
     return 0
 
 
+def cmd_menu(rt, args):
+    """The Mac menu bar app polls this: sessions, chains and ready-made resume commands as JSON."""
+    index = load(rt, config_mod.load(rt))
+    _p(json.dumps(menu_mod.build(index), indent=None, separators=(",", ":")))
+    return 0
+
+
 def cmd_setup(rt, args):
     from chainlog import setup as setup_mod
     return setup_mod.run(rt, args, _p)
@@ -893,6 +901,7 @@ def build_parser():
     sw.add_argument("--shell-pid", type=int)
     nd = sub.add_parser("_nudge")
     nd.add_argument("--shell-pid", type=int, required=True)
+    sub.add_parser("_menu")
     sub.add_parser("help")
     # hidden commands must not show in `chainlog --help`
     sub._choices_actions = [a for a in sub._choices_actions if a.dest not in HIDDEN]
@@ -904,7 +913,7 @@ DISPATCH = {
     "chain": cmd_chain, "next": cmd_next, "note": cmd_note, "status": cmd_status, "tag": cmd_tag,
     "forget": cmd_forget, "undo": cmd_undo, "review": cmd_review, "config": cmd_config,
     "setup": cmd_setup, "uninstall": cmd_uninstall, "doctor": cmd_doctor, "scan": cmd_scan,
-    "_sweep": cmd_sweep, "_nudge": cmd_nudge,
+    "_sweep": cmd_sweep, "_nudge": cmd_nudge, "_menu": cmd_menu,
 }
 
 

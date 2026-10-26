@@ -75,6 +75,19 @@ Key fields:
 
 New fields may be added within `/1`.
 
+## Menu data (`chainlog _menu`, schema `chainlog.menu/1`)
+
+One line of JSON for the Mac menu bar app (hidden command; not part of the public CLI). Top level:
+`schema`, `chainlog` (version), `generated_at`, `counts {unsaved}`, `unsaved[]`, `recent[]`, `chains[]`.
+
+- A row: `ref`, `short`, `harness`, `title` (one clean line), `saved` (`user|auto|none`), `status`, `live`,
+  `chain`, `round`, `at`, `ago`, `last_work`, `resume {cwd, command, blockers[], notes[]}`.
+  `resume.command` is ready to run in a shell; a non-empty `blockers` means the session cannot be reopened.
+- `counts.unsaved` is the total; `unsaved[]` holds at most the 8 newest, `recent[]` 8 more, `chains[]` 6.
+- A chain: `id`, `rounds`, `status`, `title`, `ago`, `members[]` (rows, with `round`).
+
+New fields may be added within `/1`; `plugin/menubar/sample.json` shows the shape and is checked by the tests.
+
 ## Sources (read-only)
 
 | Harness | Files | Never listed / never opened |
