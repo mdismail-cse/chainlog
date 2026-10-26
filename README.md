@@ -240,6 +240,7 @@ During setup you also picked what chainlog does **10 minutes later** if you stil
 
 - **Change your choice:** type `chainlog setup policy` and pick a number.
   For 1 and 3 it then asks to turn on a small background timer: **press Enter**, because these choices need it.
+- **Save a whole pile at once:** `chainlog review --auto` saves every unsaved session with an automatic summary (it asks first; Enter = yes). You can add your own note to any of them later.
 - **Save forgotten sessions one by one:** type `chainlog review`. For each session, press a key:
 
   | Key | Does |
@@ -284,7 +285,7 @@ Read the titles and the "last work" lines. Press **Enter** for the first one, ty
 | Save a note on another session | `chainlog save --id @N "note"` |
 | See everything about a session (all its notes) | `chainlog show @N` |
 | Undo my last save or change | `chainlog undo` |
-| Handle sessions I forgot to save | `chainlog review` |
+| Handle sessions I forgot to save | `chainlog review` (or `chainlog review --auto` to save them all) |
 | Change what happens when I forget | `chainlog setup policy` |
 | Check that everything works | `chainlog doctor` |
 

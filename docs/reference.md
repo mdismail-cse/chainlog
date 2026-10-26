@@ -193,6 +193,9 @@ Goes through unsaved sessions one by one. For each you can:
 
 `--all` includes sessions from before you installed chainlog. Without a terminal, `review` prints JSON.
 
+`--auto` saves **every** unsaved session with an automatic summary (the `a` key, for all of them). It asks first
+in a terminal (Enter = yes; `--yes` skips the question). Sessions get their PR chain when the evidence is clear.
+
 <img src="images/review.svg" alt="chainlog review">
 
 ## config

@@ -187,7 +187,7 @@ def cmd_default(rt, args):
         _p(st.bold("Unsaved") + st.dim("  (ended without a note — chainlog review)"))
         refs += print_rows(rt, st, unsaved, now, 1, widths)
         if len(all_unsaved) > 5:
-            _p(st.dim(" … %d more unsaved — chainlog review" % (len(all_unsaved) - 5)))
+            _p(st.dim(" … %d more unsaved — chainlog review (or: chainlog review --auto)" % (len(all_unsaved) - 5)))
         if cfg["unsaved"]["action"] == "list":
             evs = [new_event(rt, "unsaved.handled", s["ref"], "sweep", {"action": "list", "result": "shown"})
                    for s in unsaved if not s.get("unsaved_handled")]
@@ -639,6 +639,8 @@ def cmd_review(rt, args):
     cfg = config_mod.load(rt)
     index = load(rt, cfg)
     sessions = review.unsaved(index, include_all=args.all)
+    if args.auto:
+        return _review_auto(rt, cfg, sessions, args)
     if args.json or not rt.isatty():
         if not args.json:
             sys.stderr.write("chainlog: not a terminal, so printing the unsaved sessions as JSON (review is interactive)\n")
@@ -673,6 +675,33 @@ def cmd_review(rt, args):
             "" if args.all else " (chainlog review --all includes older ones)"))
         return 0
     review.interactive(index, sessions, st, _ask, lambda evs: write_events(rt, evs), _p, resume_cb, save_cb)
+    return 0
+
+
+def _review_auto(rt, cfg, sessions, args):
+    """`chainlog review --auto`: clear the whole backlog at once with automatic summaries."""
+    if args.json:
+        raise Exit(1, "--auto and --json can't be combined")
+    if not sessions:
+        _p("nothing to review — every recent session is saved%s" % (
+            "" if args.all else " (chainlog review --all includes older ones)"))
+        return 0
+    st = ui.Style(rt.color())
+    n = len(sessions)
+    if rt.isatty() and not args.yes:
+        ans = _ask("Save %d unsaved session%s with an automatic summary? You can still add your own note later. [Y/n] "
+                   % (n, "" if n == 1 else "s"))
+        if ans is None or ans.strip().lower().startswith("n"):
+            _p("Cancelled — nothing was saved.")
+            return 1
+    done = 0
+    for s in sessions:
+        _summary, _engine, chain = review.auto_save(rt, cfg, s, lambda evs: write_events(rt, evs))
+        done += 1
+        _p("  %s %s %s  \"%s\"%s" % (st.cyan("◐"), s["harness"], s["short"], ui.fit(s["title"]["value"], 60),
+                                    " → " + ui.safe(chain) if chain else ""))
+    _p("%s auto-saved %d session%s. Add your own note to any: chainlog save --id <id> \"note\"" % (
+        st.green("✓"), done, "" if done == 1 else "s"))
     return 0
 
 
@@ -893,9 +922,13 @@ def build_parser():
 
     rv = sub.add_parser("review", help="go through unsaved sessions one by one",
                         description="For each unsaved session: s = save with a note, a = save with a summary, "
-                                    "r = reopen it, f = hide it from lists (nothing is deleted), n = skip, q = stop.")
+                                    "r = reopen it, f = hide it from lists (nothing is deleted), n = skip, q = stop. "
+                                    "Use --auto to save them all at once.")
     rv.add_argument("--all", action="store_true", help="include sessions from before install / older than lookback")
     rv.add_argument("--json", action="store_true", help="machine-readable output")
+    rv.add_argument("--auto", action="store_true",
+                    help="save every unsaved session with an automatic summary (asks first)")
+    rv.add_argument("--yes", action="store_true", help="with --auto: do not ask")
 
     cf = sub.add_parser("config", help="show or change settings, e.g. config set unsaved.action remind")
     cf.add_argument("action", nargs="?", choices=["list", "get", "set"])

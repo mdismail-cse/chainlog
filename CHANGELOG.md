@@ -8,6 +8,7 @@
   `max_tokens=500` and similar are left alone, and redacting twice changes nothing.
 - `chainlog save` with nothing to save (no note, status, tag, title, URL or chain) is refused with an example,
   instead of silently marking the session saved.
+- `chainlog review --auto` saves every unsaved session with an automatic summary in one go (asks first; `--yes`).
 - A mistyped command (`chainlog svae "note"`) is no longer just searched for: chainlog suggests `chainlog save "note"`.
 - `chainlog` shows one tip when Claude Code is installed but not connected (`chainlog setup claude`), in a
   terminal only. `chainlog config set hints off` hides it.

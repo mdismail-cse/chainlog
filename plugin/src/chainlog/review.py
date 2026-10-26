@@ -26,6 +26,22 @@ def unsaved(index, include_all=False):
     return out
 
 
+def auto_save(rt, cfg, s, write):
+    """Save one session with an automatic summary (and its PR chain, if it names one).
+    Returns (summary text, engine used, the chain key or None)."""
+    text, used, why = summarize(rt, s, cfg)
+    data = {"summary": text, "summary_engine": used}
+    if why:
+        data["fallback_reason"] = why
+    if not s["chains"] and cfg.get("auto_chain", True):
+        from chainlog.chain import suggest_key
+        key, src = suggest_key(s)
+        if key:
+            data["chain"], data["chain_source"] = key, src
+    write([new_event(rt, "save", s["ref"], "auto", data)])
+    return text, used, data.get("chain")
+
+
 def interactive(index, sessions, st, ask, write, out, resume_cb, save_cb):
     rt = index.rt
     now = rt.now()
@@ -51,16 +67,7 @@ def interactive(index, sessions, st, ask, write, out, resume_cb, save_cb):
                 out("    " + save_cb(s, note))
                 break
             if choice == "a":
-                text, used, why = summarize(rt, s, index.cfg)
-                data = {"summary": text, "summary_engine": used}
-                if why:
-                    data["fallback_reason"] = why
-                if not s["chains"] and index.cfg.get("auto_chain", True):
-                    from chainlog.chain import suggest_key
-                    key, src = suggest_key(s)
-                    if key:
-                        data["chain"], data["chain_source"] = key, src
-                write([new_event(rt, "save", s["ref"], "auto", data)])
+                text, used, _chain = auto_save(rt, index.cfg, s, write)
                 out("    ◐ auto-saved: %s%s" % (text, st.dim(" (%s)" % used)))
                 break
             if choice == "r":

@@ -130,5 +130,52 @@ class ConnectTip(UxHome):
         self.assertNotIn("tip:", self.list_view())
 
 
+class ReviewAuto(UxHome):
+    def setUp(self):
+        super().setUp()
+        rt = self.make_rt()
+        cfg = config_mod.load(rt)
+        cfg["installed_at"] = NOW - 86400
+        config_mod.save(rt, cfg)
+        self.claude_session(A, NOW - 9000, NOW - 8000, title="Shop PR 4321 refund", pr=4321)
+        self.claude_session(B, NOW - 3000, NOW - 2000, title="Tracker CSV export")
+
+    def test_saves_every_unsaved_session_and_chains_the_pr(self):
+        rt = self.make_rt()
+        code, out, _err, asked = self.run_cli(["review", "--auto"], rt)
+        self.assertEqual((code, asked), (0, 0))  # no terminal: no question
+        self.assertIn("auto-saved 2 sessions", out)
+        idx = load(rt)
+        self.assertEqual({idx.sessions["claude:" + x]["saved"] for x in (A, B)}, {"auto"})
+        self.assertEqual([c["id"] for c in idx.sessions["claude:" + A]["chains"]], ["shop#4321"])
+
+    def test_asks_first_in_a_terminal_and_n_saves_nothing(self):
+        rt = self.make_rt(tty=True)
+        code, out, _err, asked = self.run_cli(["review", "--auto"], rt, answers=["n"])
+        self.assertEqual((code, asked), (1, 1))
+        self.assertIn("nothing was saved", out)
+        self.assertEqual(self.saves(rt), [])
+
+    def test_enter_means_yes_and_yes_flag_skips_the_question(self):
+        rt = self.make_rt(tty=True)
+        self.assertEqual(self.run_cli(["review", "--auto"], rt, answers=[""])[0], 0)
+        self.assertEqual(len(self.saves(rt)), 2)
+        rt2 = self.make_rt(tty=True)
+        code, _o, _e, asked = self.run_cli(["review", "--auto", "--yes"], rt2)  # nothing left to do
+        self.assertEqual((code, asked), (0, 0))
+
+    def test_nothing_unsaved_is_not_an_error(self):
+        rt = self.make_rt()
+        self.run_cli(["review", "--auto"], rt)
+        code, out, _err, _n = self.run_cli(["review", "--auto"], rt)
+        self.assertEqual(code, 0)
+        self.assertIn("nothing to review", out)
+
+    def test_cannot_be_combined_with_json(self):
+        code, _out, err, _n = self.run_cli(["review", "--auto", "--json"])
+        self.assertEqual(code, 1)
+        self.assertIn("can't be combined", err)
+
+
 if __name__ == "__main__":
     unittest.main()
