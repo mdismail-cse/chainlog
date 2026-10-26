@@ -2,9 +2,11 @@
 from __future__ import annotations
 
 import argparse
+import difflib
 import json
 import os
 import re
+import shlex
 import shutil
 import sys
 import time
@@ -186,7 +188,7 @@ def cmd_default(rt, args):
         _p(st.bold("Unsaved") + st.dim("  (ended without a note — chainlog review)"))
         refs += print_rows(rt, st, unsaved, now, 1, widths)
         if len(all_unsaved) > 5:
-            _p(st.dim(" … %d more unsaved — chainlog review" % (len(all_unsaved) - 5)))
+            _p(st.dim(" … %d more unsaved — chainlog review (or: chainlog review --auto)" % (len(all_unsaved) - 5)))
         if cfg["unsaved"]["action"] == "list":
             evs = [new_event(rt, "unsaved.handled", s["ref"], "sweep", {"action": "list", "result": "shown"})
                    for s in unsaved if not s.get("unsaved_handled")]
@@ -196,11 +198,30 @@ def cmd_default(rt, args):
     _p(st.bold("Recent"))
     refs += print_rows(rt, st, recent, now, len(refs) + 1, widths)
     resolve.save_last_list(rt, refs)
+    tip = _setup_tip(rt, cfg, index) if rt.isatty() else None  # people at a terminal only, never scripts or agents
     if _interactive(rt, args):
         _p(st.dim(" (● saved · ◐ auto-saved · ○ not saved · ▶ running)"))
+        if tip:
+            _p(st.yellow(" tip: ") + tip)
         return _choose(rt, st, index, refs)
     _p(st.dim(" (● saved · ◐ auto-saved · ○ not saved · ▶ running)   chainlog resume @N · chainlog save \"note\" · chainlog find TEXT"))
+    if tip:
+        _p(st.yellow(" tip: ") + tip)
     return 0
+
+
+def _setup_tip(rt, cfg, index):
+    """One line that fixes the biggest gap, or None. Without the Claude Code plugin, `chainlog save`
+    can only guess which session you just left. `chainlog config set hints off` silences it."""
+    if not cfg.get("hints", True):
+        return None
+    from chainlog.integrations import components as comp
+    if not shutil.which("claude", path=rt.env.get("PATH")) or comp.claude_plugin_installed(rt):
+        return None
+    if not any(s["harness"] == "claude" for s in index.visible()):
+        return None
+    return ("Claude Code isn't connected, so chainlog can only guess which session you left. "
+            "Fix it in 30 seconds: chainlog setup claude")
 
 
 def _status_arg(value):
@@ -224,6 +245,8 @@ def cmd_save(rt, args):
     chain_arg = args.chain or parsed["chain"]
     no_chain = args.no_chain or parsed["no_chain"]
     tags = (args.tag or []) + parsed["tags"]
+    if not (parsed["note"] or status or tags or args.title or args.url or chain_arg):
+        raise Exit(1, 'nothing to save — add a note, for example:  chainlog save "what you did"')
     index = load(rt, cfg)
 
     reason, kind = "", "exact"
@@ -297,7 +320,8 @@ def cmd_save(rt, args):
         evs = [new_event(rt, "chain.unlink", s["ref"], args.via or "cli", {"chain": c["id"]})
                for c in s["chains"] if c["id"] != data["chain"] and c.get("source") not in ("flag", "user")] + evs
     where = write_events(rt, evs)
-    fresh = load(rt, cfg).sessions.get(s["ref"], s)
+    after = load(rt, cfg)
+    fresh = after.sessions.get(s["ref"], s)
     if args.json:
         _p(json.dumps({"saved": session_json(fresh), "match": {"kind": kind, "reason": reason},
                        "event": ev["id"], "stored": where, "redactions": n_red, "trimmed": trimmed}, indent=2))
@@ -315,6 +339,10 @@ def cmd_save(rt, args):
     _p("%s saved  %s %s  \"%s\"%s" % (st.green("✓"), fresh["harness"], fresh["short"],
                                      ui.fit(fresh["title"]["value"], 70),
                                      ("  status " + ui.status_text(st, status)) if status else ""))
+    if not c and not no_chain and not chain_arg:
+        conflict = chain_mod.key_conflict(s)
+        if conflict:
+            _p("  chain  " + st.yellow("not linked: ") + _conflict_text(conflict, fresh["short"]))
     if c:
         src = {"pr-link": "found the PR link", "title": "PR number in the title", "branch": "PR number in the branch",
                "flag": "you chose it", "CHAINLOG_CHAIN": "from CHAINLOG_CHAIN"}.get(chain_src, "already in it")
@@ -335,17 +363,11 @@ def cmd_save(rt, args):
     if where == "fallback":
         _p(st.dim("  (stored in the fallback spool — the data folder was busy or not writable here; "
                   "the next chainlog command picks it up)"))
-    p = resume.plan(fresh)
-    import shlex as _shlex
-    latest = c and index_after_save_latest(rt, cfg, c["id"]) == fresh["ref"]
-    nxt = "chainlog next %s" % _shlex.quote(c["id"]) if latest else "chainlog resume %s" % fresh["short"]
+    chain = after.chains.get(c["id"]) if c else None
+    latest = bool(chain and chain["members"] and chain["members"][-1]["ref"] == fresh["ref"])
+    nxt = "chainlog next %s" % shlex.quote(c["id"]) if latest else "chainlog resume %s" % fresh["short"]
     _p("  reopen %s" % ui.safe(nxt))
     return 0
-
-
-def index_after_save_latest(rt, cfg, chain_id):
-    chain = load(rt, cfg).chains.get(chain_id)
-    return chain["members"][-1]["ref"] if chain and chain["members"] else None
 
 
 def cmd_ls(rt, args):
@@ -383,9 +405,28 @@ def cmd_find(rt, args):
     index = load(rt, cfg)
     text = _text(" ".join(args.text))
     hits = query.find(index, text, limit=args.n + 200)
-    return _emit_list(rt, hits[: args.n], args.json,
-                      "nothing matches %r — try fewer words, a PR number, or chainlog ls" % text,
+    empty = "nothing matches %r — try fewer words, a PR number, or chainlog ls" % text
+    guess = _command_guess(index, args.text)
+    if guess and hits and not args.json:
+        sys.stderr.write("chainlog: searching for %r. If you meant a command, try:  chainlog %s\n" % (text, guess))
+    elif guess:
+        empty = "nothing matches %r — did you mean:  chainlog %s" % (text, guess)
+    return _emit_list(rt, hits[: args.n], args.json, empty,
                       more=len(hits) - args.n, index=index, args=args)
+
+
+def _command_guess(index, words):
+    """`chainlog svae "r2 done"` is searched as text. If the first word is a near-miss of a command
+    and matches no session by itself, return the command line to suggest, else None."""
+    if not words:
+        return None
+    near = difflib.get_close_matches(words[0].lower(), VISIBLE, n=1, cutoff=0.75)
+    if not near or near[0] == words[0].lower() or query.find(index, words[0], limit=1):
+        return None
+    rest = " ".join(words[1:])
+    if near[0] == "save" and rest:
+        return 'save "%s"' % rest
+    return " ".join([near[0]] + list(words[1:]))
 
 
 def cmd_show(rt, args):
@@ -628,6 +669,8 @@ def cmd_review(rt, args):
     cfg = config_mod.load(rt)
     index = load(rt, cfg)
     sessions = review.unsaved(index, include_all=args.all)
+    if args.auto:
+        return _review_auto(rt, cfg, sessions, args)
     if args.json or not rt.isatty():
         if not args.json:
             sys.stderr.write("chainlog: not a terminal, so printing the unsaved sessions as JSON (review is interactive)\n")
@@ -663,6 +706,45 @@ def cmd_review(rt, args):
         return 0
     review.interactive(index, sessions, st, _ask, lambda evs: write_events(rt, evs), _p, resume_cb, save_cb)
     return 0
+
+
+def _review_auto(rt, cfg, sessions, args):
+    """`chainlog review --auto`: clear the whole backlog at once with automatic summaries."""
+    if args.json:
+        raise Exit(1, "--auto and --json can't be combined")
+    if not sessions:
+        _p("nothing to review — every recent session is saved%s" % (
+            "" if args.all else " (chainlog review --all includes older ones)"))
+        return 0
+    st = ui.Style(rt.color())
+    n = len(sessions)
+    if rt.isatty() and not args.yes:
+        ans = _ask("Save %d unsaved session%s with an automatic summary? You can still add your own note later. [Y/n] "
+                   % (n, "" if n == 1 else "s"))
+        if ans is None or ans.strip().lower().startswith("n"):
+            _p("Cancelled — nothing was saved.")
+            return 1
+    done = unlinked = 0
+    for s in sessions:
+        _summary, _engine, chain, conflict = review.auto_save(rt, cfg, s, lambda evs: write_events(rt, evs))
+        done += 1
+        _p("  %s %s %s  \"%s\"%s" % (st.cyan("◐"), s["harness"], s["short"], ui.fit(s["title"]["value"], 60),
+                                    " → " + ui.safe(chain) if chain else ""))
+        if conflict:
+            _p(st.yellow("      not linked to a PR: ") + _conflict_text(conflict, s["short"]))
+            unlinked += 1
+    _p("%s auto-saved %d session%s. Add your own note to any: chainlog save --id <id> \"note\"" % (
+        st.green("✓"), done, "" if done == 1 else "s"))
+    if unlinked:
+        _p(st.yellow("!") + " %d of them could not be linked to a PR because the PR link and the title disagree (see above)."
+           % unlinked)
+    return 0
+
+
+def _conflict_text(conflict, short):
+    link, text, where = conflict
+    return "the PR link says #%d but the %s says #%d. Choose:  chainlog save --id %s -c <PR number> \"note\"" % (
+        link, where, text, short)
 
 
 def cmd_config(rt, args):
@@ -894,9 +976,13 @@ def build_parser():
 
     rv = sub.add_parser("review", help="go through unsaved sessions one by one",
                         description="For each unsaved session: s = save with a note, a = save with a summary, "
-                                    "r = reopen it, f = hide it from lists (nothing is deleted), n = skip, q = stop.")
+                                    "r = reopen it, f = hide it from lists (nothing is deleted), n = skip, q = stop. "
+                                    "Use --auto to save them all at once.")
     rv.add_argument("--all", action="store_true", help="include sessions from before install / older than lookback")
     rv.add_argument("--json", action="store_true", help="machine-readable output")
+    rv.add_argument("--auto", action="store_true",
+                    help="save every unsaved session with an automatic summary (asks first)")
+    rv.add_argument("--yes", action="store_true", help="with --auto: do not ask")
 
     cf = sub.add_parser("config", help="show or change settings, e.g. config set unsaved.action remind")
     cf.add_argument("action", nargs="?", choices=["list", "get", "set"])
@@ -936,7 +1022,8 @@ def build_parser():
     mn.add_argument("--starred", action="store_true", help="with --find: only among starred sessions")
     sub.add_parser("help")
     # hidden commands must not show in `chainlog --help`
-    sub._choices_actions = [a for a in sub._choices_actions if a.dest not in HIDDEN]
+    if hasattr(sub, "_choices_actions"):  # argparse internals; if they ever change, the hidden commands just show in --help
+        sub._choices_actions = [a for a in sub._choices_actions if a.dest not in HIDDEN]
     return p
 
 

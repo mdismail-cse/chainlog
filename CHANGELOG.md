@@ -18,6 +18,19 @@
   reopen it in Terminal (⌥-click copies the command); hover it to star it or to save it with a note and a result.
   `chainlog setup menubar` builds it from `plugin/menubar/*.swift` (needs `swiftc`) and `chainlog uninstall`
   removes it. Behind it, the hidden `chainlog _menu` prints the lists as JSON (`chainlog.menu/1`, see SCHEMA.md).
+- Fix: secrets in `NAME=value` form were not redacted when the name had a prefix or suffix
+  (`DB_PASSWORD`, `AWS_SECRET_ACCESS_KEY`, `MY_API_TOKEN`, `client_secret`). Also redacted now: quoted JSON keys
+  (`"password": "…"`), `--password x`, `sshpass -p`, `mysql -pSECRET`, `--user_pass=`, `Authorization: Basic …`.
+  `max_tokens=500` and similar are left alone, and redacting twice changes nothing.
+- Fix: a session whose PR link and title name different PRs was filed under the link's PR. chainlog no longer
+  guesses: `save` and `review --auto` say which two numbers disagree, and `-c` still lets you choose.
+- `chainlog save` with nothing to save (no note, status, tag, title, URL or chain) is refused with an example,
+  instead of silently marking the session saved.
+- `chainlog review --auto` saves every unsaved session with an automatic summary in one go (asks first; `--yes`).
+- A mistyped command (`chainlog svae "note"`) is no longer just searched for: chainlog suggests `chainlog save "note"`.
+- `chainlog` shows one tip when Claude Code is installed but not connected (`chainlog setup claude`), in a
+  terminal only. `chainlog config set hints off` hides it.
+- `save` reloads the index once instead of three times; `doctor` and the tip share one "is it connected" check.
 
 - Open a session straight from the list: `chainlog`, `find`, `ls` and `chain KEY` end with
   "Type a number to open it, or words to search" in a terminal (`CHAINLOG_NO_PROMPT=1` turns it off).

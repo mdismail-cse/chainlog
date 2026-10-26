@@ -212,6 +212,7 @@ In `chainlog chain`, `@1` means round 1, `@2` round 2, and so on. Type a round's
 
 A session joins a chain **by itself** when chainlog can see the PR number: from the PR link Claude saw, or from "PR 4321" in the session title.
 If it didn't, use `-c 4321` when you save. Wrong chain? Save again with the right `-c` number.
+If the PR link and the title name **different** PRs, chainlog does not guess: it tells you both numbers and leaves the choice to you.
 
 ## Save without leaving Claude or Codex
 
@@ -268,6 +269,7 @@ During setup you also picked what chainlog does **10 minutes later** if you stil
 
 - **Change your choice:** type `chainlog setup policy` and pick a number.
   For 1 and 3 it then asks to turn on a small background timer: **press Enter**, because these choices need it.
+- **Save a whole pile at once:** `chainlog review --auto` saves every unsaved session with an automatic summary (it asks first; Enter = yes). You can add your own note to any of them later.
 - **Save forgotten sessions one by one:** type `chainlog review`. For each session, press a key:
 
   | Key | Does |
@@ -314,7 +316,7 @@ Read the titles and the "last work" lines. Press **Enter** for the first one, ty
 | Undo my last save or change | `chainlog undo` |
 | Star a session I want to keep close | `chainlog star @N` (see them: `chainlog ls --starred`) |
 | See my sessions from the menu bar (Mac) | `chainlog setup menubar`, then click the icon |
-| Handle sessions I forgot to save | `chainlog review` |
+| Handle sessions I forgot to save | `chainlog review` (or `chainlog review --auto` to save them all) |
 | Change what happens when I forget | `chainlog setup policy` |
 | Check that everything works | `chainlog doctor` |
 
