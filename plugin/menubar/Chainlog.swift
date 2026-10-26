@@ -52,9 +52,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         if CommandLine.arguments.contains("--edit-first") { model.editFirstWhenReady() }
         Launcher.tidy()
         model.refresh()
-        Timer.scheduledTimer(withTimeInterval: CLI.interval, repeats: true) { [weak self] _ in Task { @MainActor in self?.model.refresh() } }
-        NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
-            Task { @MainActor in self?.model.refresh() }
+        // both run on the main thread, and the app lives as long as the process: a plain capture is enough
+        // (a weak `self` used inside a Task is a compile error on Swift 5.9/5.10, the toolchain on macos-14)
+        Timer.scheduledTimer(withTimeInterval: CLI.interval, repeats: true) { _ in MainActor.assumeIsolated { self.model.refresh() } }
+        NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { _ in
+            MainActor.assumeIsolated { self.model.refresh() }
         }
         if CommandLine.arguments.contains("--open-on-launch") { showWhenReady(tries: 0) }
     }

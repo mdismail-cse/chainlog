@@ -213,8 +213,8 @@ final class AppModel: ObservableObject {
         }
         // `chainlog resume` asks before it does these; so does the app (a running session would get a second copy)
         if let w = row.warning, !confirmer("Open this session?", w) { return }
-        if !launcher(row.resume.command, "resume-" + row.short, { [weak self] in
-            Task { @MainActor in self?.say("Could not open the terminal. The command is copied.") }
+        if !launcher(row.resume.command, "resume-" + row.short, {
+            MainActor.assumeIsolated { self.say("Could not open the terminal. The command is copied.") }  // called on the main queue
         }) {
             say("Command copied")  // no terminal to open (or you chose "only copy")
         }
@@ -298,7 +298,7 @@ final class AppModel: ObservableObject {
     func runChainlog(_ args: [String], name: String) {
         guard let exe = CLI.locate() else { say("chainlog was not found"); return }
         let cmd = ([shellQuote(exe)] + args.map(shellQuote)).joined(separator: " ")
-        if !Launcher.open(cmd, name: name, onFailure: { [weak self] in Task { @MainActor in self?.say("Command copied") } }) { say("Command copied") }
+        if !Launcher.open(cmd, name: name, onFailure: { MainActor.assumeIsolated { self.say("Command copied") } }) { say("Command copied") }
     }
 
     func reviewAll() { runChainlog(["review"], name: "review") }
