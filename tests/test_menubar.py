@@ -2,6 +2,9 @@
 import io
 import json
 import os
+import re
+import subprocess
+import sys
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
@@ -131,6 +134,113 @@ class MenuCommand(MenuData):
     def test_the_sample_holds_no_real_paths(self):
         text = (ROOT / "plugin" / "menubar" / "sample.json").read_text()
         self.assertNotIn(os.path.expanduser("~"), text)
+
+
+@unittest.skipUnless(sys.platform == "darwin", "the menu bar app is macOS only")
+class BuildScript(Home):
+    """plugin/menubar/build.sh with stand-ins for swiftc, open, pkill and codesign: installing, replacing
+    and removing without compiling anything or touching a real app. (The stand-ins are made once: macOS
+    vets every freshly written script the first time it runs, which would cost seconds per test.)"""
+
+    @classmethod
+    def setUpClass(cls):
+        import tempfile
+        cls._tmp = tempfile.TemporaryDirectory(prefix="chainlog-shims-")
+        cls.base = Path(cls._tmp.name)
+        cls.write_shim(cls.base, "swiftc", 'out=; while [ $# -gt 0 ]; do [ "$1" = -o ] && out=$2 && shift; shift; done\n'
+                                           '[ -n "$out" ] || exit 2\nprintf "#!/bin/sh\\n" > "$out"; chmod +x "$out"\n')
+        for name in ("open", "pkill", "codesign"):
+            cls.write_shim(cls.base, name, 'echo "%s $*" >> "$CALLS"\n' % name)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls._tmp.cleanup()
+
+    @staticmethod
+    def write_shim(where, name, body):
+        p = Path(where) / name
+        p.write_text("#!/bin/sh\n" + body)
+        p.chmod(0o755)
+
+    def setUp(self):
+        super().setUp()
+        self.extra = self.root / "shims"  # per-test stand-ins, found before the shared ones
+        self.extra.mkdir()
+        self.calls = self.root / "calls.log"
+        self.script = ROOT / "plugin" / "menubar" / "build.sh"
+
+    def shim(self, name, body):
+        self.write_shim(self.extra, name, body)
+
+    def run_build(self, apps, *args):
+        env = dict(os.environ, PATH="%s:%s:%s" % (self.extra, self.base, os.environ["PATH"]),
+                   CHAINLOG_APP_DIR=str(apps), CALLS=str(self.calls))
+        return subprocess.run(["sh", str(self.script), *args], env=env, capture_output=True, text=True, timeout=60)
+
+    def log(self):
+        return self.calls.read_text() if self.calls.exists() else ""
+
+    def test_installs_into_a_path_with_a_space_and_an_apostrophe(self):
+        apps = self.root / "my apps" / "it's here"
+        p = self.run_build(apps, "--install")
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertTrue((apps / "Chainlog.app" / "Contents" / "MacOS" / "Chainlog").exists())
+        self.assertIn("<string>%s</string>" % (ROOT / "plugin" / "VERSION").read_text().strip(),
+                      (apps / "Chainlog.app" / "Contents" / "Info.plist").read_text())
+        self.assertIn("open %s" % (apps / "Chainlog.app"), self.log())
+
+    def test_replacing_leaves_no_staging_folder_behind(self):
+        apps = self.root / "apps"
+        self.run_build(apps, "--install")
+        self.assertEqual(self.run_build(apps, "--install").returncode, 0)
+        self.assertEqual(os.listdir(apps), ["Chainlog.app"])
+
+    def test_a_failed_build_leaves_the_installed_app_and_the_running_one_alone(self):
+        apps = self.root / "apps"
+        self.run_build(apps, "--install")
+        exe = apps / "Chainlog.app" / "Contents" / "MacOS" / "Chainlog"
+        exe.write_text("the app that works")
+        self.calls.unlink()
+        self.shim("swiftc", "echo 'error: simulated' >&2\nexit 1\n")
+        p = self.run_build(apps, "--install")
+        self.assertNotEqual(p.returncode, 0)
+        self.assertIn("build failed", p.stderr)
+        self.assertEqual(exe.read_text(), "the app that works")
+        self.assertNotIn("pkill", self.log(), "the running app must not be quit when the build failed")
+
+    def test_a_folder_that_cannot_be_written_keeps_the_old_app(self):
+        apps = self.root / "ro"
+        exe = apps / "Chainlog.app" / "Contents" / "MacOS" / "Chainlog"
+        exe.parent.mkdir(parents=True)
+        exe.write_text("old")
+        os.chmod(apps, 0o500)
+        try:
+            p = self.run_build(apps, "--install")
+        finally:
+            os.chmod(apps, 0o700)
+        self.assertNotEqual(p.returncode, 0)
+        self.assertIn("cannot write", p.stderr)
+        self.assertEqual(exe.read_text(), "old")
+        self.assertNotIn("pkill", self.log())
+
+    def test_uninstall_quits_and_removes_and_is_harmless_twice(self):
+        apps = self.root / "apps"
+        self.run_build(apps, "--install")
+        for _ in range(2):
+            self.assertEqual(self.run_build(apps, "--uninstall").returncode, 0)
+        self.assertFalse((apps / "Chainlog.app").exists())
+        self.assertIn("pkill -x Chainlog", self.log())
+
+    def test_an_unknown_option_is_refused(self):
+        p = self.run_build(self.root / "apps", "--frobnicate")
+        self.assertNotEqual(p.returncode, 0)
+        self.assertIn("usage", p.stderr)
+
+    def test_only_macos_builds(self):
+        self.shim("uname", "echo Linux\n")
+        p = self.run_build(self.root / "apps", "--install")
+        self.assertNotEqual(p.returncode, 0)
+        self.assertIn("macOS", p.stderr)
 
 
 class SetupMenubar(Home):

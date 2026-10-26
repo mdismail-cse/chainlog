@@ -34,12 +34,18 @@ build() {  # build <output dir>  -> <output dir>/Chainlog.app
 case "${1:-build}" in
   --install)
     tmp=$(mktemp -d "${TMPDIR:-/tmp}/chainlog-menubar.XXXXXX")
-    trap 'rm -rf "$tmp"' EXIT INT TERM
+    stage=
+    trap 'rm -rf "$tmp"; [ -z "$stage" ] || rm -rf "$stage"' EXIT INT TERM
     build "$tmp"
+    # copy next to the final place first: if that fails (disk full, no permission) the app you have stays untouched
+    mkdir -p "$dir" || die "cannot create $dir"
+    stage="$dir/.Chainlog.app.new"
+    rm -rf "$stage"
+    cp -R "$tmp/Chainlog.app" "$stage" || die "cannot write into $dir (the installed app was left as it was)"
     quit_running
-    mkdir -p "$dir"
     rm -rf "$app"
-    cp -R "$tmp/Chainlog.app" "$app"
+    mv "$stage" "$app"
+    stage=
     open "$app"
     printf 'installed %s\n' "$app"
     ;;
@@ -52,7 +58,15 @@ case "${1:-build}" in
     tmp=$(mktemp -d "${TMPDIR:-/tmp}/chainlog-menubar.XXXXXX")
     trap 'rm -rf "$tmp"' EXIT INT TERM
     build "$tmp"
-    "$tmp/Chainlog.app/Contents/MacOS/Chainlog" --dump "$here/sample.json"
+    bin="$tmp/Chainlog.app/Contents/MacOS/Chainlog"
+    out=$("$bin" --dump "$here/sample.json") || die "check failed: --dump exited with an error"
+    printf '%s\n' "$out"
+    for want in "Unsaved · 3" "Recent" "PR chains" "Continue the latest round" "(off) "; do
+      printf '%s\n' "$out" | grep -qF -- "$want" || die "check failed: the menu has no \"$want\""
+    done
+    "$bin" --dump-problem notfound | grep -q "was not found" || die "check failed: the not-found menu is wrong"
+    "$bin" --print-script "echo hi" | head -1 | grep -q -- " -il$" || die "check failed: the terminal script is not an interactive login shell"
+    printf 'menubar check ok\n'
     ;;
   build)
     tmp=$(mktemp -d "${TMPDIR:-/tmp}/chainlog-menubar.XXXXXX")
