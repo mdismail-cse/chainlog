@@ -241,7 +241,7 @@ class BuildScript(Home):
         cls._tmp = tempfile.TemporaryDirectory(prefix="chainlog-shims-")
         cls.base = Path(cls._tmp.name)
         cls.write_shim(cls.base, "swiftc", 'out=; while [ $# -gt 0 ]; do [ "$1" = -o ] && out=$2 && shift; shift; done\n'
-                                           '[ -n "$out" ] || exit 2\nprintf "#!/bin/sh\\n" > "$out"; chmod +x "$out"\n')
+                                           '[ -n "$out" ] || exit 2\nprintf \'#!/bin/sh\\necho "app $*" >> "$CALLS"\\n\' > "$out"; chmod +x "$out"\n')
         for name in ("open", "pkill", "codesign"):
             cls.write_shim(cls.base, name, 'echo "%s $*" >> "$CALLS"\n' % name)
 
@@ -323,6 +323,7 @@ class BuildScript(Home):
             self.assertEqual(self.run_build(apps, "--uninstall").returncode, 0)
         self.assertFalse((apps / "Chainlog.app").exists())
         self.assertIn("pkill -x Chainlog", self.log())
+        self.assertIn("app --unregister", self.log())  # the login item is removed before the app is
 
     def test_an_unknown_option_is_refused(self):
         p = self.run_build(self.root / "apps", "--frobnicate")

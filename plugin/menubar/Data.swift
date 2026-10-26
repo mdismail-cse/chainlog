@@ -37,6 +37,7 @@ struct ChainInfo: Decodable {
 struct Counts: Decodable {
     var unsaved: Int
     var starred: Int
+    var chains: Int     // all of them; `chains` lists the newest 30
 }
 
 struct MenuData: Decodable {
@@ -64,6 +65,10 @@ extension Row: Identifiable {
 
     /// Can this session be reopened? (Claude deletes old transcripts.)
     var canResume: Bool { resume.blockers.isEmpty }
+
+    /// What chainlog itself warns about before reopening (a running session would get a second copy, an archived
+    /// Codex session must be unarchived, the folder may be wrong). `chainlog resume` asks first; so does the app.
+    var warning: String? { resume.notes.isEmpty ? nil : resume.notes.joined(separator: "\n") }
 
     /// "xcloud#8707 r2 · codex · 1h": the second line of a row (the status is shown as a pill next to the title).
     var detail: String {

@@ -130,10 +130,19 @@ struct ChainsList: View {
 
     var body: some View {
         let chains = model.chains
+        let more = model.moreChains
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
-                if !chains.isEmpty { SectionHeader(text: "PR chains · \(chains.count)") }
-                ForEach(Array(chains.enumerated()), id: \.element.id) { i, c in ChainBlock(model: model, chain: c, startOpen: i == 0) }
+                if !chains.isEmpty {
+                    SectionHeader(text: more > 0 && !model.isSearching ? "PR chains · newest \(chains.count) of \(chains.count + more)" : "PR chains · \(chains.count)")
+                }
+                ForEach(Array(chains.enumerated()), id: \.element.id) { i, c in ChainBlock(model: model, chain: c, defaultOpen: i == 0) }
+                if more > 0 && !model.isSearching {
+                    Button { model.runChainlog(["chain"], name: "chains") } label: {
+                        Text("All \(chains.count + more) chains in Terminal…").font(.system(size: 12.5)).foregroundColor(.accentColor)
+                    }
+                    .buttonStyle(.plain).padding(.horizontal, 14).padding(.vertical, 6)
+                }
                 if chains.isEmpty { EmptyState(model: model) }
             }
             .padding(.vertical, 4)
@@ -144,12 +153,12 @@ struct ChainsList: View {
 struct ChainBlock: View {
     @ObservedObject var model: AppModel
     let chain: ChainInfo
-    var startOpen = false  // the newest chain starts expanded
-    @State private var open = false
+    var defaultOpen = false  // the newest chain starts expanded
+    var open: Bool { model.isOpen(chain: chain.id, defaultOpen: defaultOpen) }  // kept in the model: rows scroll in and out of view
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Button { withAnimation(.easeOut(duration: 0.12)) { open.toggle() } } label: {
+            Button { withAnimation(.easeOut(duration: 0.12)) { model.toggle(chain: chain.id, defaultOpen: defaultOpen) } } label: {
                 HStack(spacing: 8) {
                     Image(systemName: open ? "chevron.down" : "chevron.right").font(.system(size: 10, weight: .semibold))
                         .foregroundColor(.secondary).frame(width: 14)
@@ -162,7 +171,6 @@ struct ChainBlock: View {
                 .padding(.horizontal, 12).padding(.vertical, 8).contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .onAppear { if startOpen { open = true } }
             if open {
                 if let latest = chain.members.last, latest.canResume {
                     Button { model.open(latest) } label: {
@@ -338,25 +346,27 @@ struct IconButton: View {
 struct NoteEditor: View {
     @ObservedObject var model: AppModel
     let row: Row
-    @State private var note = ""
-    @State private var status = ""
     @FocusState private var focused: Bool
+    // the text lives in the model, so closing the popover does not throw away what you were writing
+    private var note: Binding<String> { Binding(get: { model.draft(for: row.ref).note }, set: { var d = model.draft(for: row.ref); d.note = $0; model.setDraft(d, for: row.ref) }) }
+    private var status: Binding<String> { Binding(get: { model.draft(for: row.ref).status }, set: { var d = model.draft(for: row.ref); d.status = $0; model.setDraft(d, for: row.ref) }) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            TextField("What happened? (e.g. “refund works, coupon gives 500”)", text: $note, axis: .vertical)
+            TextField("What happened? (e.g. “refund works, coupon gives 500”)", text: note, axis: .vertical)
                 .textFieldStyle(.roundedBorder).lineLimit(1...3).focused($focused)
-                .onSubmit { model.save(row, note: note, status: status.isEmpty ? nil : status) }
+                .onSubmit { model.save(row, note: note.wrappedValue, status: status.wrappedValue.isEmpty ? nil : status.wrappedValue) }
             HStack(spacing: 8) {
-                Picker("", selection: $status) {
+                Picker("", selection: status) {
                     Text("No result").tag("")
                     Text("Pass").tag("pass"); Text("Fail").tag("fail"); Text("Work in progress").tag("wip"); Text("Blocked").tag("blocked")
                 }
                 .labelsHidden().frame(width: 150)
                 Spacer()
                 Button("Cancel") { model.cancelSave() }.keyboardShortcut(.cancelAction)
-                Button("Save") { model.save(row, note: note, status: status.isEmpty ? nil : status) }
-                    .keyboardShortcut(.defaultAction).disabled(note.trimmingCharacters(in: .whitespaces).isEmpty && status.isEmpty)
+                Button("Save") { model.save(row, note: note.wrappedValue, status: status.wrappedValue.isEmpty ? nil : status.wrappedValue) }
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(note.wrappedValue.trimmingCharacters(in: .whitespaces).isEmpty && status.wrappedValue.isEmpty)
             }
         }
         .padding(.horizontal, 14).padding(.vertical, 8)

@@ -455,7 +455,8 @@ def plan_menubar(rt):
     return [Change("menubar", "%s the menu bar app (%s)" % ("update" if app.exists() else "build and install", shown),
                    display="sh %s --install" % script,
                    command=["env", "CHAINLOG_APP_DIR=" + str(app.parent), "sh", str(script), "--install"],
-                   undo_command=["sh", "-c", 'pkill -x Chainlog; rm -rf "$1"', "sh", str(app)])]
+                   undo_command=["sh", "-c", '"$1/Contents/MacOS/Chainlog" --unregister >/dev/null 2>&1; pkill -x Chainlog; rm -rf "$1"',
+                                 "sh", str(app)])]
 
 
 # --- cli link ----------------------------------------------------------------------------------

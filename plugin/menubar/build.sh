@@ -51,6 +51,8 @@ case "${1:-build}" in
     printf 'installed %s\n' "$app"
     ;;
   --uninstall)
+    # take it out of System Settings > Login Items first, while there is still an app to ask
+    [ ! -x "$app/Contents/MacOS/Chainlog" ] || "$app/Contents/MacOS/Chainlog" --unregister >/dev/null 2>&1 || true
     quit_running
     rm -rf "$app"
     printf 'removed %s\n' "$app"
@@ -82,6 +84,9 @@ case "${1:-build}" in
     dump --query zzzz --find-file /dev/null | want "Search is not available" "a failed search is not reported" || exit 1
     "$bin" --dump-problem notfound | want "chainlog was not found" "the not-found state is wrong" || exit 1
     "$bin" --print-script "echo hi" | head -1 | grep -q -- " -il$" || die "check failed: the terminal script is not an interactive login shell"
+    dump --tab chains | want "enter opens: Shop PR 4321 refund, round 3 (r3)" "Enter on the Chains tab does not open the newest round" || exit 1
+    "$bin" --selftest "$here/sample.json" > "$tmp/selftest.txt" || { cat "$tmp/selftest.txt" >&2; die "check failed: the app's own checks (Chainlog --selftest sample.json)"; }
+    tail -1 "$tmp/selftest.txt"
     printf 'menubar check ok\n'
     ;;
   --shots)

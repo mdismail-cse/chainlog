@@ -124,6 +124,45 @@ class AppEndToEnd(Home):
             self.assertEqual(rc, 0, (q[:30], err))
         self.assertFalse(flag.exists())
 
+    def test_the_apps_own_model_checks_pass(self):
+        rc, out, err = self.app("--selftest", str(ROOT / "plugin" / "menubar" / "sample.json"))
+        self.assertEqual(rc, 0, out + err)
+        self.assertIn("selftest passed", out)
+        self.assertNotIn("FAIL", out)
+
+    def test_a_search_that_looks_like_an_option_finds_text(self):
+        self.claude_session("dddd4444-0000-4000-8000-000000000004", NOW - 2 * H, NOW - 1 * H, title="Use the --json flag",
+                            work="ran everything with --json")
+        for q in ("--json", "-v"):
+            d = self.dump("--query", q)
+            self.assertNotIn("Search is not available", d, q)
+        d = self.dump("--query", "--json")
+        self.assertIn("Results · 1", d)
+        self.assertIn("Use the --json flag", d)
+
+    def test_enter_on_the_chains_tab_opens_the_newest_round(self):
+        for i in (0, 3, 6):  # three rounds of PR 5000
+            self.assertEqual(self.app("--act", "save", self.ref(i), "pass", "round %d" % i)[0], 0)
+        d = self.dump("--tab", "chains")
+        self.assertIn("3 rounds", d)
+        self.assertIn("enter opens: Shop PR 5000 review (r3)", d)
+        self.assertEqual(d.splitlines()[-1].count("(r3)"), 1)
+
+    def test_rows_chainlog_warns_about_are_marked_as_asking_first(self):
+        sample = json.loads((ROOT / "plugin" / "menubar" / "sample.json").read_text())
+        sample["recent"][0]["live"] = True
+        sample["recent"][0]["resume"]["notes"] = ["this session is still running (pid 1); resuming opens a second copy."]
+        f = self.root / "warn.json"
+        f.write_text(json.dumps(sample))
+        d = self.dump(str(f))
+        self.assertIn("[running] (asks first) Shop PR 4321 refund, round 3", d)
+        self.assertNotIn("(asks first)", self.dump(str(ROOT / "plugin" / "menubar" / "sample.json")))
+
+    def test_the_login_item_can_be_removed_before_the_app_is_deleted(self):
+        rc, out, _ = self.app("--unregister")
+        self.assertEqual(rc, 0)
+        self.assertIn("login item:", out)
+
     def test_without_chainlog_it_says_so_and_does_not_crash(self):
         env = dict(self.env, CHAINLOG_BIN="/nonexistent/chainlog", HOME=str(self.root / "nohome"), PATH="/usr/bin:/bin")
         p = subprocess.run([self.binary, "--dump"], env=env, capture_output=True, text=True, timeout=60)

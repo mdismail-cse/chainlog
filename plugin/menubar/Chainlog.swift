@@ -13,9 +13,12 @@
 //   --launch NAME COMMAND               do what a click does (opens a terminal window)
 //   --act star|unstar REF | save REF STATUS|- NOTE      do what a button does, print ok/failed
 //   --edit-first                        (with --render or --open-on-launch) open the "save with a note" editor on the first row
+//   --selftest SAMPLE.json              run the model's own checks (drafts, tabs, search, confirmations …); exit 1 on a failure
+//   --unregister                        take the app out of Login Items (run before deleting it)
 //   --open-on-launch                    show the popover once the first answer is in, and keep it open
 import AppKit
 import Combine
+import ServiceManagement
 import SwiftUI
 
 @MainActor
@@ -83,8 +86,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     }
 
     func popoverDidClose(_ notification: Notification) {
-        model.clearSearch()      // the next time starts fresh; the tab you were on is remembered
-        model.cancelSave()
+        model.popoverClosed()    // the next time starts with an empty search; the tab and any half-written note are kept
     }
 }
 
@@ -99,11 +101,12 @@ func arg(_ name: String, in args: [String]) -> String? {
 func dumpModel(_ m: AppModel) {
     func line(_ r: Row) -> String {
         let mark = "[\(r.live ? "running" : (r.saved == "user" ? "saved" : (r.saved == "auto" ? "auto-saved" : "not saved")))]"
-        return "  \(mark) \(r.starred ? "★ " : "")\(r.canResume ? "" : "(can't reopen) ")\(clip(r.title, 60))\(r.statusLabel.map { " <\($0)>" } ?? "") — \(r.detail)"
+        return "  \(mark) \(r.starred ? "★ " : "")\(r.canResume ? "" : "(can't reopen) ")\(r.canResume && r.warning != nil ? "(asks first) " : "")\(clip(r.title, 60))\(r.statusLabel.map { " <\($0)>" } ?? "") — \(r.detail)"
     }
     let counts = Tab.allCases.map { t in "\(t.title)\(m.count(for: t).map { " \($0)" } ?? "")\(t == m.tab ? "*" : "")" }
     print("tabs: " + counts.joined(separator: " | "))
     print("search: \"\(m.query)\"")
+    defer { if m.data != nil { print("enter opens: \(m.visibleRows.first(where: { $0.canResume }).map { clip($0.title, 60) + ($0.round.map { " (r\($0))" } ?? "") } ?? "nothing")") } }
     guard m.data != nil else {
         let p = ProblemView(problem: m.problem)
         print("problem: \(m.problem ?? "loading") — \(p.title). \(p.detail)")
@@ -143,7 +146,7 @@ func headlessModel(_ args: [String]) -> AppModel? {
     if let t = arg("--tab", in: args), let tab = Tab(rawValue: t) { m.tab = tab }
     if let ff = arg("--find-file", in: args) {
         let rows = FileManager.default.contents(atPath: ff).flatMap { try? JSONDecoder().decode(FindData.self, from: $0) }?.results
-        m.finder = { _ in rows }
+        m.finder = { _, _ in rows }
     }
     if let q = arg("--query", in: args) { m.query = q; m.answerSearchNow() }
     if args.contains("--edit-first"), let r = m.visibleRows.first { m.beginSave(r) }
@@ -179,6 +182,16 @@ struct ChainlogMain {
             m.problem = name == "loading" ? nil : name
             dumpModel(m)
             exit(0)
+        }
+        if args.contains("--unregister") {  // before the app is deleted: take it out of System Settings > Login Items
+            let svc = SMAppService.mainApp
+            if svc.status == .enabled { try? svc.unregister() }
+            print("login item: \(svc.status == .enabled ? "still enabled" : "not registered")")
+            exit(0)
+        }
+        if args.contains("--selftest") {
+            let failures = selfTest(sample: arg("--selftest", in: args))
+            exit(failures == 0 ? 0 : 1)
         }
         if args.contains("--dump") || args.contains("--render") {
             guard let m = headlessModel(args) else { FileHandle.standardError.write(Data("could not read menu data\n".utf8)); exit(1) }

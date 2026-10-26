@@ -102,10 +102,13 @@ enum CLI {
         } catch { dbg("decode failed: \(error)"); return (nil, "failed", nil) }
     }
 
-    /// Search every session. nil when chainlog could not answer.
-    static func find(_ text: String) -> [Row]? {
+    static func findArgument(_ text: String) -> String { "--find=" + text }
+
+    /// Search every session (or only the starred ones). nil when chainlog could not answer.
+    /// `--find=TEXT` as one argument: a search that starts with a dash ("--json", "-v") is still text.
+    static func find(_ text: String, starredOnly: Bool = false) -> [Row]? {
         guard let exe = locate() else { return nil }
-        let r = run(exe, ["_menu", "--find", text])
+        let r = run(exe, ["_menu", findArgument(text)] + (starredOnly ? ["--starred"] : []))
         dbg("ran _menu --find %@ -> status \(r.status)".replacingOccurrences(of: "%@", with: clip(text, 20)))
         guard r.status == 0, let out = r.out, let d = try? JSONDecoder().decode(FindData.self, from: out) else { return nil }
         return d.results
@@ -135,6 +138,20 @@ enum Actions {
         var args = ["save", "--id", ref]
         if let s = status, !s.isEmpty { args += ["-s", s] }
         return run(args + ["--", note])
+    }
+}
+
+/// Ask before doing something chainlog itself would ask about.
+enum Alerts {
+    @MainActor
+    static func confirm(_ title: String, _ detail: String, ok: String) -> Bool {
+        NSApp.activate(ignoringOtherApps: true)
+        let a = NSAlert()
+        a.messageText = title
+        a.informativeText = detail
+        a.addButton(withTitle: "Cancel")  // the default: nothing happens unless you say so
+        a.addButton(withTitle: ok)
+        return a.runModal() == .alertSecondButtonReturn
     }
 }
 

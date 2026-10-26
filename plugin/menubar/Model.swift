@@ -23,6 +23,12 @@ struct RowSection: Identifiable {
     var reviewAll: Int? = nil
 }
 
+/// What was typed in a row's "save with a note" editor.
+struct Draft: Equatable {
+    var note = ""
+    var status = ""
+}
+
 enum Layout {
     /// What is shown for a tab. Pure: the same inputs always give the same sections, so tests can print it.
     static func sections(tab: Tab, query: String, data: MenuData, results: [Row]?) -> [RowSection] {
@@ -64,12 +70,14 @@ final class AppModel: ObservableObject {
     @Published var data: MenuData?
     @Published var problem: String?          // nil = fine (or still loading while data == nil)
     @Published var stale = false             // the last refresh failed; `data` is the last good one
-    @Published var tab: Tab = .sessions
+    @Published var tab: Tab = .sessions { didSet { if tab != oldValue && isSearching { queryChanged() } } }  // the search follows the tab
     @Published var query = "" { didSet { if query != oldValue { queryChanged() } } }
     @Published private(set) var results: [Row]?
     @Published private(set) var searching = false
     @Published private(set) var searchFailed = false
     @Published var editing: String?          // ref of the row whose "save with a note" editor is open
+    @Published var drafts: [String: Draft] = [:]  // what was typed there: survives the popover closing
+    @Published var chainOpen: [String: Bool] = [:]  // which chains are expanded (the views come and go; this stays)
     @Published private(set) var toast: String?
     @Published var terminal = TerminalChoice.current
     @Published var loginEnabled = false
@@ -79,8 +87,12 @@ final class AppModel: ObservableObject {
     private var lastRaw: Data?
     private var searchTask: Task<Void, Never>?
     private var toastTask: Task<Void, Never>?
-    /// How a search is answered. Tests replace it with a file.
-    var finder: @Sendable (String) -> [Row]? = { CLI.find($0) }
+    /// How a search is answered (text, only-starred). Tests replace it.
+    var finder: @Sendable (String, Bool) -> [Row]? = { CLI.find($0, starredOnly: $1) }
+    /// Asked before opening a session chainlog warns about. Tests replace it.
+    var confirmer: (String, String) -> Bool = { Alerts.confirm($0, $1, ok: "Open anyway") }
+    /// Opens a terminal with a command. Tests replace it.
+    var launcher: (_ command: String, _ name: String, _ onFailure: @escaping @Sendable () -> Void) -> Bool = { Launcher.open($0, name: $1, onFailure: $2) }
 
     // MARK: what is shown
 
@@ -89,7 +101,9 @@ final class AppModel: ObservableObject {
         return Layout.sections(tab: tab, query: query, data: d, results: results)
     }
     var chains: [ChainInfo] { data.map { Layout.chains(query: query, data: $0) } ?? [] }
-    var visibleRows: [Row] { tab == .chains ? chains.flatMap { $0.members } : sections.flatMap { $0.rows } }
+    /// What Enter opens first: on Chains that is the newest round of the newest chain (the list shows rounds newest first).
+    var visibleRows: [Row] { tab == .chains ? chains.flatMap { $0.members.reversed() } : sections.flatMap { $0.rows } }
+    var moreChains: Int { max(0, (data?.counts.chains ?? 0) - (data?.chains.count ?? 0)) }
     var unsavedCount: Int { data?.counts.unsaved ?? 0 }
     var isSearching: Bool { !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 
@@ -98,7 +112,7 @@ final class AppModel: ObservableObject {
         switch tab {
         case .sessions: return d.counts.unsaved > 0 ? d.counts.unsaved : nil
         case .starred: return d.counts.starred > 0 ? d.counts.starred : nil
-        case .chains: return d.chains.isEmpty ? nil : d.chains.count
+        case .chains: return d.counts.chains > 0 ? d.counts.chains : nil
         }
     }
 
@@ -139,13 +153,15 @@ final class AppModel: ObservableObject {
     func queryChanged() {
         searchTask?.cancel()
         let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        if q.isEmpty { results = nil; searching = false; searchFailed = false; return }
+        // the Chains tab filters the chains it already has: no need to ask chainlog
+        if q.isEmpty || tab == .chains { results = nil; searching = false; searchFailed = false; return }
         searching = true
         let finder = self.finder
+        let starredOnly = tab == .starred
         searchTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: 220_000_000)  // wait for the typing to pause
             if Task.isCancelled { return }
-            let rows = await Task.detached(priority: .userInitiated) { finder(q) }.value
+            let rows = await Task.detached(priority: .userInitiated) { finder(q, starredOnly) }.value
             if Task.isCancelled { return }
             guard let self = self else { return }
             self.results = rows ?? []
@@ -158,14 +174,17 @@ final class AppModel: ObservableObject {
     func answerSearchNow() {
         let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
         searchTask?.cancel()
-        guard !q.isEmpty else { results = nil; return }
-        let rows = finder(q)
+        guard !q.isEmpty, tab != .chains else { results = nil; searching = false; return }
+        let rows = finder(q, tab == .starred)
         results = rows ?? []
         searchFailed = rows == nil
         searching = false
     }
 
     func clearSearch() { query = "" }
+
+    /// The popover closed: the next time starts with an empty search. A note you were typing is kept.
+    func popoverClosed() { clearSearch() }
 
     // MARK: actions
 
@@ -184,7 +203,11 @@ final class AppModel: ObservableObject {
         if copyOnly {
             Launcher.copy(row.resume.command)
             say("Command copied")
-        } else if !Launcher.open(row.resume.command, name: "resume-" + row.short, onFailure: { [weak self] in
+            return
+        }
+        // `chainlog resume` asks before it does these; so does the app (a running session would get a second copy)
+        if let w = row.warning, !confirmer("Open this session?", w) { return }
+        if !launcher(row.resume.command, "resume-" + row.short, { [weak self] in
             Task { @MainActor in self?.say("Could not open the terminal. The command is copied.") }
         }) {
             say("Command copied")  // no terminal to open (or you chose "only copy")
@@ -232,21 +255,32 @@ final class AppModel: ObservableObject {
 
     func beginSave(_ row: Row) { editing = row.ref }
 
+    func draft(for ref: String) -> Draft { drafts[ref] ?? Draft() }
+    func setDraft(_ d: Draft, for ref: String) { drafts[ref] = d }
+
+    func isOpen(chain id: String, defaultOpen: Bool) -> Bool { chainOpen[id] ?? defaultOpen }
+    func toggle(chain id: String, defaultOpen: Bool) { chainOpen[id] = !isOpen(chain: id, defaultOpen: defaultOpen) }
+
     /// Debugging / screenshots: open the note editor on the first row as soon as there are rows.
     func editFirstWhenReady(tries: Int = 0) {
         if let r = visibleRows.first { beginSave(r); return }
         if tries < 60 { DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in self?.editFirstWhenReady(tries: tries + 1) } }
     }
-    func cancelSave() { editing = nil }
+    func cancelSave() { if let e = editing { drafts[e] = nil }; editing = nil }
 
     func save(_ row: Row, note: String, status: String?) {
         let text = note.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty || !(status ?? "").isEmpty else { say("Write a note, or pick a result"); return }
         editing = nil
+        drafts[row.ref] = nil
         DispatchQueue.global(qos: .userInitiated).async {
             let r = Actions.save(ref: row.ref, note: text, status: status)
             DispatchQueue.main.async {
                 MainActor.assumeIsolated {
+                    if !r.ok {  // give the text back: the user should not have to type it again
+                        self.drafts[row.ref] = Draft(note: text, status: status ?? "")
+                        self.editing = row.ref
+                    }
                     self.say(r.ok ? "Saved" : "Could not save: " + clip(r.message, 80))
                     self.refresh()
                     if self.isSearching { self.queryChanged() }  // a saved note can change what the search finds
