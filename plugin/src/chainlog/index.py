@@ -34,7 +34,8 @@ class Index:
                 continue
             if s.get("hidden") and not include_hidden:
                 continue
-            if not include_empty and not s.get("has_prompt") and s["saved"] == "none" and not s["hooks"]:
+            if not include_empty and not s.get("has_prompt") and s["saved"] == "none" and not s["hooks"] \
+                    and not s.get("starred"):
                 continue
             out.append(s)
         out.sort(key=lambda s: s["times"].get("last_activity_at") or 0, reverse=True)

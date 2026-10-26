@@ -67,6 +67,7 @@ Key fields:
 - `ref`, `harness`, `native_id`, `short`
 - `title {value, source}`: the source is one of user > custom > agent > ai > thread > hook > herdr > first-ask > cwd
 - `saved` (`user|auto|none`), `notes[]`, `status`, `tags[]`, `chains[] {id, round, source}`
+- `starred` (a favourite: `star` / `unstar` events; a starred session is listed even when it has no prompt)
 - `cwd`, `git {branch, remote}`, `prs[]`, `urls[]`
 - `times {started_at, last_activity_at, ended_at}`, `end {reason, via}`, `origin`, `lineage`
 - `transcript {path, present, archived}`, `last_ask`, `last_work` (redacted, ≤160 characters)
@@ -78,12 +79,15 @@ New fields may be added within `/1`.
 ## Menu data (`chainlog _menu`, schema `chainlog.menu/1`)
 
 One line of JSON for the Mac menu bar app (hidden command; not part of the public CLI). Top level:
-`schema`, `chainlog` (version), `generated_at`, `counts {unsaved}`, `unsaved[]`, `recent[]`, `chains[]`.
+`schema`, `chainlog` (version), `generated_at`, `counts {unsaved, starred}`, `unsaved[]`, `recent[]`,
+`starred[]`, `chains[]`. `chainlog _menu --find TEXT` adds `query` and `results[]`: every matching session
+(not only the listed ones), best match first, at most 40.
 
 - A row: `ref`, `short`, `harness`, `title` (one clean line), `saved` (`user|auto|none`), `status`, `live`,
-  `chain`, `round`, `at`, `ago`, `last_work`, `resume {cwd, command, blockers[], notes[]}`.
+  `starred`, `chain`, `round`, `at`, `ago`, `last_work`, `resume {cwd, command, blockers[], notes[]}`.
   `resume.command` is ready to run in a shell; a non-empty `blockers` means the session cannot be reopened.
-- `counts.unsaved` is the total; `unsaved[]` holds at most the 8 newest, `recent[]` 8 more, `chains[]` 6.
+- `counts.unsaved` is the total; `unsaved[]` holds at most the 8 newest, `recent[]` 8 more, `chains[]` 6;
+  `starred[]` holds all starred sessions (at most 50), newest activity first.
 - A chain: `id`, `rounds`, `status`, `title`, `ago`, `members[]` (rows, with `round`).
 
 New fields may be added within `/1`; `plugin/menubar/sample.json` shows the shape and is checked by the tests.

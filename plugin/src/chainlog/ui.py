@@ -164,8 +164,9 @@ def row(st, n, s, now, short_w=8, mid_w=None):
     mid += " " * (mid_w - cells(mid_plain))
     age = ago(s["times"].get("last_activity_at"), now)
     used = 1 + 3 + 1 + 1 + 1 + short_w + 1 + 6 + 1 + mid_w + 2 + 2 + cells(age)
-    text = fit(headline(s), max(12, width - used))
-    return "%s%s  %s  %s" % (left, mid, text, st.dim(age))
+    star = s.get("starred")
+    text = fit(headline(s), max(12, width - used - (2 if star else 0)))
+    return "%s%s  %s%s  %s" % (left, mid, (st.yellow("★") + " ") if star else "", text, st.dim(age))
 
 
 def layout(sessions):

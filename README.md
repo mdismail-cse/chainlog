@@ -297,6 +297,7 @@ Read the titles and the "last work" lines. Press **Enter** for the first one, ty
 | Save a note on another session | `chainlog save --id @N "note"` |
 | See everything about a session (all its notes) | `chainlog show @N` |
 | Undo my last save or change | `chainlog undo` |
+| Star a session I want to keep close | `chainlog star @N` (see them: `chainlog ls --starred`) |
 | See my sessions from the menu bar (Mac) | `chainlog setup menubar`, then click the icon |
 | Handle sessions I forgot to save | `chainlog review` |
 | Change what happens when I forget | `chainlog setup policy` |

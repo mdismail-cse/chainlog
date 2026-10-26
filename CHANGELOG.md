@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Starred sessions: `chainlog star REF…` / `unstar REF…` mark favourites, `chainlog ls --starred` lists them, and a
+  ★ shows in every list and in `show`. A star is an event like any other (`chainlog undo` takes it back) and
+  keeps a session in your lists even if it has no prompt. `chainlog _menu` now also returns the starred sessions
+  and, with `--find TEXT`, a search across all sessions (for the menu bar app).
+
 - Mac menu bar app: an icon at the top of the screen with the unsaved count. Click it for your unsaved and recent
   sessions and PR chains; click a session to reopen it in Terminal (⌥-click copies the command). `chainlog setup
   menubar` builds it from `plugin/menubar/Chainlog.swift` (needs `swiftc`) and `chainlog uninstall` removes it.

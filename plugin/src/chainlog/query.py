@@ -8,7 +8,7 @@ from chainlog.config import parse_duration
 
 
 def filter_sessions(index, chain=None, pr=None, here=False, since=None, harness=None, unsaved=False,
-                    saved=False, include_all=False):
+                    saved=False, include_all=False, starred=False):
     rt = index.rt
     now = rt.now()
     out = index.visible(include_empty=include_all)
@@ -56,6 +56,8 @@ def filter_sessions(index, chain=None, pr=None, here=False, since=None, harness=
         out = [s for s in out if s["saved"] == "none" and not s.get("live")]
     if saved:
         out = [s for s in out if s["saved"] != "none"]
+    if starred:
+        out = [s for s in out if s.get("starred")]
     return out
 
 

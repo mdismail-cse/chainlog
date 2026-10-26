@@ -28,8 +28,9 @@ Everything chainlog can do, in detail. For a gentle introduction, start with the
 | `chainlog note REF "text"` | Add a note |
 | `chainlog status REF STATUS` | Set the status: `wip`, `pass`, `fail` or `blocked` |
 | `chainlog tag REF +add -remove` | Add or remove tags |
+| `chainlog star REF…` | Star sessions you want to keep close (favourites); `chainlog unstar REF…` takes them off |
 | `chainlog forget REF` | Hide a session from lists |
-| `chainlog undo` | Revert your last save / note / status / tag / forget |
+| `chainlog undo` | Revert your last save / note / status / tag / star / forget |
 | `chainlog review` | Go through unsaved sessions one by one |
 | `chainlog config …` | Show or change settings |
 | `chainlog setup [PART…]` | Install integrations (asks first) |
@@ -107,6 +108,7 @@ chainlog ls --since 2d          # last 2 days (90m, 12h, 7d …)
 chainlog ls --harness codex     # only Codex (or claude)
 chainlog ls --unsaved           # only sessions without a note
 chainlog ls --saved -n 50       # only saved ones, up to 50 rows
+chainlog ls --starred           # only your starred sessions (★ in every list)
 chainlog ls --all               # include empty sessions (opened, nothing typed)
 chainlog ls --json              # machine-readable
 ```

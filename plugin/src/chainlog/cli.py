@@ -20,12 +20,12 @@ from chainlog.redact import redact
 from chainlog.runtime import Runtime
 from chainlog.store.events import NOTE_MAX, new_event
 
-VISIBLE = ("save", "ls", "find", "show", "resume", "chain", "next", "note", "status", "tag", "forget",
-           "undo", "review", "config", "setup", "uninstall", "doctor", "scan")
+VISIBLE = ("save", "ls", "find", "show", "resume", "chain", "next", "note", "status", "tag", "star", "unstar",
+           "forget", "undo", "review", "config", "setup", "uninstall", "doctor", "scan")
 ALIASES = {"list": "ls", "r": "resume", "chains": "chain"}
 HIDDEN = ("_sweep", "_nudge", "_menu", "help")
 STATUSES = ("wip", "pass", "fail", "blocked")
-UNDOABLE = ("save", "note", "status", "tag", "chain.link", "chain.unlink", "forget")
+UNDOABLE = ("save", "note", "status", "tag", "star", "unstar", "chain.link", "chain.unlink", "forget")
 
 
 class Exit(Exception):
@@ -353,8 +353,8 @@ def cmd_ls(rt, args):
     index = load(rt, cfg)
     out = query.filter_sessions(index, chain=args.chain, pr=args.pr, here=args.here, since=args.since,
                                 harness=args.harness, unsaved=args.unsaved, saved=args.saved,
-                                include_all=args.all)
-    filtered = any((args.chain, args.pr, args.here, args.since, args.harness, args.unsaved, args.saved))
+                                include_all=args.all, starred=args.starred)
+    filtered = any((args.chain, args.pr, args.here, args.since, args.harness, args.unsaved, args.saved, args.starred))
     empty = ("no sessions match these filters" + ("" if args.all else " — try chainlog ls --all")) if filtered \
         else "no sessions indexed yet — run a Claude or Codex session first"
     return _emit_list(rt, out[: args.n], args.json, empty, more=len(out) - args.n, index=index, args=args)
@@ -412,8 +412,9 @@ def cmd_show(rt, args):
     if s.get("live"):
         parts.append(st.green("running"))
     _p("  %s  %s" % (st.dim("when  "), " · ".join(parts)))
-    _p("  %s  %s%s" % (st.dim("saved "), {"user": "yes", "auto": "auto-saved", "none": "no"}[s["saved"]],
-                       ("  status " + ui.status_text(st, s["status"])) if s.get("status") else ""))
+    _p("  %s  %s%s%s" % (st.dim("saved "), {"user": "yes", "auto": "auto-saved", "none": "no"}[s["saved"]],
+                         ("  status " + ui.status_text(st, s["status"])) if s.get("status") else "",
+                         ("  " + st.yellow("★ starred")) if s.get("starred") else ""))
     for c in s["chains"]:
         _p("  %s  %s round %s" % (st.dim("chain "), ui.safe(c["id"]), c.get("round", "?")))
     if s["tags"]:
@@ -577,6 +578,30 @@ def cmd_tag(rt, args):
         raise Exit(1, "tags are words of letters, digits, '.', '_' or '-': %s" % ", ".join(map(repr, bad)))
     label = "tagged %s" % " ".join(["+" + t for t in add] + ["-" + t for t in rem])
     return _write_simple(rt, args, "tag", {"add": add, "remove": rem}, label + ":")
+
+
+def cmd_star(rt, args, on=True):
+    """Star (favourite) sessions so they stay in the Starred list; unstar takes them out again."""
+    index = load(rt)
+    st = ui.Style(rt.color())
+    seen = set()
+    for ref in args.refs:
+        s = one(index, ref)
+        if s["ref"] in seen:
+            continue
+        seen.add(s["ref"])
+        what = "starred" if on else "unstarred"
+        if bool(s.get("starred")) == on:
+            _p("%s already %s %s %s \"%s\"" % (st.dim("="), what, s["harness"], s["short"], ui.fit(s["title"]["value"], 50)))
+            continue
+        write_events(rt, [new_event(rt, "star" if on else "unstar", s["ref"], "cli", {})])
+        _p("%s %s %s %s \"%s\"" % (st.yellow("★") if on else st.green("✓"), what, s["harness"], s["short"],
+                                    ui.fit(s["title"]["value"], 50)))
+    return 0
+
+
+def cmd_unstar(rt, args):
+    return cmd_star(rt, args, on=False)
 
 
 def cmd_forget(rt, args):
@@ -746,7 +771,7 @@ def cmd_nudge(rt, args):
 def cmd_menu(rt, args):
     """The Mac menu bar app polls this: sessions, chains and ready-made resume commands as JSON."""
     index = load(rt, config_mod.load(rt))
-    _p(json.dumps(menu_mod.build(index), indent=None, separators=(",", ":")))
+    _p(json.dumps(menu_mod.build(index, find=args.find), indent=None, separators=(",", ":")))
     return 0
 
 
@@ -819,6 +844,7 @@ def build_parser():
     l.add_argument("--harness", choices=["claude", "codex"])
     l.add_argument("--unsaved", action="store_true")
     l.add_argument("--saved", action="store_true")
+    l.add_argument("--starred", action="store_true", help="only starred sessions")
     l.add_argument("--all", action="store_true", help="include sessions without prompts")
     l.add_argument("-n", type=_positive, default=30, help="max rows (default 30)")
     l.add_argument("--json", action="store_true", help="machine-readable output")
@@ -858,6 +884,10 @@ def build_parser():
     tg = sub.add_parser("tag", help="tag a session: chainlog tag REF +add -remove", epilog=REF_HELP)
     tg.add_argument("ref", metavar="REF")
     tg.add_argument("tags", nargs="*", metavar="+TAG/-TAG")
+    sr = sub.add_parser("star", help="star a session (a favourite); see them with ls --starred", epilog=REF_HELP)
+    sr.add_argument("refs", nargs="+", metavar="REF")
+    us = sub.add_parser("unstar", help="take a session off your starred list", epilog=REF_HELP)
+    us.add_argument("refs", nargs="+", metavar="REF")
     fg = sub.add_parser("forget", help="hide a session from lists (undo restores it)", epilog=REF_HELP)
     fg.add_argument("ref", metavar="REF")
     sub.add_parser("undo", help="revert your last save / note / status / tag / forget")
@@ -901,7 +931,8 @@ def build_parser():
     sw.add_argument("--shell-pid", type=int)
     nd = sub.add_parser("_nudge")
     nd.add_argument("--shell-pid", type=int, required=True)
-    sub.add_parser("_menu")
+    mn = sub.add_parser("_menu")
+    mn.add_argument("--find", metavar="TEXT", help="also search every session for TEXT")
     sub.add_parser("help")
     # hidden commands must not show in `chainlog --help`
     sub._choices_actions = [a for a in sub._choices_actions if a.dest not in HIDDEN]
@@ -911,7 +942,7 @@ def build_parser():
 DISPATCH = {
     "save": cmd_save, "ls": cmd_ls, "find": cmd_find, "show": cmd_show, "resume": cmd_resume,
     "chain": cmd_chain, "next": cmd_next, "note": cmd_note, "status": cmd_status, "tag": cmd_tag,
-    "forget": cmd_forget, "undo": cmd_undo, "review": cmd_review, "config": cmd_config,
+    "star": cmd_star, "unstar": cmd_unstar, "forget": cmd_forget, "undo": cmd_undo, "review": cmd_review, "config": cmd_config,
     "setup": cmd_setup, "uninstall": cmd_uninstall, "doctor": cmd_doctor, "scan": cmd_scan,
     "_sweep": cmd_sweep, "_nudge": cmd_nudge, "_menu": cmd_menu,
 }
