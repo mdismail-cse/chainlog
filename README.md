@@ -212,6 +212,7 @@ In `chainlog chain`, `@1` means round 1, `@2` round 2, and so on. Type a round's
 
 A session joins a chain **by itself** when chainlog can see the PR number: from the PR link Claude saw, or from "PR 4321" in the session title.
 If it didn't, use `-c 4321` when you save. Wrong chain? Save again with the right `-c` number.
+If the PR link and the title name **different** PRs, chainlog does not guess: it tells you both numbers and leaves the choice to you.
 
 ## Save without leaving Claude or Codex
 

@@ -44,26 +44,54 @@ def _folder(session):
     return repo_name(os.path.basename((session.get("cwd") or "").rstrip("/"))) or "pr"
 
 
-def suggest_key(session):
-    """Chain key for a session from strong evidence only, or (None, None):
-    a Claude pr-link, or 'PR #n' in a title / branch when the git remote names the repo."""
+def _link_pr(session):
+    """(repo, number) of the latest PR link Claude recorded for the session, or None."""
     for pr in reversed(session.get("prs") or []):
         if pr.get("source") == "pr-link" and pr.get("number"):
             repo = repo_name(pr.get("repo")) or strong_repo(session)
             if repo:
-                return make_key(repo, pr["number"]), "pr-link"
+                return repo, int(pr["number"])
+    return None
+
+
+def _text_pr(session):
+    """(repo, number, 'title' | 'branch') for a 'PR #n' in a title or branch, when the git remote
+    names the repo; else None."""
     repo = repo_name((session.get("git") or {}).get("remote"))
     if not repo:
-        return None, None  # a folder name is not evidence: clones and worktrees would split chains
+        return None  # a folder name is not evidence: clones and worktrees would split chains
     titles = session.get("titles") or {}
     for src in ("user", "custom", "agent", "ai", "thread"):
         t = titles.get(src)
         m = _PR_IN_TEXT.search(t) if isinstance(t, str) else None
         if m:
-            return make_key(repo, m.group(1)), "title"
+            return repo, int(m.group(1)), "title"
     m = _PR_IN_BRANCH.search(((session.get("git") or {}).get("branch")) or "")
     if m:
-        return make_key(repo, m.group(1)), "branch"
+        return repo, int(m.group(1)), "branch"
+    return None
+
+
+def key_conflict(session):
+    """(number in the PR link, number in the title or branch, 'title' | 'branch') when the two name
+    different PRs, else None. A session that looked at one PR while testing another is common."""
+    link, text = _link_pr(session), _text_pr(session)
+    if link and text and link[1] != text[1]:
+        return link[1], text[1], text[2]
+    return None
+
+
+def suggest_key(session):
+    """Chain key for a session from strong evidence only, or (None, None):
+    a Claude pr-link, or 'PR #n' in a title / branch when the git remote names the repo.
+    When the PR link and the title name different PRs there is no strong evidence: no guess."""
+    if key_conflict(session):
+        return None, None
+    link, text = _link_pr(session), _text_pr(session)
+    if link:
+        return make_key(*link), "pr-link"
+    if text:
+        return make_key(text[0], text[1]), text[2]
     return None, None
 
 

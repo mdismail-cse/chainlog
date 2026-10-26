@@ -6,6 +6,8 @@
   (`DB_PASSWORD`, `AWS_SECRET_ACCESS_KEY`, `MY_API_TOKEN`, `client_secret`). Also redacted now: quoted JSON keys
   (`"password": "…"`), `--password x`, `sshpass -p`, `mysql -pSECRET`, `--user_pass=`, `Authorization: Basic …`.
   `max_tokens=500` and similar are left alone, and redacting twice changes nothing.
+- Fix: a session whose PR link and title name different PRs was filed under the link's PR. chainlog no longer
+  guesses: `save` and `review --auto` say which two numbers disagree, and `-c` still lets you choose.
 - `chainlog save` with nothing to save (no note, status, tag, title, URL or chain) is refused with an example,
   instead of silently marking the session saved.
 - `chainlog review --auto` saves every unsaved session with an automatic summary in one go (asks first; `--yes`).

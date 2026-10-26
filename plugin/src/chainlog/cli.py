@@ -338,6 +338,10 @@ def cmd_save(rt, args):
     _p("%s saved  %s %s  \"%s\"%s" % (st.green("✓"), fresh["harness"], fresh["short"],
                                      ui.fit(fresh["title"]["value"], 70),
                                      ("  status " + ui.status_text(st, status)) if status else ""))
+    if not c and not no_chain and not chain_arg:
+        conflict = chain_mod.key_conflict(s)
+        if conflict:
+            _p("  chain  " + st.yellow("not linked: ") + _conflict_text(conflict, fresh["short"]))
     if c:
         src = {"pr-link": "found the PR link", "title": "PR number in the title", "branch": "PR number in the branch",
                "flag": "you chose it", "CHAINLOG_CHAIN": "from CHAINLOG_CHAIN"}.get(chain_src, "already in it")
@@ -694,15 +698,27 @@ def _review_auto(rt, cfg, sessions, args):
         if ans is None or ans.strip().lower().startswith("n"):
             _p("Cancelled — nothing was saved.")
             return 1
-    done = 0
+    done = unlinked = 0
     for s in sessions:
-        _summary, _engine, chain = review.auto_save(rt, cfg, s, lambda evs: write_events(rt, evs))
+        _summary, _engine, chain, conflict = review.auto_save(rt, cfg, s, lambda evs: write_events(rt, evs))
         done += 1
         _p("  %s %s %s  \"%s\"%s" % (st.cyan("◐"), s["harness"], s["short"], ui.fit(s["title"]["value"], 60),
                                     " → " + ui.safe(chain) if chain else ""))
+        if conflict:
+            _p(st.yellow("      not linked to a PR: ") + _conflict_text(conflict, s["short"]))
+            unlinked += 1
     _p("%s auto-saved %d session%s. Add your own note to any: chainlog save --id <id> \"note\"" % (
         st.green("✓"), done, "" if done == 1 else "s"))
+    if unlinked:
+        _p(st.yellow("!") + " %d of them could not be linked to a PR because the PR link and the title disagree (see above)."
+           % unlinked)
     return 0
+
+
+def _conflict_text(conflict, short):
+    link, text, where = conflict
+    return "the PR link says #%d but the %s says #%d. Choose:  chainlog save --id %s -c <PR number> \"note\"" % (
+        link, where, text, short)
 
 
 def cmd_config(rt, args):

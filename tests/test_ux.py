@@ -177,5 +177,54 @@ class ReviewAuto(UxHome):
         self.assertIn("can't be combined", err)
 
 
+class PrLinkAndTitleDisagree(UxHome):
+    """The session is called 'PR 999' but Claude recorded a link to PR 4321: guessing would file it
+    under the wrong PR, so chainlog says so and leaves the choice to you."""
+
+    def setUp(self):
+        super().setUp()
+        rt = self.make_rt()
+        cfg = config_mod.load(rt)
+        cfg["installed_at"] = NOW - 86400
+        config_mod.save(rt, cfg)
+        self.claude_session(A, NOW - 9000, NOW - 8000, title="Shop PR 999 retest", pr=4321)
+        self.claude_session(B, NOW - 3000, NOW - 2000, title="Shop PR 4321 refund", pr=4321)
+
+    def session(self, sid):
+        return load(self.make_rt()).sessions["claude:" + sid]
+
+    def test_no_key_is_suggested_and_the_conflict_is_named(self):
+        s = self.session(A)
+        self.assertEqual(chain_mod.suggest_key(s), (None, None))
+        self.assertEqual(chain_mod.key_conflict(s), (4321, 999, "title"))
+
+    def test_agreeing_evidence_still_links(self):
+        s = self.session(B)
+        self.assertEqual(chain_mod.suggest_key(s), ("shop#4321", "pr-link"))
+        self.assertIsNone(chain_mod.key_conflict(s))
+
+    def test_save_explains_why_it_did_not_link(self):
+        rt = self.make_rt()
+        code, out, _err, _n = self.run_cli(["save", "--id", A[:8], "retest done"], rt)
+        self.assertEqual(code, 0)
+        self.assertIn("not linked", out)
+        self.assertIn("PR link says #4321 but the title says #999", out)
+        self.assertEqual(self.session(A)["chains"], [])
+
+    def test_choosing_with_c_still_works(self):
+        rt = self.make_rt()
+        self.run_cli(["save", "--id", A[:8], "retest done", "-c", "999"], rt)
+        self.assertEqual([c["id"] for c in self.session(A)["chains"]], ["shop#999"])
+
+    def test_review_auto_saves_it_but_leaves_it_unlinked_and_says_so(self):
+        rt = self.make_rt()
+        code, out, _err, _n = self.run_cli(["review", "--auto"], rt)
+        self.assertEqual(code, 0)
+        self.assertIn("not linked to a PR", out)
+        self.assertIn("1 of them could not be linked", out)
+        self.assertEqual(self.session(A)["chains"], [])
+        self.assertEqual([c["id"] for c in self.session(B)["chains"]], ["shop#4321"])
+
+
 if __name__ == "__main__":
     unittest.main()
