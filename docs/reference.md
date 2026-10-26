@@ -220,10 +220,35 @@ chainlog setup all --yes --policy list    # no questions (scripts / agents, afte
 | `shell` | One marked block in `~/.zshrc` (the "ended unsaved" hint, plus `~/.local/bin` on your PATH if needed) |
 | `policy` | The forgot-to-save question |
 | `scheduler` | A 2-minute background timer for `summarize`/`remind` (a launchd agent, or a systemd timer on Linux) |
+| `menubar` | The Mac menu bar app: `~/Applications/Chainlog.app`, built from `plugin/menubar/Chainlog.swift` on your machine (needs `swiftc`: `xcode-select --install`) |
 
+- `all` leaves out `scheduler` and `menubar`; name them to get them.
 - `--skip PART` leaves a part out.
 - Every edited file is backed up, and existing files keep their formatting.
 - Without a terminal and without `--yes`, setup only shows the plan.
+
+## Menu bar app (macOS)
+
+`chainlog setup menubar` builds and installs `~/Applications/Chainlog.app` (ad-hoc signed, no Dock icon) and opens it.
+Run it again after updating chainlog and it rebuilds the app; `chainlog uninstall` quits and removes it.
+
+| In the menu | What it does |
+|---|---|
+| **Unsaved · N** | Up to 8 unsaved sessions (newest first), then "Review all N unsaved…", which runs `chainlog review` in a terminal |
+| **Recent** | The newest sessions that are not listed above. `▶` = running now |
+| **PR chains** | Each chain, with a submenu of its rounds and "Continue the latest round" |
+| Click a session | Opens it in a new window of the terminal you picked, in its own folder (the same command as `chainlog resume`) |
+| ⌥-click a session | Copies that command instead |
+| **Open sessions in** | Terminal (default), iTerm2 (if installed) or "Only copy the command". Remembered |
+| **Open at login** | Starts the app when you log in |
+
+A session whose transcript Claude Code already deleted is shown dimmed and cannot be reopened.
+The app refreshes when you click it, every minute, and after the Mac wakes. It finds `chainlog` in
+`~/.local/bin`, `/opt/homebrew/bin` or `/usr/local/bin`; set `CHAINLOG_BIN` to use another one. Terminal windows
+start an interactive login shell, so `claude` and `codex` are found on the same PATH as in your own Terminal.
+
+Debugging: `CHAINLOG_MENUBAR_DEBUG=1` prints what the app does to stderr, and
+`Chainlog.app/Contents/MacOS/Chainlog --dump` prints the menu as text without opening a window.
 
 ## doctor, scan, uninstall
 

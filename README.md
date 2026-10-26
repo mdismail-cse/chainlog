@@ -223,6 +223,19 @@ If it didn't, use `-c 4321` when you save. Wrong chain? Save again with the righ
 The first time, Codex asks permission to run chainlog: choose "always allow".
 To find an old session from inside, type `/chainlog:find 4321` in Claude Code, or ask Codex *"find my chainlog session for PR 4321"*.
 
+## See your sessions from the menu bar (Mac)
+
+<img src="docs/images/menubar.svg" alt="The chainlog menu bar app" width="470">
+
+A small icon at the top of your screen shows how many sessions are unsaved. Click it to see your **unsaved** and **recent** sessions and your **PR chains**.
+Click a session to reopen it in a new Terminal window, in its own folder. Hold **⌥** while clicking to copy the command instead.
+
+Get it once: `chainlog setup menubar`. It builds a tiny app on your Mac in about 5 seconds and puts it in `~/Applications`.
+It needs Apple's command line tools (`xcode-select --install`). Nothing is sent anywhere: the app only runs `chainlog` on your computer.
+
+In its menu: **Open at login** starts it with your Mac, and **Open sessions in** chooses Terminal, iTerm2 or "only copy the command".
+Remove it with `chainlog uninstall`.
+
 ## If you forget to save
 
 Forgotten sessions show under **Unsaved** **right away** when you type `chainlog`.
@@ -284,6 +297,7 @@ Read the titles and the "last work" lines. Press **Enter** for the first one, ty
 | Save a note on another session | `chainlog save --id @N "note"` |
 | See everything about a session (all its notes) | `chainlog show @N` |
 | Undo my last save or change | `chainlog undo` |
+| See my sessions from the menu bar (Mac) | `chainlog setup menubar`, then click the icon |
 | Handle sessions I forgot to save | `chainlog review` |
 | Change what happens when I forget | `chainlog setup policy` |
 | Check that everything works | `chainlog doctor` |

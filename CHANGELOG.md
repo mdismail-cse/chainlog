@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Mac menu bar app: an icon at the top of the screen with the unsaved count. Click it for your unsaved and recent
+  sessions and PR chains; click a session to reopen it in Terminal (⌥-click copies the command). `chainlog setup
+  menubar` builds it from `plugin/menubar/Chainlog.swift` (needs `swiftc`) and `chainlog uninstall` removes it.
+  Behind it, the hidden `chainlog _menu` prints the lists as JSON (`chainlog.menu/1`, see SCHEMA.md).
+
 - Open a session straight from the list: `chainlog`, `find`, `ls` and `chain KEY` end with
   "Type a number to open it, or words to search" in a terminal (`CHAINLOG_NO_PROMPT=1` turns it off).
 
