@@ -5,6 +5,7 @@ import argparse
 import json
 import os
 import re
+import shlex
 import shutil
 import sys
 import time
@@ -298,7 +299,8 @@ def cmd_save(rt, args):
         evs = [new_event(rt, "chain.unlink", s["ref"], args.via or "cli", {"chain": c["id"]})
                for c in s["chains"] if c["id"] != data["chain"] and c.get("source") not in ("flag", "user")] + evs
     where = write_events(rt, evs)
-    fresh = load(rt, cfg).sessions.get(s["ref"], s)
+    after = load(rt, cfg)
+    fresh = after.sessions.get(s["ref"], s)
     if args.json:
         _p(json.dumps({"saved": session_json(fresh), "match": {"kind": kind, "reason": reason},
                        "event": ev["id"], "stored": where, "redactions": n_red, "trimmed": trimmed}, indent=2))
@@ -336,17 +338,11 @@ def cmd_save(rt, args):
     if where == "fallback":
         _p(st.dim("  (stored in the fallback spool — the data folder was busy or not writable here; "
                   "the next chainlog command picks it up)"))
-    p = resume.plan(fresh)
-    import shlex as _shlex
-    latest = c and index_after_save_latest(rt, cfg, c["id"]) == fresh["ref"]
-    nxt = "chainlog next %s" % _shlex.quote(c["id"]) if latest else "chainlog resume %s" % fresh["short"]
+    chain = after.chains.get(c["id"]) if c else None
+    latest = bool(chain and chain["members"] and chain["members"][-1]["ref"] == fresh["ref"])
+    nxt = "chainlog next %s" % shlex.quote(c["id"]) if latest else "chainlog resume %s" % fresh["short"]
     _p("  reopen %s" % ui.safe(nxt))
     return 0
-
-
-def index_after_save_latest(rt, cfg, chain_id):
-    chain = load(rt, cfg).chains.get(chain_id)
-    return chain["members"][-1]["ref"] if chain and chain["members"] else None
 
 
 def cmd_ls(rt, args):
@@ -897,7 +893,8 @@ def build_parser():
     nd.add_argument("--shell-pid", type=int, required=True)
     sub.add_parser("help")
     # hidden commands must not show in `chainlog --help`
-    sub._choices_actions = [a for a in sub._choices_actions if a.dest not in HIDDEN]
+    if hasattr(sub, "_choices_actions"):  # argparse internals; if they ever change, the hidden commands just show in --help
+        sub._choices_actions = [a for a in sub._choices_actions if a.dest not in HIDDEN]
     return p
 
 

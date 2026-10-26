@@ -8,6 +8,8 @@
   `max_tokens=500` and similar are left alone, and redacting twice changes nothing.
 - `chainlog save` with nothing to save (no note, status, tag, title, URL or chain) is refused with an example,
   instead of silently marking the session saved.
+- `save` reloads the index once instead of three times, and drops dead code.
+
 - Open a session straight from the list: `chainlog`, `find`, `ls` and `chain KEY` end with
   "Type a number to open it, or words to search" in a terminal (`CHAINLOG_NO_PROMPT=1` turns it off).
 
