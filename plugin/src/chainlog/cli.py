@@ -771,7 +771,7 @@ def cmd_nudge(rt, args):
 def cmd_menu(rt, args):
     """The Mac menu bar app polls this: sessions, chains and ready-made resume commands as JSON."""
     index = load(rt, config_mod.load(rt))
-    _p(json.dumps(menu_mod.build(index, find=args.find), indent=None, separators=(",", ":")))
+    _p(json.dumps(menu_mod.build(index, find=args.find, find_starred=args.starred), indent=None, separators=(",", ":")))
     return 0
 
 
@@ -890,7 +890,7 @@ def build_parser():
     us.add_argument("refs", nargs="+", metavar="REF")
     fg = sub.add_parser("forget", help="hide a session from lists (undo restores it)", epilog=REF_HELP)
     fg.add_argument("ref", metavar="REF")
-    sub.add_parser("undo", help="revert your last save / note / status / tag / forget")
+    sub.add_parser("undo", help="revert your last save / note / status / tag / star / forget")
 
     rv = sub.add_parser("review", help="go through unsaved sessions one by one",
                         description="For each unsaved session: s = save with a note, a = save with a summary, "
@@ -932,7 +932,8 @@ def build_parser():
     nd = sub.add_parser("_nudge")
     nd.add_argument("--shell-pid", type=int, required=True)
     mn = sub.add_parser("_menu")
-    mn.add_argument("--find", metavar="TEXT", help="also search every session for TEXT")
+    mn.add_argument("--find", metavar="TEXT", help="instead of the lists: search every session for TEXT")
+    mn.add_argument("--starred", action="store_true", help="with --find: only among starred sessions")
     sub.add_parser("help")
     # hidden commands must not show in `chainlog --help`
     sub._choices_actions = [a for a in sub._choices_actions if a.dest not in HIDDEN]

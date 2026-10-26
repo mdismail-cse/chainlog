@@ -14,6 +14,7 @@ import shlex
 import shutil
 import sys
 from pathlib import Path
+from xml.parsers.expat import ExpatError
 
 from chainlog.integrations.base import Change, read_text
 from chainlog.paths import safe_open
@@ -439,7 +440,7 @@ def menubar_installed_version(rt):
     try:
         with open(menubar_app(rt) / "Contents" / "Info.plist", "rb") as f:
             return plistlib.load(f).get("CFBundleShortVersionString")
-    except (OSError, ValueError, plistlib.InvalidFileException):
+    except (OSError, ValueError, plistlib.InvalidFileException, ExpatError):  # a half-written plist is "not installed"
         return None
 
 

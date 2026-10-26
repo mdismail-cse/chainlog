@@ -26,7 +26,7 @@ def _blank(ref):
         "last_ask": "", "last_work": "", "first_ask": "", "stats": None,
         "harness_version": None, "entrypoint": None, "interactive": True, "has_prompt": False,
         "live": False, "hidden": False, "summary": None, "unsaved_handled": None, "warnings": [],
-        "child": False, "starred": False, "starred_at": None,
+        "child": False, "starred": False,
     }
 
 
@@ -174,7 +174,6 @@ def _apply(sessions, ev):
         s["chains"] = [c for c in s["chains"] if c["id"] != d.get("chain")]
     elif t == "star":
         s["starred"] = True
-        s["starred_at"] = at
     elif t == "unstar":
         s["starred"] = False
     elif t == "forget":

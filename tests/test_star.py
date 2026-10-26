@@ -149,7 +149,8 @@ class MenuFind(StarHome):
         d = self.menu("--find", "zebra")
         self.assertEqual(d["query"], "zebra")
         self.assertEqual([r["title"] for r in d["results"]], ["Needle in the haystack"])
-        self.assertNotIn("Needle in the haystack", [r["title"] for r in d["unsaved"] + d["recent"]])
+        lists = self.menu()
+        self.assertNotIn("Needle in the haystack", [r["title"] for r in lists["unsaved"] + lists["recent"]])
 
     def test_results_are_best_match_first_with_the_star_flag(self):
         self.run_cli("star", A[:8])
@@ -173,7 +174,7 @@ class MenuFind(StarHome):
         from helpers import ROOT
         sample = json.loads((ROOT / "plugin" / "menubar" / "sample-find.json").read_text())
         live = self.menu("--find", "refund")
-        self.assertEqual(set(sample), {"schema", "query", "results"})
+        self.assertEqual(set(sample), set(live))
         self.assertEqual(set(sample["results"][0]), set(live["results"][0]))
         self.assertEqual(set(sample["results"][0]["resume"]), set(live["results"][0]["resume"]))
 

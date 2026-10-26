@@ -83,7 +83,7 @@ STOPWORDS = {"a", "an", "the", "and", "or", "of", "for", "to", "in", "on", "at",
              "show", "please", "about", "from", "did", "tested", "testing", "test", "last", "earlier"}
 
 
-def find(index, text, limit=30):
+def find(index, text, limit=30, starred=False):
     """Rank sessions by how many search words they contain, then by field weight and recency.
     Filler words ("the session where I tested …") are ignored, so natural phrases work."""
     words = [t for t in re.split(r"[\s,;:!?\"']+", (text or "").lower().strip()) if t]
@@ -93,6 +93,8 @@ def find(index, text, limit=30):
     now = index.rt.now()
     scored = []
     for s in index.visible():
+        if starred and not s.get("starred"):
+            continue  # a starred-only search ranks among the starred, not among everything
         hay = [(w, val.lower()) for (name, val), (_n, w) in zip(_haystacks(s), _FIELDS)]
         total, matched = 0.0, 0
         for tok in tokens:

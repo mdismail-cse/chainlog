@@ -8,10 +8,14 @@ from chainlog.sources import by_name
 
 
 def plan(s, fork=False, here=False, rt=None):
-    src = by_name(s["harness"])
-    argv = src.resume_argv(s["native_id"], fork=fork)
+    try:
+        argv = by_name(s["harness"]).resume_argv(s["native_id"], fork=fork)
+    except KeyError:  # an event for a tool chainlog does not know (hand-edited or from a newer version)
+        argv = []
     cwd = s.get("cwd")
     notes, blockers = [], []
+    if not argv:
+        blockers.append("%r is not a tool chainlog can reopen." % s["harness"])
     if here or not cwd:
         cwd = (rt.env.get("PWD") if rt else None) or os.getcwd()
         if not s.get("cwd"):
@@ -31,6 +35,8 @@ def plan(s, fork=False, here=False, rt=None):
 
 
 def shell_command(p):
+    if not p["argv"]:
+        return ""
     return "cd %s && %s" % (shlex.quote(p["cwd"]), " ".join(shlex.quote(a) for a in p["argv"]))
 
 

@@ -1,5 +1,7 @@
 {
  "schema": "chainlog.menu/1",
+ "chainlog": "0.1.0",
+ "generated_at": 1792400000.0,
  "query": "refund",
  "results": [
   {

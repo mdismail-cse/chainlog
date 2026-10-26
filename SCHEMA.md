@@ -43,6 +43,7 @@ to `${TMPDIR}/chainlog-spool-<uid>/<…>.event.json`. The next writer ingests th
 | `status` | `value: wip\|pass\|fail\|blocked` |
 | `tag` | `add[], remove[]` |
 | `chain.link` / `chain.unlink` | `chain, pos?` |
+| `star` / `unstar` | — (sets `starred` on the session; a starred session is listed even without a prompt) |
 | `forget` / `unforget` | — |
 | `unsaved.handled` | `action, result, due_at`, so the sweep acts once per session |
 | `undo` | `event`: the id of the event being reverted |

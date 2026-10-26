@@ -336,6 +336,93 @@ class BuildScript(Home):
         self.assertIn("macOS", p.stderr)
 
 
+class ReviewFindings(MenuData):
+    """Each of these failed before the code review's fixes."""
+
+    def test_an_event_for_an_unknown_tool_does_not_take_the_menu_down(self):
+        from chainlog.index import write_events
+        from chainlog.store.events import new_event
+        self.claude_session(ID[0], NOW - 3 * H, NOW - 2 * H, title="Shop PR 1 ok")
+        write_events(self.rt, [new_event(self.rt, "star", "foo:bar", "cli", {})])
+        code, out, _err = self.run_cli(["_menu"])
+        self.assertEqual(code, 0)
+        row = next(r for r in json.loads(out)["starred"] if r["ref"] == "foo:bar")
+        self.assertTrue(row["resume"]["blockers"])
+        self.assertEqual(row["resume"]["command"], "")
+        code, _o, err = self.run_cli(["resume", "foo:bar"])
+        self.assertEqual(code, 1)
+        self.assertIn("not a tool chainlog can reopen", err)
+
+    def test_the_age_is_when_it_was_last_worked_on_like_chainlog_ls(self):
+        from chainlog.index import write_events
+        from chainlog.store.events import new_event
+        self.claude_session(ID[0], NOW - 400 * H, NOW - 1 * H, title="Reused session")
+        ev = new_event(self.rt, "hook.end", "claude:" + ID[0], "hook:claude", {"reason": "exit"})
+        ev["ts"] = int((NOW - 100 * H) * 1000)  # it "ended" 100 h ago, then was worked on again
+        write_events(self.rt, [ev])
+        s = load(self.rt).sessions["claude:" + ID[0]]
+        d = self.build()
+        row = (d["unsaved"] + d["recent"])[0]
+        self.assertEqual(s["times"]["ended_at"], NOW - 100 * H)
+        self.assertEqual(row["ago"], "1h")
+        self.assertEqual(row["at"], s["times"]["last_activity_at"])
+
+    def test_a_session_in_two_chains_is_labelled_with_the_chain_it_is_listed_under(self):
+        self.claude_session(ID[0], NOW - 9 * H, NOW - 8 * H, title="Multi")
+        self.run_cli(["save", "--id", ID[0][:8], "r1", "-c", "shop#1"])
+        self.run_cli(["save", "--id", ID[0][:8], "r2", "-c", "shop#2"])
+        by_chain = {c["id"]: c for c in self.build()["chains"]}
+        for key in ("shop#1", "shop#2"):
+            (member,) = by_chain[key]["members"]
+            self.assertEqual((member["chain"], member["round"]), (key, 1), key)
+
+    def test_the_chain_count_is_the_real_total_and_30_are_listed(self):
+        for i in range(35):
+            sid = "%08x-8888-4000-8000-%012x" % (i, i)
+            self.claude_session(sid, NOW - (200 - i) * H, NOW - (199 - i) * H, title="Shop PR %d x" % (7000 + i))
+            self.run_cli(["save", "--id", sid[:8], "r1", "-c", str(7000 + i)])
+        d = self.build()
+        self.assertEqual((d["counts"]["chains"], len(d["chains"])), (35, 30))
+        self.assertEqual(d["chains"][0]["id"], "shop#7034")  # newest first
+
+    def test_a_search_answer_is_only_the_search(self):
+        self.claude_session(ID[0], NOW - 3 * H, NOW - 2 * H, title="Shop PR 1 ok")
+        code, out, _e = self.run_cli(["_menu", "--find", "shop"])
+        self.assertEqual(set(json.loads(out)), {"schema", "chainlog", "generated_at", "query", "results"})
+
+    def test_a_search_that_starts_with_a_dash_works_with_the_equals_form(self):
+        self.claude_session(ID[0], NOW - 3 * H, NOW - 2 * H, title="Use the --json flag", work="ran with --json")
+        for q in ("--json", "-v", "-s fail"):
+            code, out, err = self.run_cli(["_menu", "--find=" + q])
+            self.assertEqual(code, 0, (q, err))
+            self.assertEqual(json.loads(out)["query"], q)
+        code, out, _e = self.run_cli(["_menu", "--find=--json"])
+        self.assertEqual(len(json.loads(out)["results"]), 1)
+
+    def test_a_starred_search_ranks_among_the_starred_not_the_global_top_40(self):
+        for i in range(45):
+            sid = "%08x-9999-4000-8000-%012x" % (i, i)
+            self.claude_session(sid, NOW - (300 - i) * H, NOW - (299 - i) * H, title="Widget session %d" % i, work="the widget")
+        oldest = ["%08x-9999-4000-8000-%012x" % (i, i) for i in range(3)]  # the least recent, so outside the top 40
+        for sid in oldest:
+            self.run_cli(["star", sid[:8]])
+        everything = json.loads(self.run_cli(["_menu", "--find", "widget"])[1])["results"]
+        self.assertEqual(len(everything), 40)
+        self.assertFalse({s[:8] for s in oldest} & {r["short"] for r in everything})
+        starred = json.loads(self.run_cli(["_menu", "--find", "widget", "--starred"])[1])["results"]
+        self.assertEqual({r["short"] for r in starred}, {s[:8] for s in oldest})
+
+    def test_undo_help_names_star_and_the_session_record_has_no_dangling_time(self):
+        line = next(l for l in cli.build_parser().format_help().splitlines() if re.match(r"\s+undo\s", l))
+        self.assertIn("star", line)
+        self.claude_session(ID[0], NOW - 3 * H, NOW - 2 * H, title="x")
+        self.run_cli(["star", ID[0][:8]])
+        self.run_cli(["unstar", ID[0][:8]])
+        j = json.loads(self.run_cli(["show", ID[0][:8], "--json"])[1])
+        self.assertIs(j["starred"], False)
+        self.assertNotIn("starred_at", j)
+
+
 class SetupMenubar(Home):
     def setUp(self):
         super().setUp()
@@ -360,6 +447,15 @@ class SetupMenubar(Home):
         self.assertTrue(ch.command[-2].endswith("menubar/build.sh") and ch.command[-1] == "--install")
         self.assertIn(str(self.apps / "Chainlog.app"), ch.undo_command)
         self.assertIn("build and install", ch.description)
+
+    def test_a_damaged_plist_means_not_installed_and_is_rebuilt(self):
+        plist = self.apps / "Chainlog.app" / "Contents" / "Info.plist"
+        plist.parent.mkdir(parents=True)
+        plist.write_text('<?xml version="1.0"?><plist version="1.0"><dict><key>CFBundleShortVersionString</key><str')
+        with self.darwin():
+            self.assertIsNone(comp.menubar_installed_version(self.rt_()))
+            (ch,) = comp.plan_menubar(self.rt_())
+        self.assertIn("update", ch.description)
 
     def test_nothing_without_a_mac_or_swiftc(self):
         with mock.patch.object(comp.sys, "platform", "linux"):
