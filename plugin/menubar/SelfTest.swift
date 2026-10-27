@@ -208,6 +208,17 @@ func selfTest(sample path: String?) -> Int {
         check("an anchor is never placed off its display", lone.x == 10 && Placement.anchor(click: NSPoint(x: -50, y: 0), visible: NSRect(x: 0, y: 0, width: 300, height: 300), frame: NSRect(x: 0, y: 0, width: 300, height: 300)).x == 4)
     }
 
+    // the click that closed the popover must not reopen it (a transient popover closes on the mouse down)
+    do {
+        let t0 = Date(timeIntervalSince1970: 1_000_000)
+        var g = ToggleGuard()
+        check("a popover that was never closed can be opened", g.shouldOpen(at: t0))
+        g.closed(at: t0)
+        check("the click that closes it (its mouse up 0.15 s later) does not reopen it", !g.shouldOpen(at: t0.addingTimeInterval(0.15)))
+        check("  ... even a slow click (0.5 s)", !g.shouldOpen(at: t0.addingTimeInterval(0.5)))
+        check("a deliberate click a moment later opens it again", g.shouldOpen(at: t0.addingTimeInterval(0.9)))
+    }
+
     // hover: the preview follows the pointer, and a late "exit" never wipes the row you moved onto
     do {
         let m = model()

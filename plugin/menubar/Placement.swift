@@ -3,6 +3,19 @@
 // the wrong place. We anchor under the click instead: the display the click was on, the click's x, just under the menu bar.
 import AppKit
 
+/// A popover that closes when you click elsewhere closes on the MOUSE DOWN on the menu bar icon; the icon's own click
+/// handler then runs, sees it closed, and would open it again, so a second click never closed it. The click that has just
+/// closed the popover must therefore not reopen it.
+struct ToggleGuard {
+    static let window: TimeInterval = 0.6  // longer than a slow click (mouse down to mouse up), shorter than a deliberate reopen
+    private(set) var closedAt: Date?
+    mutating func closed(at time: Date) { closedAt = time }
+    func shouldOpen(at now: Date) -> Bool {
+        guard let c = closedAt else { return true }
+        return now.timeIntervalSince(c) > ToggleGuard.window
+    }
+}
+
 enum Placement {
     static let width: CGFloat = 440
     static let margin: CGFloat = 8

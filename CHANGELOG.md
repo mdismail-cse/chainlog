@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Menu bar app: clicking the icon a second time now closes the popover. A popover that closes when you click elsewhere
+  closes on the mouse down, so the icon's own click then reopened it at once. The click that just closed it is ignored.
+
 - Menu bar app, second display: the popover opens under the icon you clicked, on the display you clicked it on (it used
   to be anchored to the menu bar item, which macOS 26 gives no screen, so it landed at a far edge). Hovering a session
   now shows its summary in a panel at once instead of after the system tooltip's 1–2 s delay. `chainlog setup menubar`

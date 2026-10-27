@@ -16,6 +16,7 @@
 //   --edit-first                        (with --render or --open-on-launch) open the "save with a note" editor on the first row
 //   --selftest SAMPLE.json              run the model's own checks (drafts, tabs, search, confirmations …); exit 1 on a failure
 //   --unregister                        take the app out of Login Items (run before deleting it)
+//   --simulate-reclick                  replay two clicks on the icon and log whether the second closes it
 //   --open-on-launch                    show the popover once the first answer is in, and keep it open
 import AppKit
 import Combine
@@ -28,6 +29,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     let popover = NSPopover()
     let model = AppModel()
     var cancellables = Set<AnyCancellable>()
+    var toggleGuard = ToggleGuard()
     var anchorWindow: NSWindow?  // an invisible 2-pt window the popover hangs from, on the display that was clicked
     let pinned = CommandLine.arguments.contains("--open-on-launch") || ProcessInfo.processInfo.environment["CHAINLOG_MENUBAR_PIN"] != nil
 
@@ -62,6 +64,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             MainActor.assumeIsolated { self.model.refresh() }
         }
         if CommandLine.arguments.contains("--open-on-launch") { showWhenReady(tries: 0) }
+        if CommandLine.arguments.contains("--simulate-reclick") { simulateReclick() }
+    }
+
+    /// Debugging: do what two real clicks on the icon do, and log the outcome ("reclick: closed" is the fixed behaviour).
+    /// Click 1 opens. Click 2: the transient popover closes on mouse down, then the icon's action runs a moment later.
+    func simulateReclick() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            self.toggle(nil)                                   // click 1
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                dbg("reclick: open after click 1 = \(self.popover.isShown)")
+                self.popover.performClose(nil)                 // click 2, mouse down: the popover closes itself
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                    self.toggle(nil)                           // click 2, mouse up: the icon's action
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        dbg("reclick: \(self.popover.isShown ? "STILL OPEN (bug)" : "closed")")
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                            self.toggle(nil)                   // a later, deliberate click opens it again
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                                dbg("reclick: later click reopens = \(self.popover.isShown)")
+                                exit(0)
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
     func updateBadge(_ n: Int) {
@@ -71,7 +99,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     }
 
     @objc func toggle(_ sender: Any?) {
-        if popover.isShown { popover.performClose(sender) } else { show() }
+        if popover.isShown { popover.performClose(sender); return }
+        guard toggleGuard.shouldOpen(at: Date()) else { dbg("that click is what just closed the popover: not reopening it"); return }
+        show()
     }
 
     /// Where the user clicked (tests can say where with CHAINLOG_MENUBAR_ANCHOR=x,y, in screen coordinates).
@@ -128,6 +158,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     }
 
     func popoverDidClose(_ notification: Notification) {
+        toggleGuard.closed(at: Date())
         anchorWindow?.orderOut(nil)
         model.popoverClosed()    // the next time starts with an empty search; the tab and any half-written note are kept
     }
