@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+- Keep what you want: `chainlog keep REF` copies a session (compressed) into chainlog's folder so Claude's cleanup cannot take it.
+  Saving or starring a session does this automatically (`keep.auto`). Reopening a session whose original Claude deleted puts the copy
+  back first (also from the menu bar app and VS Code). `chainlog unkeep`, `ls --kept`, `restore` and `keep --refresh` round it out.
+- `chainlog retention [DAYS]` shows and sets how long Claude keeps transcripts (`cleanupPeriodDays`): it shows the change, warns how
+  many sessions a shorter value would delete, asks, and backs the old file up. Any number of days from 1 to 3650.
+- `chainlog delete REF` deletes a session from Claude, from chainlog, or both (`--from`). It refuses a running session, asks first,
+  and only ever touches `~/.claude/projects/<project>/<session id>.jsonl` and the folder beside it.
+- Menu bar app: sessions you keep say "kept"; right-click → Keep a copy, and Delete… (three scopes, with a confirmation). The app
+  refreshes kept copies at launch and every 20 minutes.
+- The README no longer says chainlog never changes your sessions: these commands do, only when you run them.
+
+- Sessions started in the Claude Code VS Code extension (and the Claude desktop app) are tagged "VS Code" / "Desktop" in the
+  menu bar app, `chainlog show` says where a session started, `chainlog ls --via vscode|desktop|terminal` filters by it, and
+  searching "vscode" finds them. In the app, right-click → "Open in VS Code" reopens an extension session in the extension.
+  They were already imported once each (the extension writes the same transcripts as the CLI); this makes them easy to tell apart.
+
 - Menu bar app: the Sessions tab lists every session (it showed only 16, so most of 182 could only be found by search) and
   its number is the total, not the 11 unsaved from the last 24 h. The Unsaved header now says "last 24 h", and a cut list says
   how many are not shown. `chainlog _menu` returns `counts.all`, `unsaved_window_hours`, and up to 300 other sessions.

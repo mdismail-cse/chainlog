@@ -8,11 +8,13 @@
    "ref": "claude:00000002-0000-0000-0000-000000000000",
    "short": "00000002",
    "harness": "claude",
+   "via": null,
    "title": "Shop PR 4321 refund, round 2",
    "saved": "user",
    "status": "fail",
    "live": false,
    "starred": true,
+   "kept": false,
    "chain": "shop#4321",
    "round": 2,
    "at": 1792310000.0,
@@ -21,6 +23,8 @@
    "resume": {
     "cwd": "/Users/you/work/shop",
     "command": "cd /Users/you/work/shop && claude --resume 00000002-0000-0000-0000-000000000000",
+    "vscode": null,
+    "restores": false,
     "blockers": [],
     "notes": []
    }
@@ -29,11 +33,13 @@
    "ref": "codex:01a2b3c4-0000-0000-0000-000000000003",
    "short": "01a2b3c4",
    "harness": "codex",
+   "via": null,
    "title": "Shop PR 4321 refund, round 3",
    "saved": "user",
    "status": "wip",
    "live": false,
    "starred": false,
+   "kept": false,
    "chain": "shop#4321",
    "round": 3,
    "at": 1792385600.0,
@@ -42,6 +48,8 @@
    "resume": {
     "cwd": "/Users/you/work/shop",
     "command": "cd /Users/you/work/shop && codex resume 01a2b3c4-0000-0000-0000-000000000003",
+    "vscode": null,
+    "restores": false,
     "blockers": [],
     "notes": []
    }
@@ -50,11 +58,13 @@
    "ref": "claude:00000001-0000-0000-0000-000000000000",
    "short": "00000001",
    "harness": "claude",
+   "via": null,
    "title": "Shop PR 4321 refund",
    "saved": "user",
    "status": "pass",
    "live": false,
    "starred": false,
+   "kept": false,
    "chain": "shop#4321",
    "round": 1,
    "at": 1792223600.0,
@@ -63,6 +73,8 @@
    "resume": {
     "cwd": "/Users/you/work/shop",
     "command": "cd /Users/you/work/shop && claude --resume 00000001-0000-0000-0000-000000000000",
+    "vscode": null,
+    "restores": false,
     "blockers": [],
     "notes": []
    }
@@ -71,11 +83,13 @@
    "ref": "claude:00000007-0000-0000-0000-000000000000",
    "short": "00000007",
    "harness": "claude",
+   "via": null,
    "title": "Release 3.2 smoke test",
    "saved": "user",
    "status": "pass",
    "live": false,
    "starred": false,
+   "kept": false,
    "chain": null,
    "round": null,
    "at": 1792115600.0,
@@ -84,6 +98,8 @@
    "resume": {
     "cwd": "/Users/you/work/shop",
     "command": "cd /Users/you/work/shop && claude --resume 00000007-0000-0000-0000-000000000000",
+    "vscode": null,
+    "restores": false,
     "blockers": [
      "the transcript file is gone, so this session cannot be resumed (notes are kept)."
     ],
@@ -94,11 +110,13 @@
    "ref": "claude:00000006-0000-0000-0000-000000000000",
    "short": "00000006",
    "harness": "claude",
+   "via": null,
    "title": "Shop PR 4402 invoice emails",
    "saved": "none",
    "status": null,
    "live": false,
    "starred": false,
+   "kept": false,
    "chain": null,
    "round": null,
    "at": 1792398800.0,
@@ -107,6 +125,8 @@
    "resume": {
     "cwd": "/Users/you/work/shop",
     "command": "cd /Users/you/work/shop && claude --resume 00000006-0000-0000-0000-000000000000",
+    "vscode": null,
+    "restores": false,
     "blockers": [],
     "notes": []
    }
@@ -115,11 +135,13 @@
    "ref": "claude:00000005-0000-0000-0000-000000000000",
    "short": "00000005",
    "harness": "claude",
+   "via": null,
    "title": "Tracker CSV export",
    "saved": "none",
    "status": null,
    "live": false,
    "starred": true,
+   "kept": false,
    "chain": null,
    "round": null,
    "at": 1792395800.0,
@@ -128,6 +150,8 @@
    "resume": {
     "cwd": "/Users/you/work/tracker",
     "command": "cd /Users/you/work/tracker && claude --resume 00000005-0000-0000-0000-000000000000",
+    "vscode": null,
+    "restores": false,
     "blockers": [],
     "notes": []
    }
@@ -136,11 +160,13 @@
    "ref": "claude:00000004-0000-0000-0000-000000000000",
    "short": "00000004",
    "harness": "claude",
+   "via": null,
    "title": "Shop PR 4388 coupon stacking",
    "saved": "none",
    "status": null,
    "live": false,
    "starred": false,
+   "kept": false,
    "chain": null,
    "round": null,
    "at": 1792392800.0,
@@ -149,6 +175,8 @@
    "resume": {
     "cwd": "/Users/you/work/shop",
     "command": "cd /Users/you/work/shop && claude --resume 00000004-0000-0000-0000-000000000000",
+    "vscode": null,
+    "restores": false,
     "blockers": [],
     "notes": []
    }

@@ -14,8 +14,10 @@ import time
 from chainlog import __version__
 from chainlog import chain as chain_mod
 from chainlog import config as config_mod
+from chainlog import delete as delete_mod
+from chainlog import keep as keep_mod
 from chainlog import menu as menu_mod
-from chainlog import query, resolve, resume, review, sweep, ui
+from chainlog import query, resolve, resume, retention as retention_mod, review, sweep, ui
 from chainlog.index import NotSaved, load, write_events
 from chainlog.noteargs import parse as parse_note_args
 from chainlog.redact import redact
@@ -23,7 +25,7 @@ from chainlog.runtime import Runtime
 from chainlog.store.events import NOTE_MAX, new_event
 
 VISIBLE = ("save", "ls", "find", "show", "resume", "chain", "next", "note", "status", "tag", "star", "unstar",
-           "forget", "undo", "review", "config", "setup", "uninstall", "doctor", "scan")
+           "keep", "unkeep", "restore", "delete", "retention", "forget", "undo", "review", "config", "setup", "uninstall", "doctor", "scan")
 ALIASES = {"list": "ls", "r": "resume", "chains": "chain"}
 HIDDEN = ("_sweep", "_nudge", "_menu", "help")
 STATUSES = ("wip", "pass", "fail", "blocked")
@@ -320,6 +322,7 @@ def cmd_save(rt, args):
         evs = [new_event(rt, "chain.unlink", s["ref"], args.via or "cli", {"chain": c["id"]})
                for c in s["chains"] if c["id"] != data["chain"] and c.get("source") not in ("flag", "user")] + evs
     where = write_events(rt, evs)
+    kept_now = _auto_keep(rt, cfg, s)
     after = load(rt, cfg)
     fresh = after.sessions.get(s["ref"], s)
     if args.json:
@@ -339,6 +342,9 @@ def cmd_save(rt, args):
     _p("%s saved  %s %s  \"%s\"%s" % (st.green("✓"), fresh["harness"], fresh["short"],
                                      ui.fit(fresh["title"]["value"], 70),
                                      ("  status " + ui.status_text(st, status)) if status else ""))
+    if kept_now:
+        _p("  %s  a copy (%s), so Claude's cleanup cannot delete it; chainlog unkeep %s drops it" % (
+            st.dim("kept  "), _size_text(kept_now["gz_bytes"]), fresh["short"]))
     if not c and not no_chain and not chain_arg and cfg.get("auto_chain", True):
         conflict = chain_mod.key_conflict(s)
         if conflict:
@@ -375,8 +381,9 @@ def cmd_ls(rt, args):
     index = load(rt, cfg)
     out = query.filter_sessions(index, chain=args.chain, pr=args.pr, here=args.here, since=args.since,
                                 harness=args.harness, unsaved=args.unsaved, saved=args.saved,
-                                include_all=args.all, starred=args.starred)
-    filtered = any((args.chain, args.pr, args.here, args.since, args.harness, args.unsaved, args.saved, args.starred))
+                                include_all=args.all, starred=args.starred, via=args.via, kept=args.kept)
+    filtered = any((args.chain, args.pr, args.here, args.since, args.harness, args.unsaved, args.saved, args.starred,
+                    args.via, args.kept))
     empty = ("no sessions match these filters" + ("" if args.all else " — try chainlog ls --all")) if filtered \
         else "no sessions indexed yet — run a Claude or Codex session first"
     return _emit_list(rt, out[: args.n], args.json, empty, more=len(out) - args.n, index=index, args=args)
@@ -445,7 +452,8 @@ def cmd_show(rt, args):
     _p("  %s  %s%s" % (st.dim("where "), ui.home(rt, s.get("cwd") or "?"),
                        ("  " + ui.safe(git["branch"])) if git.get("branch") else ""))
     t = s["times"]
-    parts = ["started %s" % ui.ago_phrase(t.get("started_at"), now)] if t.get("started_at") else []
+    where = {"vscode": " in VS Code", "desktop": " in the desktop app"}.get(resume.origin(s)[0], "")
+    parts = ["started %s%s" % (ui.ago_phrase(t.get("started_at"), now), where)] if t.get("started_at") else []
     parts.append("last activity %s" % ui.ago_phrase(t.get("last_activity_at"), now))
     if t.get("ended_at"):
         reason = s["end"].get("reason")
@@ -473,12 +481,14 @@ def cmd_show(rt, args):
         x = s["stats"]
         _p("  %s  $%.2f · +%s/−%s lines" % (st.dim("stats "), x["cost_usd"] or 0, x.get("lines_added") or 0,
                                             x.get("lines_removed") or 0))
-    if s["harness"] == "claude" and s["transcript"].get("present"):
-        from chainlog.sources.claude import retention_days
-        left = retention_days(rt) - (now - (t.get("last_activity_at") or now)) / 86400.0
-        if left < 7:
-            p["notes"].append("Claude deletes this transcript in about %d day%s (cleanupPeriodDays); resume or "
-                              "raise cleanupPeriodDays in ~/.claude/settings.json to keep it" % (max(0, left), "" if int(left) == 1 else "s"))
+    m = keep_mod.meta(rt, s)
+    if m:
+        _p("  %s  a copy (%s) is kept%s" % (st.dim("kept  "), _size_text(m["gz_bytes"]),
+                                           "" if s["transcript"].get("present") else ": Claude's original is gone, resuming restores it"))
+    left = keep_mod.days_left(rt, s)
+    if left is not None and left < 7 and not m:
+        p["notes"].append("Claude deletes this transcript in about %d day%s (cleanupPeriodDays); keep a copy with: chainlog keep %s "
+                          "(or lengthen it: chainlog retention DAYS)" % (max(0, left), "" if int(left) == 1 else "s", s["short"]))
     for msg in p["notes"] + p["blockers"]:
         _p("  " + st.yellow("! " + msg))
     tail = "" if copied is None else (st.dim("   (copied)") if copied else st.yellow("   (could not copy: no clipboard tool)"))
@@ -510,6 +520,12 @@ def _do_resume(rt, s, fork=False, print_only=False, here=False):
         ans = _ask("  open a second copy anyway? [y/N] ")
         if not ans or ans.strip().lower() != "y":
             return 1
+    if p.get("restore"):
+        try:
+            keep_mod.restore(rt, s)
+        except keep_mod.KeepError as e:
+            raise Exit(1, str(e))
+        sys.stderr.write(st.dim("→ Claude had deleted it; restored your kept copy\n"))
     sys.stderr.write(st.dim("→ %s\n" % resume.shell_command(p)))
     try:
         resume.execute(p)
@@ -638,11 +654,211 @@ def cmd_star(rt, args, on=True):
         write_events(rt, [new_event(rt, "star" if on else "unstar", s["ref"], "cli", {})])
         _p("%s %s %s %s \"%s\"" % (st.yellow("★") if on else st.green("✓"), what, s["harness"], s["short"],
                                     ui.fit(s["title"]["value"], 50)))
+        m = _auto_keep(rt, config_mod.load(rt), s) if on else None
+        if m:
+            _p("  %s  a copy (%s), so Claude's cleanup cannot delete it" % (st.dim("kept  "), _size_text(m["gz_bytes"])))
     return 0
 
 
 def cmd_unstar(rt, args):
     return cmd_star(rt, args, on=False)
+
+
+def _size_text(n):
+    return "%.1f MB" % (n / 1e6) if n >= 1e6 else "%d KB" % max(1, round(n / 1e3)) if n else "0 KB"
+
+
+def _auto_keep(rt, cfg, s):
+    """Saving or starring a session means you want it: keep a copy Claude's cleanup cannot delete (config keep.auto).
+    Returns the stored details, or None when nothing was kept. Never makes the command fail."""
+    if not (cfg.get("keep") or {}).get("auto", True) or s["harness"] != "claude" or s.get("kept") and keep_mod.has_copy(rt, s):
+        return None
+    try:
+        m = keep_mod.keep(rt, s)
+    except keep_mod.KeepError:
+        return None  # e.g. Claude already deleted it: nothing to copy
+    write_events(rt, [new_event(rt, "keep", s["ref"], "cli", {"bytes": m["gz_bytes"], "auto": True})])
+    return m
+
+
+def cmd_keep(rt, args):
+    """Keep a copy of sessions so Claude's cleanup (cleanupPeriodDays) cannot delete them."""
+    index = load(rt)
+    st = ui.Style(rt.color())
+    if args.refresh:
+        done, failed = keep_mod.refresh(rt, index.sessions.values())
+        for ref, why in failed:
+            _err("%s: %s" % (ref, why))
+        if not args.quiet:
+            _p("refreshed %d kept cop%s" % (len(done), "y" if len(done) == 1 else "ies") if done else "kept copies are up to date")
+        return 1 if failed else 0
+    if not args.refs:
+        raise Exit(1, "usage: chainlog keep REF [REF …]   (chainlog ls --kept lists them; --refresh updates the copies)")
+    code, seen = 0, set()
+    for ref in args.refs:
+        s = one(index, ref)
+        if s["ref"] in seen:
+            continue
+        seen.add(s["ref"])
+        try:
+            m = keep_mod.keep(rt, s)
+        except keep_mod.KeepError as e:
+            _err("%s %s: %s" % (s["harness"], s["short"], e))
+            code = 1
+            continue
+        if not s.get("kept"):
+            write_events(rt, [new_event(rt, "keep", s["ref"], "cli", {"bytes": m["gz_bytes"]})])
+        _p("%s kept  %s %s  \"%s\"  %s → %s" % (st.green("✓"), s["harness"], s["short"], ui.fit(s["title"]["value"], 50),
+                                              _size_text(m["size"]), _size_text(m["gz_bytes"])))
+        left = keep_mod.days_left(rt, s)
+        if left is not None:
+            _p(st.dim("  Claude deletes the original in about %d day%s; the copy stays until: chainlog unkeep %s"
+                      % (max(0, left), "" if int(left) == 1 else "s", s["short"])))
+    return code
+
+
+def cmd_unkeep(rt, args):
+    """Delete the kept copy of sessions (the originals are not touched)."""
+    index = load(rt)
+    st = ui.Style(rt.color())
+    code = 0
+    for ref in dict.fromkeys(args.refs):
+        s = one(index, ref)
+        if not (s.get("kept") or keep_mod.has_copy(rt, s)):
+            _p("%s not kept  %s %s \"%s\"" % (st.dim("="), s["harness"], s["short"], ui.fit(s["title"]["value"], 50)))
+            continue
+        if not s["transcript"].get("present") and not args.yes:
+            # Claude's original is gone: this copy is all that is left of the conversation
+            if not rt.isatty():
+                _err("%s %s: Claude's original is gone, so this copy is all that is left; add --yes to delete it" % (s["harness"], s["short"]))
+                code = 1
+                continue
+            ans = _ask("  %s %s: Claude's original is gone, so this copy is all that is left. Delete it? [y/N] " % (s["harness"], s["short"]))
+            if not ans or ans.strip().lower() != "y":
+                continue
+        freed = keep_mod.remove(rt, s)
+        write_events(rt, [new_event(rt, "unkeep", s["ref"], "cli", {})])
+        _p("%s no longer kept  %s %s  \"%s\"  (%s freed)" % (st.green("✓"), s["harness"], s["short"],
+                                                           ui.fit(s["title"]["value"], 50), _size_text(freed)))
+    return code
+
+
+def cmd_restore(rt, args):
+    """Put a kept copy back where Claude looks for it (resume does this by itself)."""
+    index = load(rt)
+    s = one(index, args.ref)
+    try:
+        dest = keep_mod.restore(rt, s)
+    except keep_mod.KeepError as e:
+        raise Exit(1, str(e))
+    _p("restored your kept copy of %s %s" % (s["harness"], s["short"]) if dest else "%s %s is already where Claude keeps it" % (s["harness"], s["short"]))
+    return 0
+
+
+def cmd_delete(rt, args):
+    """Delete sessions from Claude (its transcript), from chainlog (the kept copy, hidden from lists), or both."""
+    index = load(rt)
+    st = ui.Style(rt.color())
+    sessions = []
+    for ref in args.refs:
+        s = one(index, ref)
+        if all(s["ref"] != x["ref"] for x in sessions):
+            sessions.append(s)
+    plans = [(s, delete_mod.plan(rt, s, args.where)) for s in sessions]
+    refused = [(s, p) for s, p in plans if p["refused"]]
+    for s, p in refused:
+        _err("%s %s: %s" % (s["harness"], s["short"], p["refused"]))
+    if refused:
+        return 1  # nothing is deleted unless every session can be
+    for s, p in plans:
+        _p("%s %s  \"%s\"" % (st.bold(s["harness"]), s["short"], ui.fit(s["title"]["value"], 60)))
+        for path, n in p["claude"]:
+            _p("  %s  %s  (%s)" % (st.dim("Claude "), ui.home(rt, path), _size_text(n)))
+        if args.where in ("both", "claude") and s["harness"] == "claude" and not p["claude"]:
+            _p("  %s  nothing left (it is already deleted)" % st.dim("Claude "))
+        if p["kept"]:
+            _p("  %s  %s" % (st.dim("kept   "), _size_text(p["kept"])))
+        if p["chainlog"]:
+            _p("  %s  hidden from every list (chainlog undo brings it back); its notes stay in the log" % st.dim("chainlog"))
+    if not args.yes:
+        if not rt.isatty():
+            raise Exit(1, "this deletes files and cannot be undone; add --yes to do it without asking")
+        ans = _ask("Delete %s? This cannot be undone. [y/N] " % ("this session" if len(sessions) == 1 else "these %d sessions" % len(sessions)))
+        if not ans or ans.strip().lower() != "y":
+            _p("nothing deleted")
+            return 1
+    for s, p in plans:
+        try:
+            freed = delete_mod.carry_out(rt, s, args.where)
+        except OSError as e:
+            _err("%s %s: could not delete everything: %s" % (s["harness"], s["short"], e))
+            return 1
+        if p["chainlog"]:
+            evs = [new_event(rt, "unkeep", s["ref"], "cli", {})] if s.get("kept") else []
+            if not s.get("hidden"):
+                evs.append(new_event(rt, "forget", s["ref"], "cli", {"deleted": True}))
+            if evs:
+                write_events(rt, evs)
+        _p("%s deleted  %s %s  (%s from Claude, %s of kept copy)" % (st.green("✓"), s["harness"], s["short"],
+                                                                    _size_text(freed["claude_bytes"]), _size_text(freed["kept_bytes"])))
+    return 0
+
+
+def cmd_retention(rt, args):
+    """Show or set how long Claude keeps transcripts (cleanupPeriodDays)."""
+    index = load(rt)
+    st = ui.Style(rt.color())
+    text = retention_mod.read(rt)
+    try:
+        json.loads(text or "{}")
+    except ValueError:
+        raise Exit(1, "%s is not valid JSON, so chainlog will not touch it (fix it, then run this again)" % ui.home(rt, retention_mod.path(rt)))
+    days = retention_mod.current(text)
+    shown = days or retention_mod.DEFAULT
+    rows = [(s, keep_mod.days_left(rt, s)) for s in index.visible(include_empty=True, include_hidden=True)
+            if s["harness"] == "claude" and s["transcript"].get("present")]
+    rows = [(s, d) for s, d in rows if d is not None]
+    if args.days is None and not args.default:
+        _p("Claude keeps a transcript for %s after the session was last used." % st.bold("%d days" % shown))
+        _p(st.dim("  cleanupPeriodDays in %s %s" % (ui.home(rt, retention_mod.path(rt)),
+                                                    "(set by you)" if days else "is not set: Claude's own default is %d" % retention_mod.DEFAULT)))
+        if rows:
+            soon = [(s, d) for s, d in rows if d < 14]
+            _p("  %d sessions are on disk; the oldest goes in %d days" % (len(rows), max(0, min(d for _s, d in rows))))
+            if soon:
+                unkept = [s for s, _d in soon if not keep_mod.has_copy(rt, s)]
+                _p("  %s %d expire within 14 days (%d without a kept copy)" % (st.yellow("!"), len(soon), len(unkept)))
+        _p(st.dim("  Change it: chainlog retention DAYS     Keep one for good: chainlog keep REF"))
+        return 0
+    new = None if args.default else args.days
+    if new is not None and not 1 <= new <= retention_mod.MAXIMUM:
+        raise Exit(1, "days must be between 1 and %d" % retention_mod.MAXIMUM)
+    try:
+        after = retention_mod.edit(text, new)
+    except ValueError as e:
+        raise Exit(1, "%s: %s" % (ui.home(rt, retention_mod.path(rt)), e))
+    target = new or retention_mod.DEFAULT
+    if after == text:
+        _p("already %s" % ("%d days" % new if new else "Claude's default (%d days)" % retention_mod.DEFAULT))
+        return 0
+    import difflib
+    name = ui.home(rt, retention_mod.path(rt))
+    _p("".join(difflib.unified_diff((text or "").splitlines(keepends=True), after.splitlines(keepends=True), fromfile=name, tofile=name)).rstrip("\n"))
+    doomed = [s for s, d in rows if d is not None and d - shown + target <= 0]
+    if target < shown and doomed:
+        lost = [s for s in doomed if not keep_mod.has_copy(rt, s)]
+        _p(st.yellow("! %d of your sessions are older than %d days; Claude deletes them the next time it starts (%d have no kept copy: chainlog keep REF first)."
+                     % (len(doomed), target, len(lost))))
+    if not args.yes:
+        if not rt.isatty():
+            raise Exit(1, "this edits %s; add --yes to do it without asking" % name)
+        ans = _ask("Write this? [y/N] ")
+        if not ans or ans.strip().lower() != "y":
+            _p("nothing changed")
+            return 1
+    backup = retention_mod.write(rt, text, after)
+    _p("%s Claude will keep transcripts for %d days from now on%s" % (st.green("✓"), target, st.dim("  (old file saved as %s)" % ui.home(rt, str(backup))) if backup else ""))
+    return 0
 
 
 def cmd_forget(rt, args):
@@ -817,6 +1033,10 @@ def cmd_sweep(rt, args):
         return 0
     mode = "tty" if args.tty else ("cron" if args.cron or args.background else "cmd")
     index = load(rt, cfg)
+    try:
+        keep_mod.refresh(rt, index.sessions.values())  # sessions you kept keep growing: bring the copies up to date
+    except Exception:  # never let a copy problem stop the sweep
+        pass
     lines = sweep.run(index, mode=mode)
     if mode == "tty":
         st = ui.Style(rt.color())
@@ -930,9 +1150,11 @@ def build_parser():
     l.add_argument("--here", action="store_true", help="this folder / repository only")
     l.add_argument("--since", metavar="AGE", help="e.g. 7d, 12h, 90m")
     l.add_argument("--harness", choices=["claude", "codex"])
+    l.add_argument("--via", choices=["terminal", "vscode", "desktop"], help="where the session was started")
     l.add_argument("--unsaved", action="store_true")
     l.add_argument("--saved", action="store_true")
     l.add_argument("--starred", action="store_true", help="only starred sessions")
+    l.add_argument("--kept", action="store_true", help="only sessions you keep a copy of")
     l.add_argument("--all", action="store_true", help="include sessions without prompts")
     l.add_argument("-n", type=_positive, default=30, help="max rows (default 30)")
     l.add_argument("--json", action="store_true", help="machine-readable output")
@@ -976,6 +1198,35 @@ def build_parser():
     sr.add_argument("refs", nargs="+", metavar="REF")
     us = sub.add_parser("unstar", help="take a session off your starred list", epilog=REF_HELP)
     us.add_argument("refs", nargs="+", metavar="REF")
+    kp = sub.add_parser("keep", help="keep a copy of a session so Claude's cleanup cannot delete it", epilog=REF_HELP,
+                        description="Claude Code deletes transcripts after cleanupPeriodDays (default 30). A kept session is "
+                                    "copied (compressed) into chainlog's folder, and resuming it puts the copy back if "
+                                    "Claude deleted the original. Saving or starring a session keeps it automatically "
+                                    "(chainlog config set keep.auto false turns that off).")
+    kp.add_argument("refs", nargs="*", metavar="REF")
+    kp.add_argument("--refresh", action="store_true", help="bring the copies you have up to date (a session you kept may have grown)")
+    kp.add_argument("--quiet", action="store_true", help=argparse.SUPPRESS)
+    uk = sub.add_parser("unkeep", help="delete the kept copy of a session (the original is not touched)", epilog=REF_HELP)
+    uk.add_argument("refs", nargs="+", metavar="REF")
+    uk.add_argument("--yes", action="store_true", help="do not ask, even when the copy is all that is left")
+    rs = sub.add_parser("restore", help="put a kept copy back where Claude looks for it (resume does this itself)", epilog=REF_HELP)
+    rs.add_argument("ref", metavar="REF")
+    dl = sub.add_parser("delete", help="delete sessions from Claude, from chainlog, or both", epilog=REF_HELP,
+                        description="Deletes Claude's transcript for a session (and the folder of sub-agent output next to it) "
+                                    "and/or chainlog's side: the kept copy, and the session is hidden from every list "
+                                    "(chainlog undo brings the listing back). A running session is refused. Cannot be undone "
+                                    "for the files.")
+    dl.add_argument("refs", nargs="+", metavar="REF")
+    dl.add_argument("--from", dest="where", choices=delete_mod.WHERE, default="both",
+                    help="both (default), claude (keep chainlog's copy), or chainlog (leave Claude's file)")
+    dl.add_argument("--yes", action="store_true", help="do not ask")
+    rn = sub.add_parser("retention", help="show or set how long Claude keeps transcripts (cleanupPeriodDays)",
+                        description="With no argument: how long Claude keeps a session after you last used it, and what expires "
+                                    "soon. With DAYS (1-%d): sets cleanupPeriodDays in ~/.claude/settings.json after showing "
+                                    "the change; --default removes it (Claude then uses 30)." % retention_mod.MAXIMUM)
+    rn.add_argument("days", nargs="?", type=_positive, metavar="DAYS")
+    rn.add_argument("--default", action="store_true", help="remove the setting (Claude's own default is 30 days)")
+    rn.add_argument("--yes", action="store_true", help="do not ask")
     fg = sub.add_parser("forget", help="hide a session from lists (undo restores it)", epilog=REF_HELP)
     fg.add_argument("ref", metavar="REF")
     sub.add_parser("undo", help="revert your last save / note / status / tag / star / forget")
@@ -1036,7 +1287,8 @@ def build_parser():
 DISPATCH = {
     "save": cmd_save, "ls": cmd_ls, "find": cmd_find, "show": cmd_show, "resume": cmd_resume,
     "chain": cmd_chain, "next": cmd_next, "note": cmd_note, "status": cmd_status, "tag": cmd_tag,
-    "star": cmd_star, "unstar": cmd_unstar, "forget": cmd_forget, "undo": cmd_undo, "review": cmd_review, "config": cmd_config,
+    "star": cmd_star, "unstar": cmd_unstar, "keep": cmd_keep, "unkeep": cmd_unkeep, "restore": cmd_restore,
+    "delete": cmd_delete, "retention": cmd_retention, "forget": cmd_forget, "undo": cmd_undo, "review": cmd_review, "config": cmd_config,
     "setup": cmd_setup, "uninstall": cmd_uninstall, "doctor": cmd_doctor, "scan": cmd_scan,
     "_sweep": cmd_sweep, "_nudge": cmd_nudge, "_menu": cmd_menu,
 }

@@ -44,6 +44,7 @@ to `${TMPDIR}/chainlog-spool-<uid>/<…>.event.json`. The next writer ingests th
 | `tag` | `add[], remove[]` |
 | `chain.link` / `chain.unlink` | `chain, pos?` |
 | `star` / `unstar` | — (sets `starred` on the session; a starred session is listed even without a prompt) |
+| `keep` / `unkeep` | `bytes?, auto?` (sets `kept`: chainlog holds a copy of the transcript; the copy itself is `kept/claude/<id>.jsonl.gz` + `<id>.json` in the data folder). `forget` may carry `deleted: true` when `chainlog delete` wrote it |
 | `forget` / `unforget` | — |
 | `unsaved.handled` | `action, result, due_at`, so the sweep acts once per session |
 | `undo` | `event`: the id of the event being reverted |
@@ -84,10 +85,15 @@ One line of JSON for the Mac menu bar app (hidden command; not part of the publi
 `starred[]`, `chains[]`. `chainlog _menu --find TEXT` adds `query` and `results[]`: every matching session
 (not only the listed ones), best match first, at most 40.
 
-- A row: `ref`, `short`, `harness`, `title` (one clean line), `saved` (`user|auto|none`), `status`, `live`,
-  `starred`, `chain`, `round`, `at`, `ago`, `last_work`, `resume {cwd, command, blockers[], notes[]}`.
+- A row: `ref`, `short`, `harness`, `kept` (a copy is held), `via` (where it was started: `"VS Code"`, `"Desktop"`, or null for a plain terminal),
+  `title` (one clean line), `saved` (`user|auto|none`), `status`, `live`, `starred`, `chain`, `round`, `at`, `ago`,
+  `last_work`, `resume {cwd, command, vscode, restores, blockers[], notes[]}`. `resume.restores` is true when Claude deleted the
+  original but a kept copy exists: `command` then starts with `chainlog restore REF && …`, and `blockers` is empty.
   `resume.command` is ready to run in a shell; a non-empty `blockers` means the session cannot be reopened.
-- `counts.unsaved` is the total; `unsaved[]` holds at most the 8 newest, `recent[]` 8 more, `chains[]` 6;
+  `resume.vscode` is a shell command that reopens a Claude session started in the VS Code extension inside it (macOS
+  only, otherwise null): it opens the folder, then the extension's `vscode://anthropic.claude-code/open?session=ID` link.
+- `counts.unsaved` is the total; `unsaved[]` holds at most the 8 newest, `recent[]` the next 300 (`counts.all` is every
+  session), `chains[]` 30;
   `starred[]` holds all starred sessions (at most 50), newest activity first.
 - A chain: `id`, `rounds`, `status`, `title`, `ago`, `members[]` (rows, with `round`).
 

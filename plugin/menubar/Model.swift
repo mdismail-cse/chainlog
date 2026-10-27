@@ -113,6 +113,14 @@ final class AppModel: ObservableObject {
     var confirmer: (String, String) -> Bool = { Alerts.confirm($0, $1, ok: "Open anyway") }
     /// Opens a terminal with a command. Tests replace it.
     var launcher: (_ command: String, _ name: String, _ onFailure: @escaping @Sendable () -> Void) -> Bool = { Launcher.open($0, name: $1, onFailure: $2) }
+    /// Runs one `chainlog` command and says whether it worked. Tests replace it.
+    var runner: @Sendable ([String]) -> (ok: Bool, message: String) = { Actions.run($0) }
+    /// Asked before a deletion (nothing can bring the files back). Tests replace it.
+    var destructiveConfirmer: (String, String) -> Bool = { Alerts.confirm($0, $1, ok: "Delete") }
+    /// Tests set this so an action has finished when it returns.
+    var inline = false
+    /// Runs a shell command without a terminal (reopening in VS Code). Tests replace it.
+    var shell: (_ command: String, _ onFailure: @escaping @Sendable () -> Void) -> Void = { Launcher.shell($0, onFailure: $1) }
 
     // MARK: what is shown
 
@@ -238,9 +246,61 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// Reopen a session that was started in the Claude Code VS Code extension, in the extension's own panel.
+    func openInVSCode(_ row: Row) {
+        guard row.canResume, let command = row.resume.vscode else { say("This one can't be opened in VS Code"); return }
+        if let w = row.warning, !confirmer("Open this session?", w) { return }
+        say("Opening in VS Code…")
+        shell(command, {
+            MainActor.assumeIsolated { self.say("Could not open VS Code. Is it installed?") }  // called on the main queue
+        })
+    }
+
     func openFirst() { if let r = visibleRows.first(where: { $0.canResume }) { open(r) } }
 
     func copyCommand(_ row: Row) { open(row, copyOnly: true) }
+
+    /// Run a `chainlog` command off the main thread, then say how it went and refresh.
+    private func perform(_ args: [String], doing: String, done: String, failed: String) {
+        say(doing)
+        let run = runner
+        let finish: @Sendable ((ok: Bool, message: String)) -> Void = { r in
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    if r.ok { self.say(done); self.refresh() } else { self.say(failed + ": " + clip(r.message, 80)) }
+                }
+            }
+        }
+        if inline { let r = run(args); MainActor.assumeIsolated { if r.ok { say(done); refresh() } else { say(failed + ": " + clip(r.message, 80)) } }; return }
+        DispatchQueue.global(qos: .userInitiated).async { finish(run(args)) }
+    }
+
+    /// `chainlog keep --refresh`: a kept session may have grown since it was copied. Skipped when nothing is kept.
+    func refreshKeptCopies() {
+        let run = runner
+        DispatchQueue.global(qos: .utility).async { _ = run(["keep", "--refresh", "--quiet"]) }
+    }
+
+    /// Right-click → Keep a copy / Stop keeping the copy.
+    func toggleKeep(_ row: Row) {
+        let on = !row.isKept
+        if on && (row.harness != "claude" || !row.canResume) { say("Nothing to copy: Claude has already deleted this one"); return }
+        if !on && row.restores && !destructiveConfirmer("Delete the kept copy?", "Claude has already deleted the original, so this copy is all that is left of \"\(clip(row.title, 50))\".") { return }
+        perform(Actions.keepArguments(ref: row.ref, on: on), doing: on ? "Keeping a copy…" : "Removing the copy…",
+                done: on ? "Kept: Claude's cleanup cannot delete it" : "Copy removed", failed: on ? "Could not keep it" : "Could not remove the copy")
+    }
+
+    /// Right-click → Delete… `scope` is both, claude (chainlog keeps its copy) or chainlog (Claude's file stays).
+    func delete(_ row: Row, scope: String) {
+        let what: String
+        switch scope {
+        case "claude": what = "Claude's transcript for this session. chainlog's kept copy and notes stay."
+        case "chainlog": what = "chainlog's kept copy, and hides the session from every list. Claude's file stays."
+        default: what = "Claude's transcript and chainlog's kept copy, and hides the session from every list."
+        }
+        guard destructiveConfirmer("Delete \"\(clip(row.title, 50))\"?", "This deletes " + what + "\n\nThe files cannot be brought back.") else { return }
+        perform(Actions.deleteArguments(ref: row.ref, scope: scope), doing: "Deleting…", done: "Deleted", failed: "Could not delete")
+    }
 
     func toggleStar(_ row: Row) {
         let on = !row.starred

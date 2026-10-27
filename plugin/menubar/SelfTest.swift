@@ -192,6 +192,92 @@ func selfTest(sample path: String?) -> Int {
         check("a session that cannot be reopened is not opened", calls.opened.isEmpty && (m.toast ?? "").contains("Can't reopen"))
     }
 
+    // sessions started in the VS Code extension: tagged, found by "vscode", and reopened in the extension
+    do {
+        final class Ran: @unchecked Sendable { var cmds: [String] = []; var asked: [String] = [] }
+        let ran = Ran()
+        let m = model()
+        m.shell = { cmd, _ in ran.cmds.append(cmd) }
+        let vs = data.unsaved.first { $0.via == "VS Code" }
+        check("a session started in VS Code is tagged", vs?.detail.contains("VS Code") == true, vs?.detail ?? "none in the sample")
+        check("  ... and typing vscode or vs code finds it", vs?.matches("vscode") == true && vs?.matches("vs code") == true)
+        check("  ... while a desktop-app session says Desktop", data.unsaved.contains { $0.via == "Desktop" && $0.detail.contains("Desktop") })
+        if let vs = vs {
+            m.openInVSCode(vs)
+            check("Open in VS Code runs the row's own command, without a terminal", ran.cmds == [vs.resume.vscode ?? "-"] && m.toast == "Opening in VS Code…")
+            m.shell = { _, fail in fail() }
+            m.openInVSCode(vs)
+            check("  ... and says so when VS Code cannot be started", (m.toast ?? "").contains("Could not open VS Code"), m.toast ?? "")
+        }
+        let plain = row()
+        check("a terminal session has no VS Code action", plain.resume.vscode == nil && plain.via == nil)
+        ran.cmds = []
+        m.shell = { cmd, _ in ran.cmds.append(cmd) }
+        m.openInVSCode(plain)
+        check("  ... and asking anyway runs nothing", ran.cmds.isEmpty && (m.toast ?? "").contains("can't be opened in VS Code"), m.toast ?? "")
+        let running = try! JSONDecoder().decode(Row.self, from: Data("""
+        {"ref":"claude:v","short":"v","harness":"claude","via":"VS Code","title":"Open in the panel","saved":"none","status":null,"live":true,
+         "starred":false,"chain":null,"round":null,"ago":"1m","last_work":null,
+         "resume":{"cwd":"/tmp","command":"echo hi","vscode":"echo vscode","blockers":[],"notes":["this session is still running (pid 1)."]}}
+        """.utf8))
+        m.confirmer = { _, text in ran.asked.append(text); return false }
+        m.openInVSCode(running)
+        check("a running session asks before it is opened in VS Code too", ran.asked.count == 1 && ran.cmds.isEmpty)
+        // output from a chainlog that does not know about VS Code (no `via`, no `resume.vscode`) still reads
+        check("an older chainlog's rows (no via, no vscode) still decode", plain.via == nil)
+    }
+
+    // keeping copies and deleting: each is one chainlog command, and a deletion is asked about first
+    do {
+        final class Calls: @unchecked Sendable { var ran: [[String]] = []; var asked: [String] = []; var ok = true }
+        let calls = Calls()
+        let m = model()
+        m.inline = true
+        m.runner = { args in calls.ran.append(args); return calls.ok ? (true, "") : (false, "it is still running; close it first") }
+        m.destructiveConfirmer = { title, _ in calls.asked.append(title); return true }
+        let kept = data.recent.first { $0.isKept }
+        check("the sample has a session with a kept copy, tagged in its detail line", kept?.detail.contains("kept") == true, kept?.detail ?? "none")
+        let plain = row()
+        m.toggleKeep(plain)
+        check("Keep a copy runs `chainlog keep REF`", calls.ran == [["keep", plain.ref]] && (m.toast ?? "").contains("Kept"), "\(calls.ran) \(m.toast ?? "")")
+        calls.ran = []
+        if let kept = kept {
+            m.toggleKeep(kept)
+            check("Stop keeping runs `chainlog unkeep REF --yes`", calls.ran == [["unkeep", kept.ref, "--yes"]], "\(calls.ran)")
+        }
+        let allThatIsLeft = try! JSONDecoder().decode(Row.self, from: Data("""
+        {"ref":"claude:k","short":"k","harness":"claude","title":"Only the copy is left","saved":"user","status":null,"live":false,"starred":false,"kept":true,
+         "chain":null,"round":null,"ago":"40d","last_work":null,
+         "resume":{"cwd":"/tmp","command":"chainlog restore claude:k && echo hi","restores":true,"blockers":[],"notes":[]}}
+        """.utf8))
+        calls.ran = []; calls.asked = []
+        m.destructiveConfirmer = { title, _ in calls.asked.append(title); return false }
+        m.toggleKeep(allThatIsLeft)
+        check("dropping the only copy of a session asks first, and No runs nothing", calls.asked.count == 1 && calls.ran.isEmpty)
+        calls.ran = []; calls.asked = []
+        m.destructiveConfirmer = { title, _ in calls.asked.append(title); return true }
+        for scope in ["both", "claude", "chainlog"] { m.delete(plain, scope: scope) }
+        check("Delete runs `chainlog delete REF --from SCOPE --yes` for each scope, asking each time",
+              calls.ran == ["both", "claude", "chainlog"].map { ["delete", plain.ref, "--from", $0, "--yes"] } && calls.asked.count == 3, "\(calls.ran)")
+        calls.ran = []; calls.asked = []
+        m.destructiveConfirmer = { _, _ in calls.asked.append("asked"); return false }
+        m.delete(plain, scope: "both")
+        check("saying No to a deletion runs nothing", calls.ran.isEmpty && calls.asked.count == 1)
+        m.destructiveConfirmer = { _, _ in true }
+        calls.ok = false
+        m.delete(plain, scope: "both")
+        check("a refused deletion says why", (m.toast ?? "").contains("Could not delete") && (m.toast ?? "").contains("still running"), m.toast ?? "")
+        calls.ran = []
+        let codex = try! JSONDecoder().decode(Row.self, from: Data("""
+        {"ref":"codex:c","short":"c","harness":"codex","title":"A Codex session","saved":"none","status":null,"live":false,"starred":false,
+         "chain":null,"round":null,"ago":"1h","last_work":null,
+         "resume":{"cwd":"/tmp","command":"codex resume c","blockers":[],"notes":[]}}
+        """.utf8))
+        m.toggleKeep(codex)
+        check("Codex sessions are not copied (Codex does not delete them)", calls.ran.isEmpty)
+        check("a session whose original Claude deleted but a copy exists can still be opened", allThatIsLeft.restores && allThatIsLeft.canResume)
+    }
+
     // search text that looks like a command-line option is passed as text
     do {
         check("search text is one argument with `=` (so \"--json\" is text)", CLI.findArgument("--json") == "--find=--json")

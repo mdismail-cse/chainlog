@@ -129,6 +129,12 @@ enum Actions {
         run([on ? "star" : "unstar", ref])
     }
 
+    /// `chainlog keep REF` / `chainlog unkeep REF --yes` (the app asks first when the copy is all that is left).
+    static func keepArguments(ref: String, on: Bool) -> [String] { on ? ["keep", ref] : ["unkeep", ref, "--yes"] }
+
+    /// `chainlog delete REF --from both|claude|chainlog --yes` (the app has asked already).
+    static func deleteArguments(ref: String, scope: String) -> [String] { ["delete", ref, "--from", scope, "--yes"] }
+
     /// `chainlog save --id REF [-s STATUS] -- NOTE`: the `--` keeps a note that starts with a dash a note.
     static func save(ref: String, note: String, status: String?) -> (ok: Bool, message: String) {
         // an empty save would only mark the session as saved without saying anything: refuse it here, whatever chainlog version is installed
@@ -222,6 +228,22 @@ enum Launcher {
     static func copy(_ text: String) {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
+    }
+
+    /// Run a shell command in the background (no terminal window). `onFailure` is called on the main queue when it cannot
+    /// start or exits with an error. `open` is used by the commands it runs, so no PATH is needed.
+    static func shell(_ command: String, onFailure: @escaping @Sendable () -> Void) {
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/bin/sh")
+        p.arguments = ["-c", command]
+        p.standardInput = FileHandle.nullDevice
+        p.standardOutput = FileHandle.nullDevice
+        p.standardError = FileHandle.nullDevice
+        p.terminationHandler = { proc in
+            dbg("shell exited \(proc.terminationStatus)")
+            if proc.terminationStatus != 0 { DispatchQueue.main.async { onFailure() } }
+        }
+        do { try p.run() } catch { DispatchQueue.main.async { onFailure() } }
     }
 
     /// Run `command` in a new terminal window. Returns false when it could only be copied.

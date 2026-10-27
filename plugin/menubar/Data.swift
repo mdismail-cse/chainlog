@@ -5,6 +5,8 @@ import Foundation
 struct ResumeInfo: Decodable {
     let cwd: String
     let command: String
+    let vscode: String?  // shell command that reopens it in the VS Code extension (only for sessions started there)
+    let restores: Bool?  // Claude deleted the original; opening puts chainlog's kept copy back first
     let blockers: [String]
     let notes: [String]
 }
@@ -13,11 +15,13 @@ struct Row: Decodable {
     let ref: String
     let short: String
     let harness: String
+    let via: String?           // "VS Code" | "Desktop" | nil (a plain terminal session): where it was started
     let title: String
     let saved: String          // user | auto | none
     let status: String?
     let live: Bool
     var starred: Bool
+    let kept: Bool?            // chainlog keeps a copy that Claude's cleanup cannot delete
     let chain: String?
     let round: Int?
     let ago: String
@@ -73,6 +77,8 @@ extension Row: Identifiable {
 
     /// Can this session be reopened? (Claude deletes old transcripts.)
     var canResume: Bool { resume.blockers.isEmpty }
+    var isKept: Bool { kept ?? false }
+    var restores: Bool { resume.restores ?? false }
 
     /// What chainlog itself warns about before reopening (a running session would get a second copy, an archived
     /// Codex session must be unarchived, the folder may be wrong). `chainlog resume` asks first; so does the app.
@@ -83,13 +89,16 @@ extension Row: Identifiable {
         var parts: [String] = []
         if let c = chain { parts.append(clip(c, 30) + (round.map { " r\($0)" } ?? "")) }
         if harness != "claude" { parts.append(harness) }
+        if let v = via { parts.append(v) }
+        if isKept { parts.append("kept") }
         parts.append(ago)
         return parts.joined(separator: " · ")
     }
 
     /// Every word of `query` appears somewhere in the row (used while a real search is still loading).
     func matches(_ query: String) -> Bool {
-        let hay = [title, chain ?? "", status ?? "", harness, last_work ?? ""].joined(separator: " ").lowercased()
+        let hay = [title, chain ?? "", status ?? "", harness, via ?? "", via == "VS Code" ? "vscode" : "", last_work ?? ""]
+            .joined(separator: " ").lowercased()
         return query.lowercased().split(whereSeparator: { $0.isWhitespace }).allSatisfy { hay.contains($0) }
     }
 }

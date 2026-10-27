@@ -79,6 +79,9 @@ case "${1:-build}" in
     printf '%s\n' "$out" | want "Unsaved · 3 · last 24 h" "the Unsaved header does not say what unsaved covers" || exit 1
     printf '%s\n' "$out" | want "Sessions 7*" "the Sessions tab does not count every session" || exit 1
     printf '%s\n' "$out" | want "(can't reopen)" "a session with a deleted transcript is not marked" || exit 1
+    printf '%s\n' "$out" | want "shop#4321 r2 · kept · 1d" "a session with a kept copy has no tag" || exit 1
+    printf '%s\n' "$out" | want "Shop PR 4402 invoice emails — VS Code · 20m" "a session started in VS Code has no tag" || exit 1
+    printf '%s\n' "$out" | want "Shop PR 4388 coupon stacking — Desktop · 2h" "a session started in the desktop app has no tag" || exit 1
     printf '%s\n' "$out" | want "★ Tracker CSV export" "a starred session has no star" || exit 1
     dump --tab starred | want "Starred · 2" "the Starred tab does not list the 2 starred sessions" || exit 1
     dump --tab chains | want "Continue the latest round" "the Chains tab has no continue line" || exit 1

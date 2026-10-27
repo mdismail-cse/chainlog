@@ -4,11 +4,12 @@ from __future__ import annotations
 import os
 import re
 
+from chainlog import resume
 from chainlog.config import parse_duration
 
 
 def filter_sessions(index, chain=None, pr=None, here=False, since=None, harness=None, unsaved=False,
-                    saved=False, include_all=False, starred=False):
+                    saved=False, include_all=False, starred=False, via=None, kept=False):
     rt = index.rt
     now = rt.now()
     out = index.visible(include_empty=include_all)
@@ -52,18 +53,22 @@ def filter_sessions(index, chain=None, pr=None, here=False, since=None, harness=
         out = [s for s in out if (s["times"].get("last_activity_at") or 0) >= cutoff]
     if harness:
         out = [s for s in out if s["harness"] == harness]
+    if via:  # where it was started: terminal | vscode | desktop
+        out = [s for s in out if resume.origin(s)[0] == via]
     if unsaved:
         out = [s for s in out if s["saved"] == "none" and not s.get("live")]
     if saved:
         out = [s for s in out if s["saved"] != "none"]
     if starred:
         out = [s for s in out if s.get("starred")]
+    if kept:
+        out = [s for s in out if s.get("kept")]
     return out
 
 
 _FIELDS = (
     ("chain", 5), ("pr", 5), ("note", 4), ("title", 3), ("tag", 3), ("branch", 2), ("cwd", 1),
-    ("preview", 1),
+    ("preview", 1), ("origin", 1),
 )
 
 
@@ -76,6 +81,8 @@ def _haystacks(s):
     yield "branch", (s.get("git") or {}).get("branch") or ""
     yield "cwd", os.path.basename((s.get("cwd") or "").rstrip("/"))
     yield "preview", " ".join(x for x in (s.get("last_ask"), s.get("last_work"), s.get("first_ask")) if x)
+    key, label = resume.origin(s)  # "vscode" and "VS Code" both find the sessions started in the extension
+    yield "origin", " ".join(x for x in (key, label) if x)
 
 
 STOPWORDS = {"a", "an", "the", "and", "or", "of", "for", "to", "in", "on", "at", "with", "my", "me", "i",

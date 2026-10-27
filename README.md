@@ -55,7 +55,9 @@ flowchart LR
 
 - **It stays on your computer.** No account, nothing is sent online, nothing is shared with your team.
   The one exception is AI-written summaries, which you must turn on yourself ([details](SECURITY.md)).
-- **It only reads your sessions.** It never changes or deletes them.
+- **It reads your sessions and changes nothing of theirs unless you ask.** Only four things ever write to Claude's folders, and each
+  runs only when you say so: `chainlog delete` (removes sessions you name), `chainlog retention` (edits one setting after showing
+  you the change), putting back a copy you kept when you reopen a session Claude deleted, and `chainlog setup`.
 - **Setup asks before each change.** It adds:
   - the `chainlog` command;
   - a small add-on to Claude Code and/or Codex;
@@ -368,8 +370,13 @@ The first line tells you if everything works.
 <details>
 <summary><b>An old session says "transcript gone"</b></summary>
 
-Claude Code deletes sessions **30 days** after you last used them. Your notes stay, but the session can't be opened again.
-To keep sessions longer, ask Claude Code: *"set cleanupPeriodDays to 90 in my ~/.claude/settings.json"*.
+Claude Code deletes sessions **30 days** after you last used them (judged by the file's last-modified time). Your notes stay, but the
+session can't be opened again, unless you kept a copy.
+
+- **Keep the ones that matter:** `chainlog keep REF` (saving or starring a session does this by itself). The copy is compressed,
+  lives in chainlog's own folder, and reopening the session puts it back if Claude deleted the original.
+- **Keep everything longer:** `chainlog retention 180` (any number of days; it shows the change and asks first).
+- **Delete on purpose:** `chainlog delete REF` removes a session from Claude, from chainlog, or both.
 </details>
 
 <details>

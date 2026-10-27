@@ -26,7 +26,7 @@ def _blank(ref):
         "last_ask": "", "last_work": "", "first_ask": "", "stats": None,
         "harness_version": None, "entrypoint": None, "interactive": True, "has_prompt": False,
         "live": False, "hidden": False, "summary": None, "unsaved_handled": None, "warnings": [],
-        "child": False, "starred": False,
+        "child": False, "starred": False, "kept": False,
     }
 
 
@@ -176,6 +176,10 @@ def _apply(sessions, ev):
         s["starred"] = True
     elif t == "unstar":
         s["starred"] = False
+    elif t == "keep":
+        s["kept"] = True
+    elif t == "unkeep":
+        s["kept"] = False
     elif t == "forget":
         s["hidden"] = True
     elif t == "unforget":

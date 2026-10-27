@@ -5,7 +5,7 @@ Everything chainlog can do, in detail. For a gentle introduction, start with the
 - [All commands at a glance](#all-commands-at-a-glance)
 - [Pointing at a session (REF)](#pointing-at-a-session-ref)
 - [save](#save) · [list and ls](#list-and-ls) · [find](#find) · [show](#show) · [resume and next](#resume-and-next) · [chain](#chain)
-- [note, status, tag, forget, undo](#note-status-tag-forget-undo) · [review](#review) · [config](#config)
+- [keep, retention, delete](#keep-retention-delete) · [note, status, tag, forget, undo](#note-status-tag-forget-undo) · [review](#review) · [config](#config)
 - [setup](#setup) · [doctor, scan, uninstall](#doctor-scan-uninstall)
 - [Settings](#settings) · [Environment variables](#environment-variables) · [Exit codes](#exit-codes)
 - [How chainlog picks the session](#how-chainlog-picks-the-session) · [The forgot-to-save rules](#the-forgot-to-save-rules)
@@ -29,6 +29,9 @@ Everything chainlog can do, in detail. For a gentle introduction, start with the
 | `chainlog status REF STATUS` | Set the status: `wip`, `pass`, `fail` or `blocked` |
 | `chainlog tag REF +add -remove` | Add or remove tags |
 | `chainlog star REF…` | Star sessions you want to keep close (favourites); `chainlog unstar REF…` takes them off |
+| `chainlog keep REF…` | Keep a copy Claude's cleanup cannot delete (`unkeep` drops it, `ls --kept` lists them) |
+| `chainlog retention [DAYS]` | Show or set how long Claude keeps transcripts (`cleanupPeriodDays`) |
+| `chainlog delete REF…` | Delete sessions from Claude, from chainlog, or both |
 | `chainlog forget REF` | Hide a session from lists |
 | `chainlog undo` | Revert your last save / note / status / tag / star / forget |
 | `chainlog review` | Go through unsaved sessions one by one |
@@ -106,6 +109,7 @@ chainlog ls --pr shop#4321      # anything mentioning that PR
 chainlog ls --here              # this repo only (all its clones)
 chainlog ls --since 2d          # last 2 days (90m, 12h, 7d …)
 chainlog ls --harness codex     # only Codex (or claude)
+chainlog ls --via vscode        # only sessions started in the VS Code extension (or desktop, terminal)
 chainlog ls --unsaved           # only sessions without a note
 chainlog ls --saved -n 50       # only saved ones, up to 50 rows
 chainlog ls --starred           # only your starred sessions (★ in every list)
@@ -151,6 +155,40 @@ chainlog changes into the session's folder, then runs `claude --resume <id>` or 
 - **Still running:** it warns before opening a second copy.
 - **Folder gone:** use `--here`.
 - **Codex session archived:** it tells you how to unarchive it.
+- **Claude deleted it but you kept a copy:** the copy is put back first (`chainlog restore REF` does only that).
+
+## keep, retention, delete
+
+Claude Code deletes a session's transcript when the file's last-modified time is older than `cleanupPeriodDays`
+(its default is 30). The Claude desktop app has its own, shorter rule for sessions you archive or delete there.
+
+```sh
+chainlog keep @3 @5              # copy sessions into chainlog's folder (compressed, about a sixth of the size)
+chainlog keep --refresh          # bring the copies up to date after a session grew (the menu bar app and the sweep do this)
+chainlog unkeep @3               # delete the copy (the original is untouched; asks when the copy is all that is left)
+chainlog ls --kept               # what you keep
+chainlog restore @3              # put a copy back where Claude looks (resume does this itself)
+
+chainlog retention               # how long Claude keeps sessions now, and what expires within 14 days
+chainlog retention 180           # set cleanupPeriodDays to 180 (1-3650): shows the change, asks, backs the old file up
+chainlog retention --default     # remove it, so Claude uses 30 again
+
+chainlog delete @3               # from Claude (transcript + its sub-agent folder) and chainlog (copy, hidden from lists)
+chainlog delete @3 --from claude # only Claude's file: chainlog's copy stays, so it can still be reopened
+chainlog delete @3 --from chainlog  # only chainlog's side: Claude's file stays (chainlog undo brings the listing back)
+```
+
+- **Automatic:** saving a session with a note, or starring it, keeps a copy (`chainlog config set keep.auto false` turns that off).
+  Sessions chainlog auto-saves are not kept.
+- **A copy holds the whole conversation, unredacted** (anything you pasted is in it, as in the original). It sits in
+  `~/.local/share/chainlog/kept/claude/`, readable only by you. Only Claude sessions are kept; Codex does not delete its own.
+- **Restoring** writes the file back with a fresh modification time, so Claude's cleanup does not take it again at once.
+- **`retention` lowering the number** warns how many sessions Claude would delete the next time it starts, and how many of
+  those have no kept copy.
+- **`delete`** refuses a running session, asks first (`--yes` skips that), and only removes
+  `~/.claude/projects/<project>/<session id>.jsonl` and the `<session id>/` folder beside it. Small per-session leftovers Claude
+  keeps elsewhere (file history, to-dos, your prompt history) are left to Claude's own cleanup. chainlog's log of events is
+  append-only, so a deleted session's notes stay in it; `chainlog uninstall --purge` removes all of chainlog's data.
 
 ## chain
 
@@ -248,6 +286,9 @@ Click the icon to open the popover.
 | Hover a session | The panel at the bottom shows it at once: its title, the last thing said in it, and its folder (or why it can't be reopened). Moving over the list redraws only that panel |
 | Click a session | Opens it in a new window of the terminal you picked, in its own folder (the same command as `chainlog resume`). Where `chainlog resume` would ask first (the session is running now, an archived Codex session, an unknown folder) the app asks too, and Cancel is the default |
 | ⌥-click, or right-click → Copy command | Copies that command instead |
+| Right-click → Keep a copy / Stop keeping the copy | `chainlog keep` / `unkeep`. A kept session says "kept" on its second line; if Claude deleted the original, clicking it still opens it from the copy. The app also refreshes kept copies at launch and every 20 minutes |
+| Right-click → Delete… | `chainlog delete` after a confirmation: from Claude and chainlog, only from Claude, or only from chainlog (Codex sessions: chainlog only). A running session is refused |
+| Right-click → Open in VS Code | For a Claude session started in the VS Code extension (its row says "VS Code"): opens its folder in VS Code, then the session in the extension's own panel, through the extension's `vscode://anthropic.claude-code/open?session=ID` link. The terminal command in a plain click works for these sessions too (they share Claude's session store), this is for staying in the editor |
 | Hover: ☆ / ★ | Star or unstar. Shown at once; if `chainlog` refuses, it flips back and says why |
 | Hover: pencil | Save the session with a note and a result: `chainlog save --id REF [-s STATUS] -- NOTE`. A note that starts with a dash stays a note. What you type is kept if the popover closes, and given back if the save fails |
 | ⚙ → **Open sessions in** | Terminal (default), iTerm2 (if installed) or "Only copy the command". Remembered |
@@ -291,6 +332,7 @@ the sample data.
 | `snippets` | `true` | Store short, redacted previews of the last ask and last answer, which `find` searches |
 | `auto_chain` | `true` | Link saves to a PR chain automatically (never when the PR link and the title name different PRs) |
 | `hints` | `true` | One-line tips under the list, such as "Claude Code isn't connected". Only shown in a terminal |
+| `keep.auto` | `true` | Keep a copy of every session you save or star, so Claude's cleanup cannot delete it |
 
 ## Environment variables
 

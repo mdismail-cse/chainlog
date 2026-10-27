@@ -310,10 +310,22 @@ struct SessionRow: View {
             }
             .contextMenu {
                 Button("Open") { model.open(row) }.disabled(!row.canResume)
+                if row.resume.vscode != nil { Button("Open in VS Code") { model.openInVSCode(row) }.disabled(!row.canResume) }
                 Button("Copy command") { model.copyCommand(row) }
                 Divider()
                 Button(row.starred ? "Remove from Starred" : "Add to Starred") { model.toggleStar(row) }
                 Button("Save with a note…") { model.beginSave(row) }
+                if row.harness == "claude" {
+                    Button(row.isKept ? "Stop keeping the copy" : "Keep a copy (Claude can't delete it)") { model.toggleKeep(row) }
+                        .disabled(!row.isKept && !row.canResume)
+                }
+                Menu("Delete…") {
+                    if row.harness == "claude" {
+                        Button("From Claude and chainlog") { model.delete(row, scope: "both") }
+                        Button("Only from Claude (keeps chainlog's copy)") { model.delete(row, scope: "claude") }
+                    }
+                    Button("Only from chainlog (keeps Claude's file)") { model.delete(row, scope: "chainlog") }
+                }
             }
             if model.editing == row.ref { NoteEditor(model: model, row: row) }
         }
@@ -344,6 +356,8 @@ struct PreviewPanel: View {
                     .font(.system(size: 12)).foregroundColor(.secondary).lineLimit(3)
                 if let why = r.resume.blockers.first {
                     Text("Can't reopen: " + why).font(.system(size: 11)).foregroundColor(.orange).lineLimit(1)
+                } else if r.restores {
+                    Text("Claude deleted the original · opens from your kept copy").font(.system(size: 11)).foregroundColor(.accentColor).lineLimit(1)
                 } else {
                     Text(r.folder).font(.system(size: 11)).foregroundColor(.secondary.opacity(0.8)).lineLimit(1).truncationMode(.middle)
                 }

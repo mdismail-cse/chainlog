@@ -63,6 +63,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { _ in
             MainActor.assumeIsolated { self.model.refresh() }
         }
+        // sessions you keep keep growing: bring their copies up to date now and every 20 minutes (a quick no-op when nothing changed)
+        model.refreshKeptCopies()
+        Timer.scheduledTimer(withTimeInterval: 1200, repeats: true) { _ in MainActor.assumeIsolated { self.model.refreshKeptCopies() } }
         if CommandLine.arguments.contains("--open-on-launch") { showWhenReady(tries: 0) }
         if CommandLine.arguments.contains("--simulate-reclick") { simulateReclick() }
     }

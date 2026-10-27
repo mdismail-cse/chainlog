@@ -21,13 +21,18 @@ def _row(rt, s, now, chain_id=None):
     when = s["times"].get("last_activity_at") or s["times"].get("ended_at")
     return {
         "ref": s["ref"], "short": s["short"], "harness": s["harness"],
+        "via": resume.origin(s)[1],  # "VS Code" | "Desktop" | None (a plain terminal session carries no tag)
         "title": ui.safe(s["title"]["value"]),
         "saved": s["saved"], "status": s.get("status"), "live": bool(s.get("live")),
-        "starred": bool(s.get("starred")),
+        "starred": bool(s.get("starred")), "kept": bool(s.get("kept")),
         "chain": link["id"] if link else None, "round": link.get("round") if link else None,
         "at": when, "ago": ui.ago(when, now),
         "last_work": ui.safe(s.get("last_work")) or None,
         "resume": {"cwd": p["cwd"], "command": resume.shell_command(p),
+                   # a session started in the VS Code extension can be reopened in it (macOS); "" otherwise
+                   "vscode": resume.vscode_command(s, p) or None,
+                   # Claude deleted the original but a kept copy exists: opening puts it back first
+                   "restores": bool(p.get("restore")),
                    "blockers": p["blockers"], "notes": p["notes"]},
     }
 

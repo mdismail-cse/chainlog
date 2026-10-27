@@ -2,7 +2,8 @@
 
 Every file chainlog opens goes through safe_open(). It refuses the secret / private files of the
 harnesses outright, and refuses any write under ~/.claude or ~/.codex unless the caller is a setup
-integration that passes allow_harness_write=True (and has shown the user a diff first).
+integration that passes allow_harness_write=True (and has shown the user a diff first). The exceptions that
+the user asks for by name: `chainlog retention` (one setting), restoring a kept copy, and `chainlog delete`.
 """
 from __future__ import annotations
 

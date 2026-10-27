@@ -5,7 +5,8 @@ Session transcripts and metadata that Claude Code and Codex already keep on your
 - Claude Code: `~/.claude/projects/*/*.jsonl` and the live registry `~/.claude/sessions/*.json`.
 - Codex: `~/.codex/sessions/**`, `~/.codex/archived_sessions/**`, `~/.codex/session_index.jsonl`.
 
-It reads only an allow-list of registry fields and never stores message bodies or tool output.
+It reads only an allow-list of registry fields and does not store message bodies or tool output, with one exception you control:
+the copies of sessions you keep (below).
 
 ## What chainlog never opens
 `*.key`, `~/.codex/auth.json`, `~/.claude/history.jsonl`, `~/.codex/history.jsonl`, Codex `*.sqlite*`
@@ -14,6 +15,17 @@ databases, and `~/.claude/.credentials.json`. This is enforced in code (`paths.s
 ## What chainlog writes
 - Its own data in `~/.local/share/chainlog` (0700/0600): your notes, statuses, chains, hook metadata,
   and 160-character redacted previews. Set `snippets` to false to drop the previews.
+- A compressed **copy of the whole transcript** of each session you keep, in `~/.local/share/chainlog/kept/` (0700/0600). You keep a
+  session with `chainlog keep`, or automatically by saving or starring it (setting `keep.auto`, on by default; turn it off with
+  `chainlog config set keep.auto false`). The copy is **not redacted**: it holds everything the original holds, including anything you
+  pasted into the conversation, such as a password or key, so that text then exists in two places. `chainlog unkeep` deletes a copy;
+  `chainlog uninstall --purge` deletes all of chainlog's data.
+- In Claude's own folders, only when you run the command, and only these:
+  - `chainlog delete`: the session's transcript (`~/.claude/projects/<project>/<session id>.jsonl`) and the `<session id>/` folder
+    beside it. It asks first, refuses a running session, and refuses any other path;
+  - `chainlog retention DAYS`: the single `cleanupPeriodDays` setting in `~/.claude/settings.json`, after showing the change, with
+    the old file backed up in chainlog's data folder;
+  - reopening a session whose original Claude deleted: the kept copy is written back to where it was.
 - During `chainlog setup`, and only after showing you a diff and asking:
   - the Claude plugin, installed through `claude plugin install`;
   - one `SessionEnd` entry in `~/.codex/hooks.json`;

@@ -105,11 +105,21 @@ class MenuJson(MenuData):
 
     def test_a_deleted_transcript_is_listed_but_cannot_be_reopened(self):
         path = self.claude_session(ID[0], NOW - 30 * H, NOW - 29 * H, title="Shop PR 4321 refund", pr=4321)
+        self.run_cli(["config", "set", "keep.auto", "false"])  # saving would otherwise keep a copy, which can be restored
         self.run_cli(["save", "--id", ID[0][:8], "r1"])
         os.remove(path)
         row = self.build()["recent"][0]
         self.assertEqual(row["title"], "Shop PR 4321 refund")
         self.assertTrue(any("transcript" in b for b in row["resume"]["blockers"]))
+        self.assertFalse(row["kept"] or row["resume"]["restores"])
+
+    def test_a_deleted_transcript_of_a_saved_session_can_be_reopened_from_its_kept_copy(self):
+        path = self.claude_session(ID[0], NOW - 30 * H, NOW - 29 * H, title="Shop PR 4321 refund", pr=4321)
+        self.run_cli(["save", "--id", ID[0][:8], "r1"])  # keeps a copy by itself
+        os.remove(path)
+        row = self.build()["recent"][0]
+        self.assertEqual((row["kept"], row["resume"]["restores"], row["resume"]["blockers"]), (True, True, []))
+        self.assertIn("chainlog restore", row["resume"]["command"])
 
     def test_titles_are_one_clean_line(self):
         self.claude_session(ID[0], NOW - 3 * H, NOW - 2 * H, title="Shop PR 1\x1b[31m red\n  second line")
