@@ -60,6 +60,12 @@ struct FindData: Decodable {
 extension Row: Identifiable {
     var id: String { ref }
 
+    /// The session's folder, with the home folder shortened to ~.
+    var folder: String {
+        let home = homeDirectory()
+        return resume.cwd.hasPrefix(home) ? "~" + resume.cwd.dropFirst(home.count) : resume.cwd
+    }
+
     /// The result as shown in the pill (free text from `chainlog status`, so long ones are shortened).
     var statusLabel: String? { status.map { clip($0, 12) } }
 
@@ -89,6 +95,11 @@ extension Row: Identifiable {
 extension ChainInfo: Identifiable {
     /// The name shown for a chain (chain names are free text, so a very long one is shortened).
     var label: String { clip(id, 34) }
+}
+
+/// The user's home folder. $HOME first (a GUI app gets it too), so a test or a different account can point it elsewhere.
+func homeDirectory() -> String {
+    ProcessInfo.processInfo.environment["HOME"].flatMap { $0.isEmpty ? nil : $0 } ?? NSHomeDirectory()
 }
 
 func clip(_ s: String, _ n: Int) -> String { s.count <= n ? s : String(s.prefix(n - 1)) + "…" }

@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Menu bar app, second display: the popover opens under the icon you clicked, on the display you clicked it on (it used
+  to be anchored to the menu bar item, which macOS 26 gives no screen, so it landed at a far edge). Hovering a session
+  now shows its summary in a panel at once instead of after the system tooltip's 1–2 s delay. `chainlog setup menubar`
+  also rebuilds the app when its sources changed, not only when the version number did.
+
 - Fixes from a code review of the menu bar work: one event for a tool chainlog does not know no longer crashes
   `_menu`; the age is the last activity (as in `chainlog ls`); a session in several chains is labelled with the chain
   it is listed under; `_menu` counts all chains (lists 30) and a search answers with just the search, starred-only on

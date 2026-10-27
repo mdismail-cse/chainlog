@@ -25,6 +25,8 @@ struct PopoverView: View {
                 }
             }
             Divider()
+            PreviewPanel(hover: model.hover)
+            Divider()
             Footer(model: model)
         }
         .frame(width: 440, height: 560)
@@ -299,8 +301,10 @@ struct SessionRow: View {
             .opacity(row.canResume ? 1 : 0.55)
             .contentShape(Rectangle())
             .onTapGesture { model.open(row, copyOnly: NSEvent.modifierFlags.contains(.option)) }
-            .onHover { hovering = $0 }
-            .help(tooltip)
+            .onHover { inside in
+                hovering = inside
+                if inside { model.hover.enter(row) } else { model.hover.exit(row) }  // the preview panel shows it at once
+            }
             .contextMenu {
                 Button("Open") { model.open(row) }.disabled(!row.canResume)
                 Button("Copy command") { model.copyCommand(row) }
@@ -322,12 +326,31 @@ struct SessionRow: View {
         }
     }
 
-    var tooltip: String {
-        var t = [row.title]
-        if let w = row.last_work { t.append("Last: " + clip(w, 160)) }
-        t.append(contentsOf: row.resume.blockers.map { "Can't reopen: " + $0 })
-        if row.canResume { t.append("Click to reopen · ⌥-click copies the command") }
-        return t.joined(separator: "\n")
+}
+
+/// What the hovered session is about: its title, the last thing said in it, and where it ran. Instant, at a fixed
+/// height so the list never jumps.
+struct PreviewPanel: View {
+    @ObservedObject var hover: HoverModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            if let r = hover.row {
+                Text(r.title).font(.system(size: 12.5, weight: .semibold)).lineLimit(2)
+                Text(r.last_work ?? "Nothing said in this session yet.")
+                    .font(.system(size: 12)).foregroundColor(.secondary).lineLimit(3)
+                if let why = r.resume.blockers.first {
+                    Text("Can't reopen: " + why).font(.system(size: 11)).foregroundColor(.orange).lineLimit(1)
+                } else {
+                    Text(r.folder).font(.system(size: 11)).foregroundColor(.secondary.opacity(0.8)).lineLimit(1).truncationMode(.middle)
+                }
+            } else {
+                Text("Hover a session to preview it").font(.system(size: 12)).foregroundColor(.secondary)
+                Text("Click to reopen it · ⌥-click copies the command").font(.system(size: 11)).foregroundColor(.secondary.opacity(0.8))
+            }
+        }
+        .frame(maxWidth: .infinity, minHeight: 72, maxHeight: 72, alignment: .topLeading)
+        .padding(.horizontal, 14).padding(.vertical, 8)
     }
 }
 

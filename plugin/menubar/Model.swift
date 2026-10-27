@@ -65,6 +65,16 @@ enum Layout {
     }
 }
 
+/// The session under the pointer, shown at once in the preview panel (the system tooltip waits 1-2 seconds).
+/// Its own object, so moving over the list redraws only the panel and not every row.
+@MainActor
+final class HoverModel: ObservableObject {
+    @Published private(set) var row: Row?
+    func enter(_ r: Row) { row = r }
+    /// Leaving a row clears the panel only if it still shows that row (a late "exit" must not wipe the next row).
+    func exit(_ r: Row) { if row?.ref == r.ref { row = nil } }
+}
+
 @MainActor
 final class AppModel: ObservableObject {
     @Published var data: MenuData?
@@ -84,6 +94,7 @@ final class AppModel: ObservableObject {
     @Published var terminal = TerminalChoice.current
     @Published var loginEnabled = false
 
+    let hover = HoverModel()
     private var inFlight = false
     private var refreshAgain = false
     private var lastRaw: Data?
@@ -260,6 +271,12 @@ final class AppModel: ObservableObject {
     }
 
     func beginSave(_ row: Row) { editing = row.ref }
+
+    /// Debugging / screenshots: preview the first row as soon as there is one.
+    func hoverFirstWhenReady(tries: Int = 0) {
+        if let r = visibleRows.first { hover.enter(r); return }
+        if tries < 60 { DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in self?.hoverFirstWhenReady(tries: tries + 1) } }
+    }
 
     func draft(for ref: String) -> Draft { drafts[ref] ?? Draft() }
     func setDraft(_ d: Draft, for ref: String) { drafts[ref] = d }

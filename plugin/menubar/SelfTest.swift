@@ -182,6 +182,43 @@ func selfTest(sample path: String?) -> Int {
         check("search text is one argument with `=` (so \"--json\" is text)", CLI.findArgument("--json") == "--find=--json")
     }
 
+    // where the popover opens, on a built-in display with the menu bar and an external one to its right without one
+    do {
+        let builtin = NSRect(x: 0, y: 0, width: 1728, height: 1117), builtinVisible = NSRect(x: 0, y: 0, width: 1728, height: 1084)
+        let external = NSRect(x: 1728, y: 37, width: 1920, height: 1080)  // no menu bar: visible == frame
+        let frames = [builtin, external]
+        func place(_ p: NSPoint) -> (Int, NSPoint) {
+            let i = Placement.screenIndex(for: p, frames: frames)
+            return (i, Placement.anchor(click: p, visible: i == 0 ? builtinVisible : external, frame: frames[i]))
+        }
+        // a click in the built-in menu bar, near its right end
+        let a = place(NSPoint(x: 1650, y: 1100))
+        check("built-in display: opens on it, under the menu bar", a.0 == 0 && a.1.y == 1084 && a.1.x == 1650, "\(a)")
+        // the icon on the external display sits in a menu bar ABOVE the display's top edge: not inside any display
+        let b = place(NSPoint(x: 3540, y: 1149))
+        check("external display (click above its top edge): opens on the external display", b.0 == 1, "\(b)")
+        check("  ... just under its top, at the click's x (the popover slides to stay on the display)", b.1.y == 1117 && b.1.x == 3540, "\(b)")
+        let c = place(NSPoint(x: 2700, y: 1140))
+        check("external display, middle: right under the click", c.0 == 1 && c.1.x == 2700 && c.1.y == 1117, "\(c)")
+        let d = place(NSPoint(x: 1730, y: 1117))
+        check("external display, left end: at the click, inside the display", d.0 == 1 && d.1.x == 1732, "\(d)")
+        let e = place(NSPoint(x: 900, y: 1500))
+        check("a click far above everything still picks the nearest display", e.0 == 0)
+        let lone = Placement.anchor(click: NSPoint(x: 10, y: 10), visible: NSRect(x: 0, y: 0, width: 300, height: 300), frame: NSRect(x: 0, y: 0, width: 300, height: 300))
+        check("an anchor is never placed off its display", lone.x == 10 && Placement.anchor(click: NSPoint(x: -50, y: 0), visible: NSRect(x: 0, y: 0, width: 300, height: 300), frame: NSRect(x: 0, y: 0, width: 300, height: 300)).x == 4)
+    }
+
+    // hover: the preview follows the pointer, and a late "exit" never wipes the row you moved onto
+    do {
+        let m = model()
+        let r1 = data.unsaved[0], r2 = data.recent[0]
+        m.hover.enter(r1); m.hover.enter(r2); m.hover.exit(r1)
+        check("leaving the old row after entering the new one keeps the new preview", m.hover.row?.ref == r2.ref)
+        m.hover.exit(r2)
+        check("leaving the row clears the preview", m.hover.row == nil)
+        check("a row's folder is shown with ~ for the home folder", row().folder == "/tmp")
+    }
+
     print(failed == 0 ? "selftest passed" : "selftest: \(failed) failed")
     return failed
 }

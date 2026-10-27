@@ -124,6 +124,13 @@ class AppEndToEnd(Home):
             self.assertEqual(rc, 0, (q[:30], err))
         self.assertFalse(flag.exists())
 
+    def test_hovering_a_session_previews_its_summary_at_once(self):
+        d = self.dump("--hover-first")
+        line = next(l for l in d.splitlines() if l.startswith("preview:"))
+        self.assertIn("— worked on item", line)  # the last thing said in the first listed session
+        self.assertIn(str(self.proj), line.replace(str(self.home), "~").replace("~", str(self.home)))
+        self.assertNotIn("preview:", self.dump())  # nothing hovered, nothing previewed
+
     def test_the_apps_own_model_checks_pass(self):
         rc, out, err = self.app("--selftest", str(ROOT / "plugin" / "menubar" / "sample.json"))
         self.assertEqual(rc, 0, out + err)

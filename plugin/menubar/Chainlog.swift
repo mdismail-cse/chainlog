@@ -12,6 +12,7 @@
 //   --print-script COMMAND              the script a click would run in a terminal
 //   --launch NAME COMMAND               do what a click does (opens a terminal window)
 //   --act star|unstar REF | save REF STATUS|- NOTE      do what a button does, print ok/failed
+//   --hover-first                       (with --render, --dump or --open-on-launch) show the preview panel for the first row
 //   --edit-first                        (with --render or --open-on-launch) open the "save with a note" editor on the first row
 //   --selftest SAMPLE.json              run the model's own checks (drafts, tabs, search, confirmations …); exit 1 on a failure
 //   --unregister                        take the app out of Login Items (run before deleting it)
@@ -27,6 +28,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     let popover = NSPopover()
     let model = AppModel()
     var cancellables = Set<AnyCancellable>()
+    var anchorWindow: NSWindow?  // an invisible 2-pt window the popover hangs from, on the display that was clicked
     let pinned = CommandLine.arguments.contains("--open-on-launch") || ProcessInfo.processInfo.environment["CHAINLOG_MENUBAR_PIN"] != nil
 
     func applicationDidFinishLaunching(_ note: Notification) {
@@ -50,6 +52,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         if let t = arg("--tab", in: CommandLine.arguments), let tab = Tab(rawValue: t) { model.tab = tab }  // debugging
         if let q = arg("--query", in: CommandLine.arguments) { model.query = q }
         if CommandLine.arguments.contains("--edit-first") { model.editFirstWhenReady() }
+        if CommandLine.arguments.contains("--hover-first") { model.hoverFirstWhenReady() }
         Launcher.tidy()
         model.refresh()
         // both run on the main thread, and the app lives as long as the process: a plain capture is enough
@@ -71,10 +74,47 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         if popover.isShown { popover.performClose(sender) } else { show() }
     }
 
+    /// Where the user clicked (tests can say where with CHAINLOG_MENUBAR_ANCHOR=x,y, in screen coordinates).
+    func clickPoint() -> NSPoint {
+        if let o = ProcessInfo.processInfo.environment["CHAINLOG_MENUBAR_ANCHOR"] {
+            let p = o.split(separator: ",").compactMap { Double($0) }
+            if p.count == 2 { return NSPoint(x: p[0], y: p[1]) }
+        }
+        return NSEvent.mouseLocation
+    }
+
+    /// An invisible window at `point` for the popover to hang from. Anchoring to the status item itself is what put the
+    /// popover in the wrong place on a second display.
+    func anchorView(at point: NSPoint) -> NSView {
+        let w = anchorWindow ?? {
+            let w = NSWindow(contentRect: .zero, styleMask: .borderless, backing: .buffered, defer: false)
+            w.isOpaque = false
+            w.backgroundColor = .clear
+            w.hasShadow = false
+            w.ignoresMouseEvents = true
+            w.level = .statusBar
+            w.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle, .fullScreenAuxiliary]
+            w.isReleasedWhenClosed = false
+            w.contentView = NSView()
+            return w
+        }()
+        w.setFrame(NSRect(x: point.x - 1, y: point.y - 1, width: 2, height: 1), display: false)
+        w.orderFrontRegardless()
+        anchorWindow = w
+        return w.contentView!
+    }
+
     func show() {
-        guard let b = statusItem.button else { return }
+        let screens = NSScreen.screens
+        guard !screens.isEmpty else { return }
+        let click = clickPoint()
+        let screen = screens[Placement.screenIndex(for: click, frames: screens.map { $0.frame })]
+        let point = Placement.anchor(click: click, visible: screen.visibleFrame, frame: screen.frame)
         NSApp.activate(ignoringOtherApps: true)
-        popover.show(relativeTo: b.bounds, of: b, preferredEdge: .minY)
+        let anchor = anchorView(at: point)
+        dbg("click=\(click) -> display \(screen.frame), opening under \(point)")
+        popover.show(relativeTo: anchor.bounds, of: anchor, preferredEdge: .minY)
+        dbg("popover window frame=\(popover.contentViewController?.view.window?.frame ?? .zero)")
         popover.contentViewController?.view.window?.makeKey()
         model.refresh()  // what you see is at most a moment old
     }
@@ -88,6 +128,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     }
 
     func popoverDidClose(_ notification: Notification) {
+        anchorWindow?.orderOut(nil)
         model.popoverClosed()    // the next time starts with an empty search; the tab and any half-written note are kept
     }
 }
@@ -108,6 +149,7 @@ func dumpModel(_ m: AppModel) {
     let counts = Tab.allCases.map { t in "\(t.title)\(m.count(for: t).map { " \($0)" } ?? "")\(t == m.tab ? "*" : "")" }
     print("tabs: " + counts.joined(separator: " | "))
     print("search: \"\(m.query)\"")
+    if let r = m.hover.row { print("preview: \(clip(r.title, 60)) — \(r.last_work.map { clip($0, 80) } ?? "nothing said yet") — \(r.folder)") }
     defer { if m.data != nil { print("enter opens: \(m.visibleRows.first(where: { $0.canResume }).map { clip($0.title, 60) + ($0.round.map { " (r\($0))" } ?? "") } ?? "nothing")") } }
     guard m.data != nil else {
         let p = ProblemView(problem: m.problem)
@@ -152,6 +194,7 @@ func headlessModel(_ args: [String]) -> AppModel? {
     }
     if let q = arg("--query", in: args) { m.query = q; m.answerSearchNow() }
     if args.contains("--edit-first"), let r = m.visibleRows.first { m.beginSave(r) }
+    if args.contains("--hover-first"), let r = m.visibleRows.first { m.hover.enter(r) }
     return m
 }
 

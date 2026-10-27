@@ -245,12 +245,16 @@ Click the icon to open the popover.
 | **Sessions** tab | **Unsaved · N** (the 8 newest, then "Review all N unsaved…", which runs `chainlog review` in a terminal), then **Recent**. A saved session shows its result as a pill (pass, fail, wip, blocked) |
 | **Starred** tab | Every starred session. Starring is `chainlog star` / `unstar`, so the terminal and the app always agree |
 | **Chains** tab | The newest 30 PR chains (the header says "newest 30 of N", with "All N chains in Terminal…" which runs `chainlog chain`); the newest starts expanded, with "Continue the latest round" and every round. Which chains you expanded is remembered. Enter opens the newest round of the newest chain |
+| Hover a session | The panel at the bottom shows it at once: its title, the last thing said in it, and its folder (or why it can't be reopened). Moving over the list redraws only that panel |
 | Click a session | Opens it in a new window of the terminal you picked, in its own folder (the same command as `chainlog resume`). Where `chainlog resume` would ask first (the session is running now, an archived Codex session, an unknown folder) the app asks too, and Cancel is the default |
 | ⌥-click, or right-click → Copy command | Copies that command instead |
 | Hover: ☆ / ★ | Star or unstar. Shown at once; if `chainlog` refuses, it flips back and says why |
 | Hover: pencil | Save the session with a note and a result: `chainlog save --id REF [-s STATUS] -- NOTE`. A note that starts with a dash stays a note. What you type is kept if the popover closes, and given back if the save fails |
 | ⚙ → **Open sessions in** | Terminal (default), iTerm2 (if installed) or "Only copy the command". Remembered |
 | ⚙ → **Open at login** | Starts the app when you log in |
+
+The popover opens under the icon you clicked, on the display you clicked it on, and slides to stay on that display. (On
+macOS 26 a menu bar item's own window has no screen, so the popover is anchored under the click, not to the item.)
 
 A session whose transcript Claude Code already deleted is shown dimmed and cannot be reopened.
 The app refreshes when you open it, every minute (one `chainlog` call at a time), and after the Mac wakes. A failed
@@ -260,7 +264,8 @@ are found on the same PATH as in your own Terminal.
 
 Debugging and tests: `CHAINLOG_MENUBAR_DEBUG=1` prints what the app does to stderr. `Chainlog --dump [FILE]
 [--tab starred] [--query TEXT]` prints what the popover shows, as text, without opening a window; `--render OUT.png
-[--dark]` draws it to an image; `--act star|unstar|save …` does what a button does; `--selftest SAMPLE.json` runs the
+[--dark]` draws it to an image; `--act star|unstar|save …` does what a button does; `--hover-first` shows the preview panel for the first row (`CHAINLOG_MENUBAR_ANCHOR=x,y` pretends the click was at
+that screen point); `--selftest SAMPLE.json` runs the
 model's own checks; `--unregister` removes the app from Login Items (`chainlog uninstall` does this before deleting
 it). `sh plugin/menubar/build.sh --check` builds and checks all of it; `--shots DIR` redraws the README images from
 the sample data.

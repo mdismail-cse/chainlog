@@ -20,7 +20,7 @@ enum CLI {
     /// The `chainlog` launcher. A menu bar app does not get the Terminal's PATH, so look in the usual places.
     static func locate() -> String? {
         let fm = FileManager.default
-        let home = NSHomeDirectory()
+        let home = homeDirectory()
         var candidates = ["\(home)/.local/bin/chainlog", "/opt/homebrew/bin/chainlog", "/usr/local/bin/chainlog"]
         if let o = overridePath { candidates.insert(o, at: 0) }
         for c in candidates where fm.isExecutableFile(atPath: c) { return c }
@@ -52,7 +52,7 @@ enum CLI {
         p.arguments = args
         var env = ProcessInfo.processInfo.environment
         env["CHAINLOG_NO_PROMPT"] = "1"
-        let home = NSHomeDirectory()
+        let home = homeDirectory()
         env["PATH"] = "\(home)/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:" + (env["PATH"] ?? "")
         p.environment = env
         let pipe = Pipe()
@@ -191,7 +191,7 @@ enum Launcher {
     /// Scripts live next to chainlog's data, private to the user.
     static var runDir: URL {
         let env = ProcessInfo.processInfo.environment
-        let base = env["CHAINLOG_HOME"] ?? (env["XDG_DATA_HOME"].map { $0 + "/chainlog" } ?? NSHomeDirectory() + "/.local/share/chainlog")
+        let base = env["CHAINLOG_HOME"] ?? (env["XDG_DATA_HOME"].map { $0 + "/chainlog" } ?? homeDirectory() + "/.local/share/chainlog")
         return URL(fileURLWithPath: base).appendingPathComponent("run")
     }
 
