@@ -5,7 +5,8 @@
  "counts": {
   "unsaved": 3,
   "starred": 2,
-  "chains": 1
+  "chains": 1,
+  "all": 7
  },
  "unsaved": [
   {
@@ -277,5 +278,6 @@
     }
    ]
   }
- ]
+ ],
+ "unsaved_window_hours": 24
 }

@@ -81,6 +81,21 @@ func selfTest(sample path: String?) -> Int {
         check("  ... it filters the chains it has", m.chains.count <= data.chains.count)
     }
 
+    // every session is counted and listed, and a capped list says how many are not shown
+    do {
+        let m = model()
+        check("the Sessions tab counts every session, not just the unsaved ones", m.count(for: .sessions) == data.counts.all)
+        let titles = m.sections.map { $0.title }
+        check("the Unsaved header says what unsaved covers", titles.first?.contains("last 24 h") == true, "\(titles)")
+        var obj = try! JSONSerialization.jsonObject(with: raw) as! [String: Any]
+        var counts = obj["counts"] as! [String: Any]; counts["all"] = 500; obj["counts"] = counts
+        let capped = try! JSONDecoder().decode(MenuData.self, from: try! JSONSerialization.data(withJSONObject: obj))
+        let m2 = AppModel(); m2.data = capped
+        let note = m2.sections.last?.note ?? ""
+        check("a list that is cut says how many older ones are not shown", note.contains("older ones are not listed"), note)
+        check("  ... and a complete one says nothing", m.sections.last?.note == nil)
+    }
+
     // leaving a tab drops its results at once: they are never shown under the wrong tab
     do {
         let m = model()

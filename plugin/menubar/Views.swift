@@ -113,6 +113,9 @@ struct SessionList: View {
                 ForEach(sections) { section in
                     SectionHeader(text: section.title)
                     ForEach(section.rows) { row in SessionRow(model: model, row: row) }
+                    if let note = section.note {
+                        Text(note).font(.system(size: 11.5)).foregroundColor(.secondary).padding(.horizontal, 14).padding(.vertical, 6)
+                    }
                     if let n = section.reviewAll {
                         Button { model.reviewAll() } label: {
                             Text("Review all \(n) unsaved…").font(.system(size: 12.5)).foregroundColor(.accentColor)

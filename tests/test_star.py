@@ -135,8 +135,11 @@ class MenuStarred(StarHome):
         d = self.menu()
         self.assertEqual(d["counts"]["starred"], 12)
         self.assertEqual(len(d["starred"]), 12)
-        listed = {r["ref"] for r in d["unsaved"] + d["recent"]}
-        self.assertTrue(any(r["ref"] not in listed for r in d["starred"]))
+        from chainlog import menu as menu_mod
+        short = menu_mod.build(load(self.rt), recent_limit=8)  # a short list: most starred sessions are not among its rows
+        listed = {r["ref"] for r in short["unsaved"] + short["recent"]}
+        self.assertTrue(any(r["ref"] not in listed for r in short["starred"]))
+        self.assertEqual(len(short["starred"]), 12)
 
 
 class MenuFind(StarHome):
@@ -149,8 +152,10 @@ class MenuFind(StarHome):
         d = self.menu("--find", "zebra")
         self.assertEqual(d["query"], "zebra")
         self.assertEqual([r["title"] for r in d["results"]], ["Needle in the haystack"])
-        lists = self.menu()
-        self.assertNotIn("Needle in the haystack", [r["title"] for r in lists["unsaved"] + lists["recent"]])
+        # a popover that only listed the newest 8 + 8 sessions would not show it: the search still finds it
+        from chainlog import menu as menu_mod
+        short = menu_mod.build(load(self.rt), unsaved_limit=8, recent_limit=8)
+        self.assertNotIn("Needle in the haystack", [r["title"] for r in short["unsaved"] + short["recent"]])
 
     def test_results_are_best_match_first_with_the_star_flag(self):
         self.run_cli("star", A[:8])

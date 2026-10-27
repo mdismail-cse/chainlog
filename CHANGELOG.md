@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Menu bar app: the Sessions tab lists every session (it showed only 16, so most of 182 could only be found by search) and
+  its number is the total, not the 11 unsaved from the last 24 h. The Unsaved header now says "last 24 h", and a cut list says
+  how many are not shown. `chainlog _menu` returns `counts.all`, `unsaved_window_hours`, and up to 300 other sessions.
+
 - Menu bar app: clicking the icon a second time now closes the popover. A popover that closes when you click elsewhere
   closes on the mouse down, so the icon's own click then reopened it at once. The click that just closed it is ignored.
 

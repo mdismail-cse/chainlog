@@ -38,12 +38,14 @@ struct Counts: Decodable {
     var unsaved: Int
     var starred: Int
     var chains: Int?    // all of them; `chains` lists the newest 30 (absent from an older chainlog)
+    var all: Int?       // every session chainlog lists (absent from an older chainlog)
 }
 
 struct MenuData: Decodable {
     let schema: String
     let chainlog: String
     var counts: Counts
+    var unsaved_window_hours: Int?  // "unsaved" means: ended within this many hours, after chainlog was installed
     var unsaved: [Row]
     var recent: [Row]
     var starred: [Row]

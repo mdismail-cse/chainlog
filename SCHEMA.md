@@ -80,7 +80,7 @@ New fields may be added within `/1`.
 ## Menu data (`chainlog _menu`, schema `chainlog.menu/1`)
 
 One line of JSON for the Mac menu bar app (hidden command; not part of the public CLI). Top level:
-`schema`, `chainlog` (version), `generated_at`, `counts {unsaved, starred}`, `unsaved[]`, `recent[]`,
+`schema`, `chainlog` (version), `generated_at`, `unsaved_window_hours`, `counts {unsaved, starred, chains, all}`, `unsaved[]`, `recent[]`,
 `starred[]`, `chains[]`. `chainlog _menu --find TEXT` adds `query` and `results[]`: every matching session
 (not only the listed ones), best match first, at most 40.
 

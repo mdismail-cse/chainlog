@@ -21,6 +21,7 @@ struct RowSection: Identifiable {
     let title: String
     let rows: [Row]
     var reviewAll: Int? = nil
+    var note: String? = nil  // shown under the rows ("Showing the newest 300 of 1,204 …")
 }
 
 /// What was typed in a row's "save with a note" editor.
@@ -41,10 +42,16 @@ enum Layout {
             }
             var out: [RowSection] = []
             if !data.unsaved.isEmpty {
-                out.append(RowSection(id: "unsaved", title: "Unsaved · \(data.counts.unsaved)", rows: data.unsaved,
+                // "unsaved" only covers sessions that ended recently: say so, so 11 is not mistaken for "all my sessions"
+                let window = data.unsaved_window_hours.map { " · last \($0) h" } ?? ""
+                out.append(RowSection(id: "unsaved", title: "Unsaved · \(data.counts.unsaved)\(window)", rows: data.unsaved,
                                       reviewAll: data.counts.unsaved > data.unsaved.count ? data.counts.unsaved : nil))
             }
-            if !data.recent.isEmpty { out.append(RowSection(id: "recent", title: "Recent", rows: data.recent)) }
+            if !data.recent.isEmpty {
+                let missing = max(0, (data.counts.all ?? 0) - data.unsaved.count - data.recent.count)
+                out.append(RowSection(id: "recent", title: "Everything else · \(data.recent.count)", rows: data.recent,
+                                      note: missing > 0 ? "Showing the newest \(data.recent.count); \(missing) older ones are not listed. Search finds them." : nil))
+            }
             return out
         case .starred:
             if q.isEmpty { return data.starred.isEmpty ? [] : [RowSection(id: "starred", title: "Starred · \(data.starred.count)", rows: data.starred)] }
@@ -124,7 +131,7 @@ final class AppModel: ObservableObject {
     func count(for tab: Tab) -> Int? {
         guard let d = data else { return nil }
         switch tab {
-        case .sessions: return d.counts.unsaved > 0 ? d.counts.unsaved : nil
+        case .sessions: let n = d.counts.all ?? (d.counts.unsaved + d.recent.count); return n > 0 ? n : nil  // every session, not just the unsaved
         case .starred: return d.counts.starred > 0 ? d.counts.starred : nil
         case .chains: let n = d.counts.chains ?? d.chains.count; return n > 0 ? n : nil
         }

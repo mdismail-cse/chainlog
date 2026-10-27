@@ -203,6 +203,7 @@ func dumpModel(_ m: AppModel) {
         print(s.title)
         for r in s.rows { print(line(r)) }
         if let n = s.reviewAll { print("  → Review all \(n) unsaved…") }
+        if let note = s.note { print("  (\(note))") }
     }
 }
 

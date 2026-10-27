@@ -81,7 +81,7 @@ class AppEndToEnd(Home):
 
     def test_save_with_a_note_and_a_result_then_search_finds_it(self):
         before = self.dump().splitlines()[2]
-        self.assertEqual(before, "Unsaved · 12")
+        self.assertTrue(before.startswith("Unsaved · 12"), before)  # "... · last N h" follows
         self.assertEqual(self.app("--act", "save", self.ref(0), "pass", "checkout works with saved cards")[0], 0)
         d = self.dump()
         self.assertIn("Unsaved · 11", d)

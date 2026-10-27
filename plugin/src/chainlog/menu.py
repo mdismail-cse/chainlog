@@ -32,7 +32,7 @@ def _row(rt, s, now, chain_id=None):
     }
 
 
-def build(index, unsaved_limit=8, recent_limit=8, chain_limit=30, round_limit=8, starred_limit=50,
+def build(index, unsaved_limit=8, recent_limit=300, chain_limit=30, round_limit=8, starred_limit=50,
           find=None, find_limit=40, find_starred=False):
     rt = index.rt
     now = rt.now()
@@ -48,7 +48,10 @@ def build(index, unsaved_limit=8, recent_limit=8, chain_limit=30, round_limit=8,
     chains = sorted(index.chains.values(), key=lambda c: c["last_activity"], reverse=True)
     return {
         "schema": SCHEMA, "chainlog": __version__, "generated_at": now,
-        "counts": {"unsaved": len(unsaved), "starred": len(starred), "chains": len(chains)},
+        # `all` is every session chainlog lists; `recent` is the newest `recent_limit` of those not shown as unsaved
+        "counts": {"unsaved": len(unsaved), "starred": len(starred), "chains": len(chains), "all": len(visible)},
+        # what "unsaved" covers: sessions that ended within this many hours, after chainlog was installed
+        "unsaved_window_hours": round(index.cfg["unsaved"]["lookback"] / 3600),
         "unsaved": [_row(rt, s, now) for s in unsaved[:unsaved_limit]],
         "recent": [_row(rt, s, now) for s in recent],
         "starred": [_row(rt, s, now) for s in starred[:starred_limit]],

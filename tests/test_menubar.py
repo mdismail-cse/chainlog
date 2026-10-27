@@ -62,6 +62,24 @@ class MenuJson(MenuData):
         shown = {r["ref"] for r in data["unsaved"]}
         self.assertFalse(shown & {r["ref"] for r in data["recent"]})  # nothing is listed twice
 
+    def test_every_session_is_counted_and_listed_not_just_the_unsaved_ones(self):
+        for i in range(40):
+            self.claude_session("%08x-4444-4000-8000-%012x" % (i, i), NOW - (60 - i) * H, NOW - (59 - i) * H, title="Shop PR %d" % (7000 + i))
+        for i in range(0, 40, 2):  # half of them are saved
+            self.run_cli(["save", "--id", "%08x" % i, "note", "--no-chain"])
+        d = self.build()
+        self.assertEqual(d["counts"]["all"], 40)
+        listed = [r["ref"] for r in d["unsaved"] + d["recent"]]
+        self.assertEqual(len(listed), 40)  # all of them are reachable in the popover ...
+        self.assertEqual(len(set(listed)), 40)  # ... each exactly once
+        self.assertEqual(d["unsaved_window_hours"], 24)  # and the app can say what "unsaved" covers
+
+    def test_a_very_long_list_is_capped_and_the_total_still_says_so(self):
+        for i in range(12):
+            self.claude_session("%08x-5555-4000-8000-%012x" % (i, i), NOW - (30 - i) * H, NOW - (29 - i) * H, title="S %d" % i)
+        d = self.build(unsaved_limit=2, recent_limit=5)
+        self.assertEqual((d["counts"]["all"], len(d["unsaved"]), len(d["recent"])), (12, 2, 5))
+
     def test_a_row_carries_the_ready_made_resume_command(self):
         self.claude_session(ID[0], NOW - 3 * H, NOW - 2 * H, title="Shop PR 4402 emails")
         row = self.build()["unsaved"][0]
