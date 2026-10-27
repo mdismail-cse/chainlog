@@ -6,6 +6,7 @@ Never edited: herdr's hook scripts, herdr's hook entries, ~/.claude/settings.jso
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import plistlib
@@ -443,18 +444,36 @@ def menubar_app(rt):
     return Path(rt.env.get("CHAINLOG_APP_DIR") or rt.home / "Applications") / "Chainlog.app"
 
 
-def menubar_installed_version(rt):
+def menubar_source_hash():
+    """A fingerprint of the app's Swift sources (build.sh stamps the same one into the app)."""
+    h = hashlib.sha256()
+    for f in sorted((plugin_root() / "menubar").glob("*.swift"), key=lambda p: p.name.encode()):
+        h.update(f.read_bytes())
+    return h.hexdigest()[:16]
+
+
+def _menubar_plist(rt):
     try:
         with open(menubar_app(rt) / "Contents" / "Info.plist", "rb") as f:
-            return plistlib.load(f).get("CFBundleShortVersionString")
+            return plistlib.load(f)
     except (OSError, ValueError, plistlib.InvalidFileException, ExpatError):  # a half-written plist is "not installed"
-        return None
+        return {}
+
+
+def menubar_installed_version(rt):
+    return _menubar_plist(rt).get("CFBundleShortVersionString")
+
+
+def menubar_current(rt):
+    """The installed app is this version AND was built from these sources."""
+    p = _menubar_plist(rt)
+    return p.get("CFBundleShortVersionString") == version() and p.get("ChainlogSource") == menubar_source_hash()
 
 
 def plan_menubar(rt):
     """Build menubar/Chainlog.swift into ~/Applications/Chainlog.app and open it. Nothing when this
     version is already installed (or this is not a Mac with swiftc)."""
-    if not menubar_ready(rt) or menubar_installed_version(rt) == version():
+    if not menubar_ready(rt) or menubar_current(rt):
         return []
     app = menubar_app(rt)
     script = plugin_root() / "menubar" / "build.sh"

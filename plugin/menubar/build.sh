@@ -11,6 +11,9 @@ here=$(cd "$(dirname "$0")" && pwd)
 dir="${CHAINLOG_APP_DIR:-$HOME/Applications}"
 app="$dir/Chainlog.app"
 version=$(cat "$here/../VERSION")
+# a fingerprint of the Swift sources, stamped into the app so `chainlog setup menubar` can tell a stale build
+# (the version number alone does not change between fixes). Same recipe as components.menubar_source_hash().
+src=$(for f in $(ls "$here"/*.swift | LC_ALL=C sort); do cat "$f"; done | shasum -a 256 | cut -c1-16)
 
 die() { printf 'chainlog menubar: %s\n' "$*" >&2; exit 1; }
 
@@ -25,7 +28,7 @@ build() {  # build <output dir>  -> <output dir>/Chainlog.app
   out="$1/Chainlog.app"
   rm -rf "$out"
   mkdir -p "$out/Contents/MacOS"
-  sed "s/__VERSION__/$version/g" "$here/Info.plist" > "$out/Contents/Info.plist"
+  sed "s/__VERSION__/$version/g; s/__SRC__/$src/g" "$here/Info.plist" > "$out/Contents/Info.plist"
   swiftc -Onone -swift-version 5 -parse-as-library -o "$out/Contents/MacOS/Chainlog" "$here"/*.swift \
     -framework AppKit -framework SwiftUI -framework Combine -framework ServiceManagement 2>&1 | grep -v "^$" || true
   [ -x "$out/Contents/MacOS/Chainlog" ] || die "the build failed (see the messages above)."
@@ -84,6 +87,7 @@ case "${1:-build}" in
     dump --query zzzz --find-file /dev/null | want "Search is not available" "a failed search is not reported" || exit 1
     "$bin" --dump-problem notfound | want "chainlog was not found" "the not-found state is wrong" || exit 1
     "$bin" --print-script "echo hi" | head -1 | grep -q -- " -il$" || die "check failed: the terminal script is not an interactive login shell"
+    dump --hover-first | want "preview: Shop PR 4402 invoice emails — Emails go out twice" "hovering a row does not show its preview" || exit 1
     dump --tab chains | want "enter opens: Shop PR 4321 refund, round 3 (r3)" "Enter on the Chains tab does not open the newest round" || exit 1
     "$bin" --selftest "$here/sample.json" > "$tmp/selftest.txt" || { cat "$tmp/selftest.txt" >&2; die "check failed: the app's own checks (Chainlog --selftest sample.json)"; }
     tail -1 "$tmp/selftest.txt"

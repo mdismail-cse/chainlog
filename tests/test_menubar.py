@@ -325,6 +325,14 @@ class BuildScript(Home):
         self.assertIn("pkill -x Chainlog", self.log())
         self.assertIn("app --unregister", self.log())  # the login item is removed before the app is
 
+    def test_the_stamp_build_sh_writes_is_the_one_setup_compares(self):
+        import plistlib
+        apps = self.root / "apps"
+        self.assertEqual(self.run_build(apps, "--install").returncode, 0)
+        with open(apps / "Chainlog.app" / "Contents" / "Info.plist", "rb") as f:
+            stamped = plistlib.load(f)["ChainlogSource"]
+        self.assertEqual(stamped, comp.menubar_source_hash())  # shell and Python must agree, or setup rebuilds forever
+
     def test_an_unknown_option_is_refused(self):
         p = self.run_build(self.root / "apps", "--frobnicate")
         self.assertNotEqual(p.returncode, 0)
@@ -465,6 +473,19 @@ class SetupMenubar(Home):
         self.assertIn(str(self.apps / "Chainlog.app"), ch.undo_command)
         self.assertIn("build and install", ch.description)
 
+    def test_same_version_but_older_sources_is_rebuilt(self):
+        plist = self.apps / "Chainlog.app" / "Contents" / "Info.plist"
+        plist.parent.mkdir(parents=True)
+        plist.write_text('<?xml version="1.0"?><plist version="1.0"><dict><key>CFBundleShortVersionString</key>'
+                         "<string>%s</string><key>ChainlogSource</key><string>0123456789abcdef</string></dict></plist>" % comp.version())
+        with self.darwin():
+            (ch,) = comp.plan_menubar(self.rt_())
+        self.assertIn("update", ch.description)
+        plist.write_text('<?xml version="1.0"?><plist version="1.0"><dict><key>CFBundleShortVersionString</key>'
+                         "<string>%s</string></dict></plist>" % comp.version())  # an app built before the stamp existed
+        with self.darwin():
+            self.assertEqual(len(comp.plan_menubar(self.rt_())), 1)
+
     def test_a_damaged_plist_means_not_installed_and_is_rebuilt(self):
         plist = self.apps / "Chainlog.app" / "Contents" / "Info.plist"
         plist.parent.mkdir(parents=True)
@@ -485,7 +506,8 @@ class SetupMenubar(Home):
         plist.parent.mkdir(parents=True)
         for installed, expect in ((comp.version(), 0), ("0.0.1", 1)):
             plist.write_text('<?xml version="1.0"?><plist version="1.0"><dict><key>CFBundleShortVersionString</key>'
-                             "<string>%s</string></dict></plist>" % installed)
+                             "<string>%s</string><key>ChainlogSource</key><string>%s</string></dict></plist>"
+                             % (installed, comp.menubar_source_hash()))
             with self.darwin():
                 changes = comp.plan_menubar(self.rt_())
             self.assertEqual(len(changes), expect)
