@@ -313,8 +313,11 @@ class ChainJson(unittest.TestCase):
         self.assertEqual(c[0]["resume"]["cwd"], str(self.w.proj))
         api_row = self.by_id["api#4321"]["members"][0]
         self.assertEqual(api_row["resume"]["cwd"], str(self.w.api))
-        self.assertTrue(c[2]["resume"]["vscode"], "the VS Code round can be reopened in the extension")
+        # the VS Code round has the extension's link (anywhere), and the "Open in VS Code" command only where `open -a` exists (macOS)
+        self.assertEqual(c[2]["resume"]["link"], "vscode://anthropic.claude-code/open?session=%s" % sid(3))
+        self.assertEqual(bool(c[2]["resume"]["vscode"]), sys.platform == "darwin", "the VS Code round can be reopened in the extension")
         self.assertIsNone(c[0]["resume"]["vscode"])
+        self.assertIsNone(c[0]["resume"]["link"])
 
     def test_a_limit_of_chains_keeps_the_newest_and_the_count_is_still_the_total(self):
         short = menu.build(self.w.index(), chain_limit=3)
