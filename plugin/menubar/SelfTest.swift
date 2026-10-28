@@ -227,6 +227,48 @@ func selfTest(sample path: String?) -> Int {
         check("an older chainlog's rows (no via, no vscode) still decode", plain.via == nil)
     }
 
+    // copying what reopens a session, to paste into any terminal, VS Code or chat: the clipboard gets exactly one thing each time
+    do {
+        final class Board: @unchecked Sendable { var got: [String] = [] }
+        let board = Board()
+        let m = model()
+        m.copier = { board.got.append($0) }
+        let vs = data.unsaved.first { $0.via == "VS Code" }
+        let first = data.recent.first ?? data.unsaved[0]
+        m.copyCommand(first)
+        check("Copy command puts the row's own command on the clipboard", board.got == [first.resume.command] && m.toast == "Command copied", m.toast ?? "")
+        board.got = []
+        m.copySessionID(first)
+        check("Copy session id puts the id on the clipboard, and nothing else", board.got == [first.resume.session_id ?? "-"] && m.toast == "Session id copied", m.toast ?? "")
+        check("  ... and the id is inside the command it reopens", first.resume.session_id.map { first.resume.command.contains($0) } == true)
+        if let vs = vs {
+            board.got = []
+            m.copyLink(vs)
+            check("Copy VS Code link puts the vscode:// link on the clipboard", board.got == [vs.resume.link ?? "-"] && (vs.resume.link ?? "").hasPrefix("vscode://anthropic.claude-code/open?session="), board.got.first ?? "nothing")
+            check("  ... for the session it names", vs.resume.link.map { $0.hasSuffix(vs.resume.session_id ?? "-") } == true)
+        }
+        let plain = row()
+        board.got = []
+        m.copyLink(plain)
+        check("a terminal session has no link to copy, and nothing reaches the clipboard", board.got.isEmpty && plain.resume.link == nil && (m.toast ?? "").contains("no VS Code link"), m.toast ?? "")
+        let blocked = try! JSONDecoder().decode(Row.self, from: Data("""
+        {"ref":"claude:g","short":"g","harness":"claude","title":"Gone","saved":"none","status":null,"live":false,"starred":false,
+         "chain":null,"round":null,"ago":"9d","last_work":null,
+         "resume":{"cwd":"/tmp","command":"","blockers":["the transcript file is gone"],"notes":[]}}
+        """.utf8))
+        board.got = []
+        m.copyCommand(blocked)
+        check("a session that cannot be reopened copies no command", board.got.isEmpty && (m.toast ?? "").contains("Can't reopen"), m.toast ?? "")
+        // output from a chainlog that predates the copy fields still decodes, and says why nothing was copied
+        let old = try! JSONDecoder().decode(Row.self, from: Data("""
+        {"ref":"claude:o","short":"o","harness":"claude","title":"Old chainlog","saved":"none","status":null,"live":false,"starred":false,
+         "chain":null,"round":null,"ago":"1m","last_work":null,"resume":{"cwd":"/tmp","command":"echo hi","blockers":[],"notes":[]}}
+        """.utf8))
+        board.got = []
+        m.copySessionID(old)
+        check("an older chainlog's rows (no session id) decode, and copy nothing", board.got.isEmpty && old.resume.session_id == nil && (m.toast ?? "").contains("Update chainlog"), m.toast ?? "")
+    }
+
     // keeping copies and deleting: each is one chainlog command, and a deletion is asked about first
     do {
         final class Calls: @unchecked Sendable { var ran: [[String]] = []; var asked: [String] = []; var ok = true }
@@ -276,6 +318,51 @@ func selfTest(sample path: String?) -> Int {
         m.toggleKeep(codex)
         check("Codex sessions are not copied (Codex does not delete them)", calls.ran.isEmpty)
         check("a session whose original Claude deleted but a copy exists can still be opened", allThatIsLeft.restores && allThatIsLeft.canResume)
+    }
+
+    // the gear menu: how long Claude keeps sessions (asked, checked, then changed) and the automatic-keep switch
+    do {
+        final class Calls: @unchecked Sendable { var ran: [[String]] = []; var asked: [String] = []; var typed: String? = "120"; var plan = "{\"current\":90,\"to\":120,\"changed\":true,\"would_delete\":0,\"would_delete_unkept\":0}" }
+        let calls = Calls()
+        let m = model()
+        m.inline = true
+        m.runner = { args in calls.ran.append(args); return args.contains("--json") ? (true, calls.plan) : (true, "") }
+        m.askText = { _, _, initial in calls.asked.append(initial); return calls.typed }
+        m.shortenConfirmer = { _, _ in calls.asked.append("shorten?"); return false }
+        check("the gear menu shows how long Claude keeps sessions and what is about to go",
+              data.retention?.title == "Claude keeps sessions for 90 days…" && data.retention?.warning == "2 expire within 14 days (1 without a kept copy)",
+              data.retention?.title ?? "none")
+        func info(_ expiring: Int, _ unkept: Int) -> RetentionInfo {
+            let json = "{\"days\":90,\"is_default\":false,\"expiring\":\(expiring),\"expiring_unkept\":\(unkept),\"expiring_within\":14}"
+            return try! JSONDecoder().decode(RetentionInfo.self, from: Data(json.utf8))
+        }
+        check("no warning when everything about to expire is kept, and one session is worded as one",
+              info(3, 0).warning == nil && info(0, 0).warning == nil && info(1, 1).warning == "1 expires within 14 days (1 without a kept copy)",
+              "\(info(3, 0).warning ?? "nil") | \(info(1, 1).warning ?? "nil")")
+        m.askRetention()
+        check("changing it asks (starting from today's number), checks the plan, then writes",
+              calls.asked == ["90"] && calls.ran == [["retention", "120", "--json"], ["retention", "120", "--yes"]] && (m.toast ?? "").contains("120 days"),
+              "\(calls.asked) \(calls.ran) \(m.toast ?? "")")
+        calls.ran = []; calls.asked = []; calls.typed = "30"
+        calls.plan = "{\"current\":90,\"to\":30,\"changed\":true,\"would_delete\":4,\"would_delete_unkept\":3}"
+        m.askRetention()
+        check("shortening it warns what Claude would delete, and No writes nothing",
+              calls.asked == ["90", "shorten?"] && calls.ran == [["retention", "30", "--json"]], "\(calls.asked) \(calls.ran)")
+        calls.ran = []; calls.asked = []
+        for bad in ["0", "abc", "99999", ""] {
+            calls.typed = bad
+            m.askRetention()
+        }
+        check("a number that is not 1 to 3650 is refused before anything runs", calls.ran.isEmpty && (m.toast ?? "").contains("1 to 3650"), m.toast ?? "")
+        calls.ran = []; calls.typed = nil
+        m.askRetention()
+        check("cancelling runs nothing", calls.ran.isEmpty)
+        calls.typed = "90"
+        m.askRetention()
+        check("the number it already is changes nothing", calls.ran.isEmpty && (m.toast ?? "").contains("Already 90"))
+        m.toggleKeepAuto()
+        check("the switch for automatic keeping runs `chainlog config set keep.auto false` (it is on)",
+              calls.ran == [["config", "set", "keep.auto", "false"]], "\(calls.ran)")
     }
 
     // search text that looks like a command-line option is passed as text

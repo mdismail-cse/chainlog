@@ -9,6 +9,19 @@
   many sessions a shorter value would delete, asks, and backs the old file up. Any number of days from 1 to 3650.
 - `chainlog delete REF` deletes a session from Claude, from chainlog, or both (`--from`). It refuses a running session, asks first,
   and only ever touches `~/.claude/projects/<project>/<session id>.jsonl` and the folder beside it.
+- Menu bar app, ⚙ menu: "Claude keeps sessions for N days…" (type any number of days; it shows what shortening would delete and asks), a
+  warning line when sessions that have no kept copy are about to expire (no warning when they are all kept), and a switch for
+  keeping a copy automatically when you save or star. Tested against sessions aged from half a day to over two years under
+  retention settings from 1 to 3650 days (`tests/test_retention_ages.py`).
+- Chains, found by testing them with seeded data (`tests/test_chains_deep.py`): rounds that started in the same second no longer swap
+  places depending on how the disk lists the files; a round with no start time is placed by when it was last used instead of
+  becoming round 1; a chain name with invisible characters (zero-width spaces, bidi marks) is the same chain as the plain name.
+  In the menu bar app the Chains search also matches the titles and results of every round, the "All N chains in Terminal…" link
+  names the real total while searching, the "only the newest 30 are loaded" hint now appears, and the search box says what it searches.
+- Menu bar app: copy what reopens a session, to paste somewhere else. Hover any row (search results too) for a copy button
+  (the command: `cd FOLDER && claude --resume ID`, or `codex resume ID`), and for sessions started in VS Code a link button
+  (the `vscode://anthropic.claude-code/open?session=ID` link). Right-click also has "Copy session id". `chainlog _menu` rows
+  carry `resume.session_id` and `resume.link`. A session whose transcript is gone copies no command (it says why).
 - Menu bar app: sessions you keep say "kept"; right-click → Keep a copy, and Delete… (three scopes, with a confirmation). The app
   refreshes kept copies at launch and every 20 minutes.
 - The README no longer says chainlog never changes your sessions: these commands do, only when you run them.

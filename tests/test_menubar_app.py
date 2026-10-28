@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -74,13 +75,62 @@ class AppEndToEnd(Home):
         self.assertEqual(self.app("--act", "unstar", self.ref(2))[0], 0)
         self.assertIn("Nothing starred yet", self.dump("--tab", "starred"))
 
+    def copy(self, what, query, *more):
+        rc, out, err = self.app("--query", query, "--copy", what, *more)
+        self.assertEqual(rc, 0, err)
+        return dict(line.split(": ", 1) for line in out.strip().splitlines())
+
+    def test_after_a_search_the_copy_buttons_put_the_right_thing_on_the_clipboard(self):
+        import shlex
+        ext = "0000abcd-7777-4000-8000-00000000abcd"
+        self.claude_session(ext, NOW - 3600, NOW - 1800, title="Quokka invoice emails", entrypoint="claude-vscode")
+        got = self.copy("command", "quokka")  # the search result is the first row, as on screen
+        self.assertEqual(got["copied"], "cd %s && claude --resume %s" % (shlex.quote(str(self.proj)), ext))
+        self.assertEqual(got["toast"], "Command copied")
+        got = self.copy("id", "quokka")
+        self.assertEqual((got["copied"], got["toast"]), (ext, "Session id copied"))
+        got = self.copy("link", "quokka")
+        self.assertEqual((got["copied"], got["toast"]),
+                         ("vscode://anthropic.claude-code/open?session=" + ext, "VS Code link copied"))
+
+    def test_a_terminal_session_has_a_command_and_an_id_but_no_link(self):
+        got = self.copy("link", "zebra")  # IDS[3], started in a terminal
+        self.assertEqual((got["copied"], got["toast"]), ("-", "This one has no VS Code link"))
+        self.assertEqual(self.copy("id", "zebra")["copied"], IDS[3])
+        self.assertIn("claude --resume " + IDS[3], self.copy("command", "zebra")["copied"])
+
+    def test_pick_copies_from_the_row_you_name_not_the_first(self):
+        got = self.copy("id", "Shop PR", "--pick", IDS[5][:8])
+        self.assertEqual(got["row"], IDS[5][:8])
+        self.assertEqual(got["copied"], IDS[5])
+
+    def test_a_kept_session_whose_original_is_gone_copies_a_command_that_restores_it_first(self):
+        gone = "0000beef-7777-4000-8000-00000000beef"
+        self.claude_session(gone, NOW - 7200, NOW - 3600, title="Walrus export")
+        self.assertEqual(self.app("--act", "save", "claude:" + gone, "-", "saving keeps a copy")[:2], (0, "ok\n"))
+        next((self.home / ".claude" / "projects").rglob(gone + ".jsonl")).unlink()  # what Claude's cleanup does
+        got = self.copy("command", "walrus")
+        self.assertTrue(got["copied"].startswith("chainlog restore claude:" + gone + " && cd "), got["copied"])
+        self.assertTrue(got["copied"].endswith("claude --resume " + gone))
+
+    def test_a_session_whose_transcript_is_gone_copies_no_command_but_still_its_id(self):
+        gone = "0000dead-7777-4000-8000-00000000dead"
+        subprocess.run([LAUNCHER, "config", "set", "keep.auto", "off"], env=self.env, capture_output=True, check=True)
+        self.claude_session(gone, NOW - 7200, NOW - 3600, title="Narwhal export")
+        self.assertEqual(self.app("--act", "save", "claude:" + gone, "-", "no copy is made")[:2], (0, "ok\n"))
+        next((self.home / ".claude" / "projects").rglob(gone + ".jsonl")).unlink()  # what Claude's cleanup does
+        got = self.copy("command", "narwhal")
+        self.assertEqual(got["copied"], "-")
+        self.assertIn("Can't reopen", got["toast"])
+        self.assertEqual(self.copy("id", "narwhal")["copied"], gone)  # the id is still worth having
+
     def test_starring_an_unknown_session_fails_with_the_reason(self):
         rc, out, _ = self.app("--act", "star", "claude:deadbeef-0000-0000-0000-000000000000")
         self.assertEqual(rc, 1)
         self.assertTrue(out.startswith("failed:") and "no session matches" in out, out)
 
     def test_save_with_a_note_and_a_result_then_search_finds_it(self):
-        before = self.dump().splitlines()[2]
+        before = next(l for l in self.dump().splitlines() if l.startswith("Unsaved"))
         self.assertTrue(before.startswith("Unsaved · 12"), before)  # "... · last N h" follows
         self.assertEqual(self.app("--act", "save", self.ref(0), "pass", "checkout works with saved cards")[0], 0)
         d = self.dump()
@@ -164,6 +214,66 @@ class AppEndToEnd(Home):
         d = self.dump(str(f))
         self.assertIn("[running] (asks first) Shop PR 4321 refund, round 3", d)
         self.assertNotIn("(asks first)", self.dump(str(ROOT / "plugin" / "menubar" / "sample.json")))
+
+    # --- ⚙ → "Claude keeps sessions for N days…": the app's own dialog logic against the real chainlog -----------------
+    def seed_old_sessions(self):
+        """Two sessions last used 40 and 100 days ago (real time: the app's chainlog runs on the real clock), and the
+        setting at 400 days, so nothing is due yet. The twelve in setUp are about nine days old."""
+        self.old = {}
+        for age in (40, 100):
+            sid = "%08x-8888-4000-8000-%012x" % (age, age)
+            end = time.time() - age * 86400
+            self.old[age] = self.claude_session(sid, end - 600, end, title="Work from %d days ago" % age)
+        self.settings = self.home / ".claude" / "settings.json"
+        self.settings.write_text(json.dumps({"model": "opus", "cleanupPeriodDays": 400}, indent=2) + "\n")
+
+    def days(self):
+        return json.loads(self.settings.read_text())["cleanupPeriodDays"]
+
+    def set_retention(self, typed, *flags):
+        rc, out, err = self.app("--set-retention", typed, *flags)
+        self.assertEqual(rc, 0, out + err)
+        lines = dict(l.split(": ", 1) for l in out.splitlines() if ": " in l)
+        return lines.get("asked"), lines["toast"]
+
+    def test_the_gear_menu_shows_the_days_and_what_is_about_to_expire(self):
+        self.seed_old_sessions()
+        self.settings.write_text(json.dumps({"cleanupPeriodDays": 105}) + "\n")  # the 100-day-old one has 5 days left
+        gear = [l for l in self.dump().splitlines() if l.startswith("gear:")]
+        self.assertIn("gear: Claude keeps sessions for 105 days… | 1 expires within 14 days (1 without a kept copy)", gear)
+        p = subprocess.run([LAUNCHER, "keep", "claude:" + "%08x-8888-4000-8000-%012x" % (100, 100)], env=self.env, capture_output=True, text=True)
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertIn("gear: Claude keeps sessions for 105 days… | nothing about to be lost", self.dump())  # kept: no alarm
+
+    def test_typing_a_number_changes_the_setting_and_a_shortening_asks_first(self):
+        self.seed_old_sessions()
+        self.assertEqual(self.set_retention("400"), (None, "Already 400 days"))
+        # 60 days would take the 100-day-old session: it asks, and "no" changes nothing
+        asked, toast = self.set_retention("60", "--refuse")
+        self.assertIn("1 of your sessions are older than 60 days", asked)
+        self.assertIn("1 of those have no kept copy", asked)
+        self.assertEqual((toast, self.days()), ("-", 400))
+        asked, toast = self.set_retention("60")
+        self.assertEqual((toast, self.days()), ("Claude will keep sessions 60 days", 60))
+        # 20 days takes the 40-day-old one as well; keeping them first changes what the question says
+        for age in (40, 100):
+            p = subprocess.run([LAUNCHER, "keep", "claude:" + "%08x-8888-4000-8000-%012x" % (age, age)], env=self.env, capture_output=True, text=True)
+            self.assertEqual(p.returncode, 0, p.stderr)
+        asked, toast = self.set_retention("20")
+        self.assertIn("2 of your sessions are older than 20 days", asked)
+        self.assertIn("0 of those have no kept copy", asked)
+        self.assertEqual(self.days(), 20)
+        # longer never asks, and the rest of settings.json is left as it was
+        asked, toast = self.set_retention("3650")
+        self.assertEqual((asked, toast, self.days()), (None, "Claude will keep sessions 3650 days", 3650))
+        self.assertEqual(json.loads(self.settings.read_text())["model"], "opus")
+
+    def test_a_number_that_is_not_a_number_of_days_is_refused_in_the_app(self):
+        self.seed_old_sessions()
+        for typed in ("abc", "0", "-3", "3651", "2.5", ""):
+            asked, toast = self.set_retention(typed)
+            self.assertEqual((asked, toast), (None, "Enter a whole number of days from 1 to 3650"), repr(typed))
+        self.assertEqual(self.days(), 400)
 
     def test_the_login_item_can_be_removed_before_the_app_is_deleted(self):
         rc, out, _ = self.app("--unregister")

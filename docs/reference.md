@@ -279,13 +279,15 @@ Click the icon to open the popover.
 
 | In the popover | What it does |
 |---|---|
-| **Search** | Searches every session (not only the listed ones) for titles, your notes, PR numbers, branches, folders and what was said, best match first (`chainlog _menu --find`). Enter opens the first match; Esc clears it, then closes. In the Starred tab it only shows starred matches; in Chains it filters the chains |
+| **Search** | Searches every session (not only the listed ones) for titles, your notes, PR numbers, branches, folders and what was said, best match first (`chainlog _menu --find`). Enter opens the first match; Esc clears it, then closes. In the Starred tab it only shows starred matches; in Chains it filters the chains it was sent (the newest 30) by name, result and the title, result and tool of every round shown |
 | **Sessions** tab | Its number is every session chainlog lists. **Unsaved · N · last 24 h** (the 8 newest, then "Review all N unsaved…", which runs `chainlog review` in a terminal): only sessions that ended within the unsaved window (`unsaved.lookback`, 24 h) and after chainlog was installed count as unsaved. Then **Everything else**: all the other sessions, newest first (up to 300; beyond that it says how many are not shown, and search finds them). A saved session shows its result as a pill (pass, fail, wip, blocked) |
 | **Starred** tab | Every starred session. Starring is `chainlog star` / `unstar`, so the terminal and the app always agree |
 | **Chains** tab | The newest 30 PR chains (the header says "newest 30 of N", with "All N chains in Terminal…" which runs `chainlog chain`); the newest starts expanded, with "Continue the latest round" and every round. Which chains you expanded is remembered. Enter opens the newest round of the newest chain |
 | Hover a session | The panel at the bottom shows it at once: its title, the last thing said in it, and its folder (or why it can't be reopened). Moving over the list redraws only that panel |
 | Click a session | Opens it in a new window of the terminal you picked, in its own folder (the same command as `chainlog resume`). Where `chainlog resume` would ask first (the session is running now, an archived Codex session, an unknown folder) the app asks too, and Cancel is the default |
-| ⌥-click, or right-click → Copy command | Copies that command instead |
+| Hover → copy button, ⌥-click, or right-click → Copy command | Copies the command instead of running it: `cd FOLDER && claude --resume ID` (or `codex resume ID`), or `chainlog restore REF && …` first when Claude deleted the original and a kept copy exists. Paste it into any terminal. Works on search results. Not offered for a session that can't be reopened |
+| Hover → link button, or right-click → Copy VS Code link | For a Claude session started in the VS Code extension: copies its `vscode://anthropic.claude-code/open?session=ID` link (not offered when the transcript is gone or has to be restored first: the link would not bring it back) |
+| Right-click → Copy session id | Copies the id `claude --resume` / `codex resume` take, for any session |
 | Right-click → Keep a copy / Stop keeping the copy | `chainlog keep` / `unkeep`. A kept session says "kept" on its second line; if Claude deleted the original, clicking it still opens it from the copy. The app also refreshes kept copies at launch and every 20 minutes |
 | Right-click → Delete… | `chainlog delete` after a confirmation: from Claude and chainlog, only from Claude, or only from chainlog (Codex sessions: chainlog only). A running session is refused |
 | Right-click → Open in VS Code | For a Claude session started in the VS Code extension (its row says "VS Code"): opens its folder in VS Code, then the session in the extension's own panel, through the extension's `vscode://anthropic.claude-code/open?session=ID` link. The terminal command in a plain click works for these sessions too (they share Claude's session store), this is for staying in the editor |
@@ -293,6 +295,8 @@ Click the icon to open the popover.
 | Hover: pencil | Save the session with a note and a result: `chainlog save --id REF [-s STATUS] -- NOTE`. A note that starts with a dash stays a note. What you type is kept if the popover closes, and given back if the save fails |
 | ⚙ → **Open sessions in** | Terminal (default), iTerm2 (if installed) or "Only copy the command". Remembered |
 | ⚙ → **Open at login** | Starts the app when you log in |
+| ⚙ → **Keep a copy when I save or star** | The `keep.auto` setting (`chainlog config set keep.auto …`) |
+| ⚙ → **Claude keeps sessions for N days…** | Asks for a number of days (1–3650, starting from today's), checks with `chainlog retention N --json` what that would delete, asks again if it would delete anything (and says how many have no kept copy), then runs `chainlog retention N --yes`. A line under it warns when sessions with no kept copy expire within 14 days (nothing is shown when they are all kept) |
 
 The popover opens under the icon you clicked, on the display you clicked it on, and slides to stay on that display. (On
 macOS 26 a menu bar item's own window has no screen, so the popover is anchored under the click, not to the item.)

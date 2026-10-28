@@ -6,6 +6,8 @@ struct ResumeInfo: Decodable {
     let cwd: String
     let command: String
     let vscode: String?  // shell command that reopens it in the VS Code extension (only for sessions started there)
+    let session_id: String?  // the tool's own id for the session (absent from an older chainlog)
+    let link: String?        // the extension's vscode:// link, to paste somewhere else (only for sessions started in VS Code)
     let restores: Bool?  // Claude deleted the original; opening puts chainlog's kept copy back first
     let blockers: [String]
     let notes: [String]
@@ -45,11 +47,36 @@ struct Counts: Decodable {
     var all: Int?       // every session chainlog lists (absent from an older chainlog)
 }
 
+/// How long Claude Code keeps transcripts and what is about to go (the ⚙ menu). Absent from an older chainlog.
+struct RetentionInfo: Decodable {
+    let days: Int
+    let is_default: Bool
+    let expiring: Int
+    let expiring_unkept: Int
+    let expiring_within: Int
+    var title: String { "Claude keeps sessions for \(days) days\(is_default ? " (default)" : "")…" }
+    /// Only when something that expires soon has no kept copy: a session that is kept is not at risk, so it is no alarm.
+    var warning: String? {
+        expiring_unkept > 0 ? "\(expiring) \(expiring == 1 ? "expires" : "expire") within \(expiring_within) days (\(expiring_unkept) without a kept copy)" : nil
+    }
+}
+
+/// What `chainlog retention DAYS --json` says a change would do (it writes nothing).
+struct RetentionPlan: Decodable {
+    let current: Int
+    let to: Int
+    let changed: Bool
+    let would_delete: Int
+    let would_delete_unkept: Int
+}
+
 struct MenuData: Decodable {
     let schema: String
     let chainlog: String
     var counts: Counts
     var unsaved_window_hours: Int?  // "unsaved" means: ended within this many hours, after chainlog was installed
+    var retention: RetentionInfo?
+    var keep_auto: Bool?            // saving or starring a session keeps a copy of it
     var unsaved: [Row]
     var recent: [Row]
     var starred: [Row]
@@ -95,10 +122,14 @@ extension Row: Identifiable {
         return parts.joined(separator: " · ")
     }
 
+    /// Everything a search looks at in this row, lower-cased.
+    var haystack: String {
+        [title, chain ?? "", status ?? "", harness, via ?? "", via == "VS Code" ? "vscode" : "", last_work ?? ""].joined(separator: " ").lowercased()
+    }
+
     /// Every word of `query` appears somewhere in the row (used while a real search is still loading).
     func matches(_ query: String) -> Bool {
-        let hay = [title, chain ?? "", status ?? "", harness, via ?? "", via == "VS Code" ? "vscode" : "", last_work ?? ""]
-            .joined(separator: " ").lowercased()
+        let hay = haystack
         return query.lowercased().split(whereSeparator: { $0.isWhitespace }).allSatisfy { hay.contains($0) }
     }
 }
@@ -106,6 +137,9 @@ extension Row: Identifiable {
 extension ChainInfo: Identifiable {
     /// The name shown for a chain (chain names are free text, so a very long one is shortened).
     var label: String { clip(id, 34) }
+    /// The round "Continue the latest round" opens: the newest one, and only when it can be opened (an older round
+    /// is not offered in its place: that would continue the wrong work).
+    var continuable: Row? { members.last.flatMap { $0.canResume ? $0 : nil } }
 }
 
 /// The user's home folder. $HOME first (a GUI app gets it too), so a test or a different account can point it elsewhere.

@@ -62,7 +62,8 @@ class Home(unittest.TestCase):
 
     # --- fixtures -------------------------------------------------------------------------------
     def claude_session(self, sid, start, end, title=None, prompt="test the refund flow",
-                       work="Refund still returns 500", pr=None, cwd=None, entrypoint="cli", subagent=False):
+                       work="Refund still returns 500", pr=None, cwd=None, entrypoint="cli", subagent=False,
+                       branch="fix/refund", pr_repo="acme/Shop"):
         cwd = str(cwd or self.proj)
         d = self.home / ".claude" / "projects" / cwd.replace("/", "-")
         if subagent:
@@ -70,7 +71,7 @@ class Home(unittest.TestCase):
         d.mkdir(parents=True, exist_ok=True)
         lines = [
             {"type": "mode", "mode": "normal", "sessionId": sid},
-            {"type": "user", "sessionId": sid, "cwd": cwd, "gitBranch": "fix/refund", "version": "2.1.303",
+            {"type": "user", "sessionId": sid, "cwd": cwd, "gitBranch": branch, "version": "2.1.303",
              "entrypoint": entrypoint, "timestamp": iso(start), "message": {"role": "user", "content": prompt}},
             {"type": "user", "sessionId": sid, "cwd": cwd, "isMeta": True, "timestamp": iso(start + 1),
              "message": {"role": "user", "content": "<system-reminder>ignore</system-reminder>"}},
@@ -82,8 +83,8 @@ class Home(unittest.TestCase):
         if title:
             lines.append({"type": "ai-title", "aiTitle": title, "sessionId": sid})
         if pr:
-            lines.append({"type": "pr-link", "prNumber": pr, "prRepository": "acme/Shop",
-                          "prUrl": "https://github.com/acme/Shop/pull/%d" % pr, "sessionId": sid,
+            lines.append({"type": "pr-link", "prNumber": pr, "prRepository": pr_repo,
+                          "prUrl": "https://github.com/%s/pull/%d" % (pr_repo, pr), "sessionId": sid,
                           "timestamp": iso(end)})
         path = d / ("%s.jsonl" % sid)
         path.write_text("".join(json.dumps(x) + "\n" for x in lines))

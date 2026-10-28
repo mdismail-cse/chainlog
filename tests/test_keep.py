@@ -416,6 +416,30 @@ class Retention(KeepCase):
             self.assertNotEqual(code, 0, bad)
         self.assertFalse((self.home / ".claude" / "settings.json").exists())
 
+    def test_json_says_what_a_change_would_do_and_writes_nothing(self):
+        path = self.settings('{"cleanupPeriodDays": 90}\n')
+        code, out, _ = self.cli(["retention", "10", "--json"])  # A is 20 days old: it would go; it has no copy
+        self.assertEqual(code, 0)
+        self.assertEqual(json.loads(out), {"current": 90, "to": 10, "changed": True, "would_delete": 1, "would_delete_unkept": 1})
+        self.cli(["keep", "claude:" + A])
+        self.assertEqual(json.loads(self.cli(["retention", "10", "--json"])[1])["would_delete_unkept"], 0)
+        self.assertEqual(json.loads(self.cli(["retention", "365", "--json"])[1])["would_delete"], 0)  # longer: nothing is lost
+        self.assertEqual(path.read_text(), '{"cleanupPeriodDays": 90}\n')
+        self.assertFalse((self.data / "backups").exists())
+
+    def test_the_menu_carries_what_the_gear_menu_shows(self):
+        from chainlog import menu
+        self.settings('{"cleanupPeriodDays": 21}\n')
+        d = menu.build(self.index())
+        self.assertEqual(d["retention"], {"days": 21, "is_default": False, "expiring": 1, "expiring_unkept": 1, "expiring_within": 14})
+        self.assertTrue(d["keep_auto"])
+        self.cli(["keep", "claude:" + A])
+        self.assertEqual(menu.build(self.index())["retention"]["expiring_unkept"], 0)
+        self.cli(["config", "set", "keep.auto", "false"])
+        self.assertFalse(menu.build(self.index())["keep_auto"])
+        self.settings('{}')
+        self.assertEqual((lambda r: (r["days"], r["is_default"]))(menu.build(self.index())["retention"]), (30, True))
+
     def test_the_same_value_is_not_rewritten(self):
         self.settings('{"cleanupPeriodDays": 90}\n')
         code, out, _ = self.cli(["retention", "90", "--yes"])

@@ -12,6 +12,10 @@
 //   --print-script COMMAND              the script a click would run in a terminal
 //   --launch NAME COMMAND               do what a click does (opens a terminal window)
 //   --act star|unstar REF | save REF STATUS|- NOTE      do what a button does, print ok/failed
+//   --set-retention DAYS [--refuse]     do what ⚙ → "Claude keeps sessions for N days…" does with DAYS typed in; --refuse
+//                                       answers "no" if it asks to confirm a shortening. Prints what it asked and the toast
+//   --copy command|id|link [--pick SHORT]   (with --query TEXT to search first) press the copy button, or the right-click item, on the first row
+//                                       shown (or the one whose short id is SHORT). Prints what reached the clipboard and the toast; the clipboard itself is not touched
 //   --hover-first                       (with --render, --dump or --open-on-launch) show the preview panel for the first row
 //   --edit-first                        (with --render or --open-on-launch) open the "save with a note" editor on the first row
 //   --selftest SAMPLE.json              run the model's own checks (drafts, tabs, search, confirmations …); exit 1 on a failure
@@ -183,6 +187,8 @@ func dumpModel(_ m: AppModel) {
     let counts = Tab.allCases.map { t in "\(t.title)\(m.count(for: t).map { " \($0)" } ?? "")\(t == m.tab ? "*" : "")" }
     print("tabs: " + counts.joined(separator: " | "))
     print("search: \"\(m.query)\"")
+    if let r = m.data?.retention { print("gear: \(r.title) | \(r.warning ?? "nothing about to be lost")") }
+    print("gear: keep a copy when I save or star: \(m.data?.keep_auto ?? true ? "on" : "off")")
     if let r = m.hover.row { print("preview: \(clip(r.title, 60)) — \(r.last_work.map { clip($0, 80) } ?? "nothing said yet") — \(r.folder)") }
     defer { if m.data != nil { print("enter opens: \(m.visibleRows.first(where: { $0.canResume }).map { clip($0.title, 60) + ($0.round.map { " (r\($0))" } ?? "") } ?? "nothing")") } }
     guard m.data != nil else {
@@ -192,12 +198,13 @@ func dumpModel(_ m: AppModel) {
     }
     if m.tab == .chains {
         let chains = m.chains
-        if chains.isEmpty { print("(empty: \(EmptyState(model: m).title))") }
+        if chains.isEmpty { print("(empty: \(EmptyState(model: m).title) — \(EmptyState(model: m).detail))") } else { print(m.chainsHeader) }
         for c in chains {
             print("\(c.label) · \(c.status ?? "no status") · \(c.rounds) round\(c.rounds == 1 ? "" : "s") · \(c.ago)")
-            if let latest = c.members.last, latest.canResume { print("  → Continue the latest round (r\(c.rounds))") }
+            if c.continuable != nil { print("  → Continue the latest round (r\(c.rounds))") }
             for r in c.members.reversed() { print("  r\(r.round ?? 0)" + line(r)) }
         }
+        if let footer = m.chainsFooter { print("→ \(footer)") }
         return
     }
     let sections = m.sections
@@ -301,6 +308,34 @@ struct ChainlogMain {
             RunLoop.current.run(until: Date().addingTimeInterval(3))  // let the asynchronous open finish
             print(opened ? "opened" : "copied")
             exit(opened ? 0 : 3)
+        }
+        if let i = args.firstIndex(of: "--set-retention"), i + 1 < args.count {
+            guard let m = headlessModel(args) else { FileHandle.standardError.write(Data("could not read menu data\n".utf8)); exit(1) }
+            m.inline = true  // run the chainlog commands here instead of on another thread
+            var asked = ""
+            m.askText = { _, _, _ in args[i + 1] }  // the number typed into the box
+            m.shortenConfirmer = { _, message in asked = message; return !args.contains("--refuse") }
+            m.askRetention()
+            if !asked.isEmpty { print("asked: " + asked.replacingOccurrences(of: "\n", with: " ")) }
+            print("toast: " + (m.toast ?? "-"))
+            exit(0)
+        }
+        if let i = args.firstIndex(of: "--copy"), i + 1 < args.count {
+            guard let m = headlessModel(args) else { FileHandle.standardError.write(Data("could not read menu data\n".utf8)); exit(1) }
+            var copied: [String] = []
+            m.copier = { copied.append($0) }  // not the real clipboard: a check must not overwrite yours
+            let pick = arg("--pick", in: args)
+            guard let row = m.visibleRows.first(where: { pick == nil || $0.short == pick }) else { print("no such row"); exit(2) }
+            switch args[i + 1] {
+            case "command": m.copyCommand(row)
+            case "id": m.copySessionID(row)
+            case "link": m.copyLink(row)
+            default: print("failed: unknown copy"); exit(2)
+            }
+            print("row: \(row.short)")
+            print("copied: " + (copied.first ?? "-"))
+            print("toast: " + (m.toast ?? "-"))
+            exit(0)
         }
         if let i = args.firstIndex(of: "--act"), i + 2 < args.count {
             let what = args[i + 1], ref = args[i + 2]

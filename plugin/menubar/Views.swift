@@ -54,7 +54,7 @@ struct SearchBar: View {
     var body: some View {
         HStack(spacing: 8) {
             Image(systemName: "magnifyingglass").foregroundColor(.secondary)
-            TextField("Search all sessions, notes, PR numbers…", text: $model.query)
+            TextField(model.tab == .chains ? "Search chains, rounds, results…" : "Search all sessions, notes, PR numbers…", text: $model.query)
                 .textFieldStyle(.plain)
                 .font(.system(size: 14))
                 .focused(focused)
@@ -135,16 +135,13 @@ struct ChainsList: View {
 
     var body: some View {
         let chains = model.chains
-        let more = model.moreChains
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
-                if !chains.isEmpty {
-                    SectionHeader(text: more > 0 && !model.isSearching ? "PR chains · newest \(chains.count) of \(chains.count + more)" : "PR chains · \(chains.count)")
-                }
+                if !chains.isEmpty { SectionHeader(text: model.chainsHeader) }
                 ForEach(Array(chains.enumerated()), id: \.element.id) { i, c in ChainBlock(model: model, chain: c, defaultOpen: i == 0) }
-                if more > 0 {
+                if let footer = model.chainsFooter {
                     Button { model.runChainlog(["chain"], name: "chains") } label: {
-                        Text("All \(chains.count + more) chains in Terminal…").font(.system(size: 12.5)).foregroundColor(.accentColor)
+                        Text(footer).font(.system(size: 12.5)).foregroundColor(.accentColor)
                     }
                     .buttonStyle(.plain).padding(.horizontal, 14).padding(.vertical, 6)
                 }
@@ -177,7 +174,7 @@ struct ChainBlock: View {
             }
             .buttonStyle(.plain)
             if open {
-                if let latest = chain.members.last, latest.canResume {
+                if let latest = chain.continuable {
                     Button { model.open(latest) } label: {
                         Label("Continue the latest round (r\(chain.rounds))", systemImage: "arrow.uturn.forward")
                             .font(.system(size: 12.5)).foregroundColor(.accentColor)
@@ -223,7 +220,10 @@ struct EmptyState: View {
     var q: String { model.query.trimmingCharacters(in: .whitespacesAndNewlines) }
     var icon: String { !q.isEmpty ? "magnifyingglass" : (model.tab == .starred ? "star" : (model.tab == .chains ? "link" : "tray")) }
     var title: String {
-        if !q.isEmpty { return model.searching ? "Searching…" : (model.searchFailed ? "Search is not available" : "No session matches “\(clip(q, 24))”") }
+        if !q.isEmpty {
+            let what = model.tab == .chains ? "chain" : "session"
+            return model.searching ? "Searching…" : (model.searchFailed ? "Search is not available" : "No \(what) matches “\(clip(q, 24))”")
+        }
         switch model.tab {
         case .starred: return "Nothing starred yet"
         case .chains: return "No PR chains yet"
@@ -231,12 +231,18 @@ struct EmptyState: View {
         }
     }
     var detail: String {
-        if !q.isEmpty { return model.searchFailed ? "Update chainlog and try again." : "Searches titles, your notes, PR numbers, branches and folders." }
+        if !q.isEmpty {
+            if model.searchFailed { return "Update chainlog and try again." }
+            if model.tab == .chains {  // the Chains tab searches the chains it was sent, and the newest 30 are all it is sent
+                return model.moreChains > 0
+                    ? "Only the newest \(model.data?.chains.count ?? 30) chains are loaded here. “All \(model.totalChains) chains in Terminal…” below reaches the rest."
+                    : "Searches chain names and the titles, results and tools of their rounds."
+            }
+            return "Searches titles, your notes, PR numbers, branches and folders."
+        }
         switch model.tab {
         case .starred: return "Hover a session and click the star to keep it here."
-        case .chains: return model.isSearching && model.moreChains > 0
-            ? "Only the newest \(model.data?.chains.count ?? 30) chains are loaded here. “All \(model.totalChains) chains in Terminal…” below reaches the rest."
-            : "Save sessions that mention a PR (say “PR 4321”) and chainlog groups the rounds."
+        case .chains: return "Save sessions that mention a PR (say “PR 4321”) and chainlog groups the rounds."
         case .sessions: return "Use Claude Code or Codex as usual and they show up here."
         }
     }
@@ -293,6 +299,13 @@ struct SessionRow: View {
                 Spacer(minLength: 4)
                 if hovering || row.starred || model.editing == row.ref {
                     if hovering || model.editing == row.ref {
+                        // paste it into any terminal, VS Code or a chat (⌥-click on the row and the right-click menu do the same)
+                        if row.canResume {
+                            IconButton(symbol: "doc.on.doc", help: "Copy the command that reopens it (right-click for the session id)") { model.copyCommand(row) }
+                        }
+                        if row.resume.link != nil {
+                            IconButton(symbol: "link", help: "Copy the VS Code link to this session") { model.copyLink(row) }
+                        }
                         IconButton(symbol: "square.and.pencil", help: "Save with a note…") { model.beginSave(row) }
                     }
                     IconButton(symbol: row.starred ? "star.fill" : "star", tint: row.starred ? .yellow : .secondary,
@@ -312,6 +325,8 @@ struct SessionRow: View {
                 Button("Open") { model.open(row) }.disabled(!row.canResume)
                 if row.resume.vscode != nil { Button("Open in VS Code") { model.openInVSCode(row) }.disabled(!row.canResume) }
                 Button("Copy command") { model.copyCommand(row) }
+                Button("Copy session id") { model.copySessionID(row) }
+                if row.resume.link != nil { Button("Copy VS Code link") { model.copyLink(row) } }
                 Divider()
                 Button(row.starred ? "Remove from Starred" : "Add to Starred") { model.toggleStar(row) }
                 Button("Save with a note…") { model.beginSave(row) }
@@ -363,7 +378,7 @@ struct PreviewPanel: View {
                 }
             } else {
                 Text("Hover a session to preview it").font(.system(size: 12)).foregroundColor(.secondary)
-                Text("Click to reopen it · ⌥-click copies the command").font(.system(size: 11)).foregroundColor(.secondary.opacity(0.8))
+                Text("Click to reopen it · hover for Copy · right-click for more").font(.system(size: 11)).foregroundColor(.secondary.opacity(0.8))
             }
         }
         .frame(maxWidth: .infinity, minHeight: 72, maxHeight: 72, alignment: .topLeading)
@@ -443,6 +458,11 @@ struct Footer: View {
                 }
                 Divider()
                 Toggle("Open at login", isOn: Binding(get: { model.loginEnabled }, set: { model.setLogin($0) }))
+                Toggle("Keep a copy when I save or star", isOn: Binding(get: { model.data?.keep_auto ?? true }, set: { _ in model.toggleKeepAuto() }))
+                if let r = model.data?.retention {
+                    Button(r.title) { model.askRetention() }
+                    if let w = r.warning { Text("⚠︎ " + w) }
+                }
                 Button("Refresh now") { model.refresh() }
                 Divider()
                 Text("Click a session to reopen it · ⌥-click copies its command")

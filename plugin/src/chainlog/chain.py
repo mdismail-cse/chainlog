@@ -96,13 +96,20 @@ def suggest_key(session):
 
 
 _CTRL = re.compile(r"[\x00-\x1f\x7f-\x9f]")
+# characters that draw nothing or reorder text: a name with one of them must be the same chain as the name without
+_INVISIBLE = re.compile("[\u00ad\u061c\u180e\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u206f\ufeff]")
+
+
+def _plain(text):
+    """`text` on one line: control characters become spaces, invisible formatting characters disappear."""
+    return " ".join(_CTRL.sub(" ", _INVISIBLE.sub("", str(text))).split())
 
 
 def normalize_key(text):
     """User-typed key without session context: URL / owner/repo#N / repo#N -> 'repo#n'; free text
     trimmed, lowercased and stripped of control characters. A '/<round>' suffix is dropped (rounds
     are ordered by start time, not chosen when saving)."""
-    t = " ".join(_CTRL.sub(" ", str(text)).split())
+    t = _plain(text)
     t = re.sub(r"(#\d{1,7})/\d+$", r"\1", t)
     m = _PR_URL.match(t)
     if m:
@@ -116,7 +123,7 @@ def normalize_key(text):
 def key_from_arg(arg, session, chain_ids):
     """`-c` value -> chain key. A bare number ('4321', '#4321', 'PR 4321') means *this session's*
     repo; only when the session has no repo evidence does it join the one existing '*#4321' chain."""
-    t = " ".join(_CTRL.sub(" ", str(arg)).split())
+    t = _plain(arg)
     t = re.sub(r"(\d)/\d+$", r"\1", t)  # 'shop#4321/2' or '4321/2': the round is not a key
     m = _BARE.match(t)
     if m:
@@ -152,10 +159,13 @@ def build_chains(sessions):
             continue
         for link in s.get("chains") or []:
             c = chains.setdefault(link["id"], {"id": link["id"], "members": []})
-            c["members"].append((link.get("pos"), (s["times"].get("started_at") or 0), s["ref"]))
+            t = s["times"]
+            # no start time (a transcript without timestamps): when it was last worked on, so it is not taken for the oldest round
+            c["members"].append((link.get("pos"), t.get("started_at") or t.get("last_activity_at") or 0, t.get("last_activity_at") or 0, s["ref"]))
     for c in chains.values():
-        c["members"].sort(key=lambda m: (m[0] if m[0] is not None else 10 ** 9, m[1]))
-        c["members"] = [{"ref": ref, "round": i + 1} for i, (_p, _t, ref) in enumerate(c["members"])]
+        # pinned positions first, then by start; sessions that started together keep one order whatever order the files were found in
+        c["members"].sort(key=lambda m: (m[0] if m[0] is not None else 10 ** 9, m[1], m[2], m[3]))
+        c["members"] = [{"ref": ref, "round": i + 1} for i, (_p, _t, _l, ref) in enumerate(c["members"])]
         statuses = [sessions[m["ref"]].get("status") for m in c["members"]]
         c["status"] = next((x for x in reversed(statuses) if x), None)  # the latest round's verdict
         last = sessions[c["members"][-1]["ref"]]

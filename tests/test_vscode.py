@@ -75,6 +75,34 @@ class VsCodeSessions(MenuData):
         import shlex
         self.assertEqual(shlex.split(cmd)[:4], ["open", "-a", "Visual Studio Code", "/work/it's my folder"])
 
+    def test_a_row_carries_what_to_paste_somewhere_else(self):
+        rows = self.rows()  # not under a mocked platform: the link is for pasting anywhere, not for `open -a`
+        link = "vscode://anthropic.claude-code/open?session=%s"
+        self.assertEqual(rows["From the extension"]["resume"]["link"], link % ID[0])
+        for title, sid in (("From the extension", ID[0]), ("From the terminal", ID[1]), ("From the desktop app", ID[2])):
+            self.assertEqual(rows[title]["resume"]["session_id"], sid, title)
+            self.assertIn(sid, rows[title]["resume"]["command"], title)
+        self.assertIsNone(rows["From the terminal"]["resume"]["link"])  # only the extension has such a link
+        self.assertIsNone(rows["From the desktop app"]["resume"]["link"])
+
+    def test_a_codex_session_copies_its_own_id_and_has_no_vscode_link(self):
+        cid = "01a2b3c4-0000-0000-0000-0000000000cc"
+        self.codex_session(cid, NOW - 90 * 60, NOW - 60 * 60, name="A codex round")
+        row = self.rows()["A codex round"]
+        self.assertEqual(row["resume"]["session_id"], cid)
+        self.assertIn("codex resume " + cid, row["resume"]["command"])
+        self.assertIsNone(row["resume"]["link"])
+
+    def test_no_link_for_a_session_that_cannot_be_opened_or_is_not_the_extensions(self):
+        s = self.session(0)
+        ok = {"blockers": [], "cwd": s["cwd"]}
+        self.assertEqual(resume.vscode_link(s, ok), "vscode://anthropic.claude-code/open?session=" + ID[0])
+        self.assertEqual(resume.vscode_link(s, dict(ok, blockers=["the transcript file is gone"])), "")
+        self.assertEqual(resume.vscode_link(s, dict(ok, restore=True)), "")  # the link would not put the transcript back
+        self.assertEqual(resume.vscode_link(dict(s, native_id="x; rm -rf ~"), ok), "")  # only a real id goes into a link
+        self.assertEqual(resume.vscode_link(dict(s, harness="codex"), ok), "")
+        self.assertEqual(resume.vscode_link(self.session(1), ok), "")
+
     def test_ls_via_filters_by_where_it_was_started(self):
         for via, want in (("vscode", ["From the extension"]), ("desktop", ["From the desktop app"]),
                           ("terminal", ["From the terminal"])):

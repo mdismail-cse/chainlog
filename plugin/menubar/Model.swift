@@ -66,7 +66,7 @@ enum Layout {
         let q = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         if q.isEmpty { return data.chains }
         return data.chains.filter { c in
-            let hay = [c.id, c.title, c.status ?? ""].joined(separator: " ").lowercased()
+            let hay = ([c.id, c.title, c.status ?? ""].joined(separator: " ").lowercased() + " " + c.members.map { $0.haystack }.joined(separator: " "))
             return q.split(whereSeparator: { $0.isWhitespace }).allSatisfy { hay.contains($0) }
         }
     }
@@ -117,8 +117,14 @@ final class AppModel: ObservableObject {
     var runner: @Sendable ([String]) -> (ok: Bool, message: String) = { Actions.run($0) }
     /// Asked before a deletion (nothing can bring the files back). Tests replace it.
     var destructiveConfirmer: (String, String) -> Bool = { Alerts.confirm($0, $1, ok: "Delete") }
+    /// Asked before shortening how long Claude keeps sessions. Tests replace it.
+    var shortenConfirmer: (String, String) -> Bool = { Alerts.confirm($0, $1, ok: "Shorten") }
+    /// A question with a text box (title, detail, starting text); nil = cancelled. Tests replace it.
+    var askText: (String, String, String) -> String? = { Alerts.ask($0, $1, initial: $2) }
     /// Tests set this so an action has finished when it returns.
     var inline = false
+    /// Puts text on the clipboard. Tests replace it, so they never touch yours.
+    var copier: (String) -> Void = { Launcher.copy($0) }
     /// Runs a shell command without a terminal (reopening in VS Code). Tests replace it.
     var shell: (_ command: String, _ onFailure: @escaping @Sendable () -> Void) -> Void = { Launcher.shell($0, onFailure: $1) }
 
@@ -133,6 +139,10 @@ final class AppModel: ObservableObject {
     var visibleRows: [Row] { tab == .chains ? chains.flatMap { $0.members.reversed() } : sections.flatMap { $0.rows } }
     var totalChains: Int { data.map { $0.counts.chains ?? $0.chains.count } ?? 0 }
     var moreChains: Int { max(0, totalChains - (data?.chains.count ?? 0)) }
+    /// The heading over the chains: "PR chains · 3", or "newest 30 of 35" when chainlog sent only the newest ones.
+    var chainsHeader: String { moreChains > 0 && !isSearching ? "PR chains · newest \(chains.count) of \(totalChains)" : "PR chains · \(chains.count)" }
+    /// The link to the rest, when there is a rest. It names the real total, also while a search narrows the list.
+    var chainsFooter: String? { moreChains > 0 ? "All \(totalChains) chains in Terminal…" : nil }
     var unsavedCount: Int { data?.counts.unsaved ?? 0 }
     var isSearching: Bool { !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 
@@ -233,7 +243,7 @@ final class AppModel: ObservableObject {
     func open(_ row: Row, copyOnly: Bool = false) {
         guard row.canResume else { say("Can't reopen: " + (row.resume.blockers.first ?? "unknown")); return }
         if copyOnly {
-            Launcher.copy(row.resume.command)
+            copier(row.resume.command)
             say("Command copied")
             return
         }
@@ -260,6 +270,20 @@ final class AppModel: ObservableObject {
 
     func copyCommand(_ row: Row) { open(row, copyOnly: true) }
 
+    /// The id `claude --resume` / `codex resume` take: paste it into any terminal, script or chat.
+    func copySessionID(_ row: Row) {
+        guard let id = row.resume.session_id else { say("Update chainlog to copy the session id"); return }
+        copier(id)
+        say("Session id copied")
+    }
+
+    /// The VS Code extension's own link to a session (only for sessions started there).
+    func copyLink(_ row: Row) {
+        guard let link = row.resume.link else { say("This one has no VS Code link"); return }
+        copier(link)
+        say("VS Code link copied")
+    }
+
     /// Run a `chainlog` command off the main thread, then say how it went and refresh.
     private func perform(_ args: [String], doing: String, done: String, failed: String) {
         say(doing)
@@ -279,6 +303,47 @@ final class AppModel: ObservableObject {
     func refreshKeptCopies() {
         let run = runner
         DispatchQueue.global(qos: .utility).async { _ = run(["keep", "--refresh", "--quiet"]) }
+    }
+
+    /// Do `work` (a chainlog command) off the main thread, then `then` with its answer on the main thread.
+    private func onMain(_ work: @escaping @Sendable () -> (ok: Bool, message: String), then: @escaping ((ok: Bool, message: String)) -> Void) {
+        if inline { then(work()); return }
+        DispatchQueue.global(qos: .userInitiated).async {
+            let r = work()
+            DispatchQueue.main.async { MainActor.assumeIsolated { then(r) } }
+        }
+    }
+
+    /// ⚙ → "Claude keeps sessions for N days…": ask for a number, show what shortening would delete, then `chainlog retention N --yes`.
+    func askRetention() {
+        guard let info = data?.retention else { say("This chainlog is too old to change this (update it)"); return }
+        let detail = "Claude Code deletes a session's transcript this many days after you last used it (its own default is 30). Any number from 1 to 3650."
+            + (info.warning.map { "\n\n" + $0 + ". Keep the ones you care about first: right-click a session → Keep a copy." } ?? "")
+        guard let text = askText("How many days should Claude keep sessions?", detail, String(info.days)) else { return }
+        guard let n = Int(text.trimmingCharacters(in: .whitespaces)), (1...3650).contains(n) else {
+            say("Enter a whole number of days from 1 to 3650")
+            return
+        }
+        if n == info.days { say("Already \(n) days"); return }
+        let run = runner
+        onMain({ run(["retention", "\(n)", "--json"]) }) { plan in  // writes nothing: only says what the change would do
+            guard plan.ok, let raw = plan.message.data(using: .utf8), let p = try? JSONDecoder().decode(RetentionPlan.self, from: raw) else {
+                self.say("Could not check the change: " + clip(plan.message, 80))
+                return
+            }
+            if p.would_delete > 0 {
+                let msg = "\(p.would_delete) of your sessions are older than \(n) days. Claude deletes them the next time it starts, and \(p.would_delete_unkept) of those have no kept copy.\n\nKeep the ones you want first (right-click a session → Keep a copy)."
+                if !self.shortenConfirmer("Keep sessions only \(n) days?", msg) { return }
+            }
+            self.perform(["retention", "\(n)", "--yes"], doing: "Changing it…", done: "Claude will keep sessions \(n) days", failed: "Could not change it")
+        }
+    }
+
+    /// ⚙ → "Keep a copy when I save or star".
+    func toggleKeepAuto() {
+        let on = !(data?.keep_auto ?? true)
+        perform(["config", "set", "keep.auto", on ? "true" : "false"], doing: on ? "Turning it on…" : "Turning it off…",
+                done: on ? "Saving or starring now keeps a copy" : "Saving or starring no longer keeps a copy", failed: "Could not change it")
     }
 
     /// Right-click → Keep a copy / Stop keeping the copy.

@@ -149,6 +149,22 @@ enum Actions {
 
 /// Ask before doing something chainlog itself would ask about.
 enum Alerts {
+    /// A one-line question with a text box. nil when cancelled.
+    @MainActor
+    static func ask(_ title: String, _ detail: String, initial: String) -> String? {
+        NSApp.activate(ignoringOtherApps: true)
+        let a = NSAlert()
+        a.messageText = title
+        a.informativeText = detail
+        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 160, height: 24))
+        field.stringValue = initial
+        a.accessoryView = field
+        a.addButton(withTitle: "Set")
+        a.addButton(withTitle: "Cancel")
+        a.window.initialFirstResponder = field
+        return a.runModal() == .alertFirstButtonReturn ? field.stringValue : nil
+    }
+
     @MainActor
     static func confirm(_ title: String, _ detail: String, ok: String) -> Bool {
         NSApp.activate(ignoringOtherApps: true)

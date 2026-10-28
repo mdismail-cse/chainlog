@@ -67,6 +67,14 @@ def vscode_command(s, p, platform=None):
         shlex.quote(p["cwd"]), shlex.quote(VSCODE_URI % s["native_id"])))
 
 
+def vscode_link(s, p):
+    """The extension's own `vscode://` link for a session started in it, or "" (Claude sessions started in VS Code whose
+    transcript is on disk). Unlike vscode_command it is not macOS-only: it is what you paste somewhere else."""
+    if s["harness"] != "claude" or origin(s)[0] != "vscode" or p["blockers"] or p.get("restore"):
+        return ""
+    return VSCODE_URI % s["native_id"] if _UUID.match(s["native_id"]) else ""
+
+
 def _restoring(p, command):
     """A session whose original Claude deleted is put back from the kept copy before anything opens it."""
     return "chainlog restore %s && %s" % (shlex.quote(p["ref"]), command) if p.get("restore") else command

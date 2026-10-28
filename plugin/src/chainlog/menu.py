@@ -6,9 +6,20 @@ All wording, ordering and "can this be resumed?" decisions are made here, where 
 from __future__ import annotations
 
 from chainlog import __version__
-from chainlog import query, resume, review, ui
+from chainlog import keep, query, resume, retention, review, ui
 
 SCHEMA = "chainlog.menu/1"
+EXPIRING_DAYS = 14  # "expires soon": Claude deletes the original within this many days
+
+
+def _retention(index):
+    """How long Claude keeps transcripts and what is about to go (for the app's gear menu)."""
+    rt = index.rt
+    days = retention.current(retention.read(rt))
+    left = [(s, keep.days_left(rt, s)) for s in index.visible(include_empty=True, include_hidden=True)]
+    soon = [s for s, d in left if d is not None and d < EXPIRING_DAYS]
+    return {"days": days or retention.DEFAULT, "is_default": days is None, "expiring": len(soon),
+            "expiring_unkept": sum(1 for s in soon if not keep.has_copy(rt, s)), "expiring_within": EXPIRING_DAYS}
 
 
 def _row(rt, s, now, chain_id=None):
@@ -31,6 +42,8 @@ def _row(rt, s, now, chain_id=None):
         "resume": {"cwd": p["cwd"], "command": resume.shell_command(p),
                    # a session started in the VS Code extension can be reopened in it (macOS); "" otherwise
                    "vscode": resume.vscode_command(s, p) or None,
+                   # what to paste somewhere else: the tool's own id for the session, and (VS Code sessions) its vscode:// link
+                   "session_id": s["native_id"], "link": resume.vscode_link(s, p) or None,
                    # Claude deleted the original but a kept copy exists: opening puts it back first
                    "restores": bool(p.get("restore")),
                    "blockers": p["blockers"], "notes": p["notes"]},
@@ -57,6 +70,8 @@ def build(index, unsaved_limit=8, recent_limit=300, chain_limit=30, round_limit=
         "counts": {"unsaved": len(unsaved), "starred": len(starred), "chains": len(chains), "all": len(visible)},
         # what "unsaved" covers: sessions that ended within this many hours, after chainlog was installed
         "unsaved_window_hours": round(index.cfg["unsaved"]["lookback"] / 3600),
+        "retention": _retention(index),
+        "keep_auto": bool((index.cfg.get("keep") or {}).get("auto", True)),
         "unsaved": [_row(rt, s, now) for s in unsaved[:unsaved_limit]],
         "recent": [_row(rt, s, now) for s in recent],
         "starred": [_row(rt, s, now) for s in starred[:starred_limit]],

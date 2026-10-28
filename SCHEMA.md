@@ -81,17 +81,21 @@ New fields may be added within `/1`.
 ## Menu data (`chainlog _menu`, schema `chainlog.menu/1`)
 
 One line of JSON for the Mac menu bar app (hidden command; not part of the public CLI). Top level:
-`schema`, `chainlog` (version), `generated_at`, `unsaved_window_hours`, `counts {unsaved, starred, chains, all}`, `unsaved[]`, `recent[]`,
+`schema`, `chainlog` (version), `generated_at`, `unsaved_window_hours`, `keep_auto`, `retention {days, is_default, expiring, expiring_unkept, expiring_within}`
+(how long Claude keeps transcripts, and how many expire within `expiring_within` days / have no kept copy), `counts {unsaved, starred, chains, all}`, `unsaved[]`, `recent[]`,
 `starred[]`, `chains[]`. `chainlog _menu --find TEXT` adds `query` and `results[]`: every matching session
 (not only the listed ones), best match first, at most 40.
 
 - A row: `ref`, `short`, `harness`, `kept` (a copy is held), `via` (where it was started: `"VS Code"`, `"Desktop"`, or null for a plain terminal),
   `title` (one clean line), `saved` (`user|auto|none`), `status`, `live`, `starred`, `chain`, `round`, `at`, `ago`,
-  `last_work`, `resume {cwd, command, vscode, restores, blockers[], notes[]}`. `resume.restores` is true when Claude deleted the
+  `last_work`, `resume {cwd, command, vscode, session_id, link, restores, blockers[], notes[]}`. `resume.restores` is true when Claude deleted the
   original but a kept copy exists: `command` then starts with `chainlog restore REF && …`, and `blockers` is empty.
   `resume.command` is ready to run in a shell; a non-empty `blockers` means the session cannot be reopened.
   `resume.vscode` is a shell command that reopens a Claude session started in the VS Code extension inside it (macOS
   only, otherwise null): it opens the folder, then the extension's `vscode://anthropic.claude-code/open?session=ID` link.
+  `resume.session_id` is the tool's own id for the session (what `claude --resume` takes); `resume.link` is that
+  `vscode://` link itself, for pasting somewhere else (only a Claude session started in VS Code whose transcript is on disk,
+  otherwise null; unlike `vscode` it is not macOS-only). Both are absent from an older chainlog, and the app copes.
 - `counts.unsaved` is the total; `unsaved[]` holds at most the 8 newest, `recent[]` the next 300 (`counts.all` is every
   session), `chains[]` 30;
   `starred[]` holds all starred sessions (at most 50), newest activity first.

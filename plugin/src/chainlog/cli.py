@@ -838,14 +838,18 @@ def cmd_retention(rt, args):
     except ValueError as e:
         raise Exit(1, "%s: %s" % (ui.home(rt, retention_mod.path(rt)), e))
     target = new or retention_mod.DEFAULT
+    doomed = [s for s, d in rows if d is not None and d - shown + target <= 0] if target < shown else []
+    if args.json:  # a plan for the menu bar app: nothing is written
+        _p(json.dumps({"current": shown, "to": target, "changed": after != text, "would_delete": len(doomed),
+                       "would_delete_unkept": sum(1 for s in doomed if not keep_mod.has_copy(rt, s))}))
+        return 0
     if after == text:
         _p("already %s" % ("%d days" % new if new else "Claude's default (%d days)" % retention_mod.DEFAULT))
         return 0
     import difflib
     name = ui.home(rt, retention_mod.path(rt))
     _p("".join(difflib.unified_diff((text or "").splitlines(keepends=True), after.splitlines(keepends=True), fromfile=name, tofile=name)).rstrip("\n"))
-    doomed = [s for s, d in rows if d is not None and d - shown + target <= 0]
-    if target < shown and doomed:
+    if doomed:
         lost = [s for s in doomed if not keep_mod.has_copy(rt, s)]
         _p(st.yellow("! %d of your sessions are older than %d days; Claude deletes them the next time it starts (%d have no kept copy: chainlog keep REF first)."
                      % (len(doomed), target, len(lost))))
@@ -1227,6 +1231,7 @@ def build_parser():
     rn.add_argument("days", nargs="?", type=_positive, metavar="DAYS")
     rn.add_argument("--default", action="store_true", help="remove the setting (Claude's own default is 30 days)")
     rn.add_argument("--yes", action="store_true", help="do not ask")
+    rn.add_argument("--json", action="store_true", help="with DAYS: print what the change would do, and write nothing")
     fg = sub.add_parser("forget", help="hide a session from lists (undo restores it)", epilog=REF_HELP)
     fg.add_argument("ref", metavar="REF")
     sub.add_parser("undo", help="revert your last save / note / status / tag / star / forget")
