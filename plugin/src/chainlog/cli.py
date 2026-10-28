@@ -25,9 +25,9 @@ from chainlog.runtime import Runtime
 from chainlog.store.events import NOTE_MAX, new_event
 
 VISIBLE = ("save", "ls", "find", "show", "resume", "chain", "next", "note", "status", "tag", "star", "unstar",
-           "keep", "unkeep", "restore", "delete", "retention", "forget", "undo", "review", "config", "setup", "uninstall", "doctor", "scan")
+           "keep", "unkeep", "restore", "delete", "retention", "forget", "undo", "review", "config", "setup", "uninstall", "doctor", "scan", "ask")
 ALIASES = {"list": "ls", "r": "resume", "chains": "chain"}
-HIDDEN = ("_sweep", "_nudge", "_menu", "help")
+HIDDEN = ("_sweep", "_nudge", "_menu", "_ask", "help")
 STATUSES = ("wip", "pass", "fail", "blocked")
 UNDOABLE = ("save", "note", "status", "tag", "star", "unstar", "chain.link", "chain.unlink", "forget")
 
@@ -1087,6 +1087,130 @@ def cmd_menu(rt, args):
     return 0
 
 
+def _ask_status_text(st, style):
+    lines = []
+    for engine, e in st["engines"].items():
+        mark = style.green("✓") if e["installed"] and e["signed_in"] is not False else style.dim("·")
+        mine = " (in use)" if st["engine"] == engine else ""
+        agreed = ", you agreed to send it session text" if engine in st["consented"] else ""
+        lines.append("  %s %-7s %s%s%s" % (mark, engine, e["detail"], mine, agreed))
+    return lines
+
+
+def cmd_ask(rt, args):
+    """Ask Claude or Codex about your sessions (it runs the `claude` / `codex` you are signed in to; nothing else)."""
+    from chainlog import ask as ask_mod
+    cfg = config_mod.load(rt)
+    st = ui.Style(rt.color())
+    if args.disconnect:
+        ask_mod.disconnect(rt, cfg)
+        _p("Disconnected. chainlog will not send session text to Claude or Codex until you connect again.")
+        return 0
+    if args.status:
+        status = ask_mod.status(rt, cfg)
+        if args.json:
+            _p(json.dumps(status, separators=(",", ":")))
+        else:
+            _p("Ask Claude or Codex about your sessions: %s" % ("ready (%s)" % status["engine"] if status["ready"] else "not connected"))
+            for line in _ask_status_text(status, st):
+                _p(line)
+            if not status["ready"]:
+                _p("Connect one: chainlog ask --connect claude   (or codex)")
+        return 0
+    if args.connect:
+        engine = args.connect
+        _p(ask_mod.disclosure(engine))
+        if not args.yes:
+            if not rt.isatty():
+                raise Exit(2, "this asks for your agreement; run it in a terminal, or add --yes to agree")
+            reply = _ask("Connect %s and agree to this? [y/N] " % ask_mod.LABEL[engine])
+            if (reply or "").strip().lower() not in ("y", "yes"):
+                _p("Cancelled. Nothing was changed.")
+                return 1
+        try:
+            ask_mod.connect(rt, cfg, engine)
+        except ask_mod.AskError as e:
+            raise Exit(1, e.message)
+        _p("%s Connected to %s. Ask something: chainlog ask \"what did I do on the refund PR?\"" % (st.green("✓"), ask_mod.LABEL[engine]))
+        return 0
+    question = " ".join(args.question).strip()
+    if not question:
+        if rt.isatty() and not args.json:
+            return _ask_chat(rt, cfg, args, ask_mod, st)
+        raise Exit(2, "usage: chainlog ask QUESTION   (or: chainlog ask --connect claude|codex, --status, --disconnect)")
+    return _ask_once(rt, cfg, args, ask_mod, st, question, [])
+
+
+def _ask_once(rt, cfg, args, ask_mod, st, question, history):
+    index = load(rt, cfg)
+    progress = (lambda t: sys.stderr.write(st.dim(t) + "\n")) if rt.isatty() and not args.json else None
+    try:
+        res = ask_mod.ask(rt, cfg, index, question, history=history, engine=args.engine, progress=progress)
+    except ask_mod.AskError as e:
+        raise Exit(1, e.message)
+    if args.json:
+        _p(json.dumps(res, separators=(",", ":")))
+        return 0
+    _p(ask_mod.plain(res["answer"], res["sessions"]))
+    if res["sessions"]:
+        _p("")
+        for r in res["sessions"]:
+            _p("  %s  %s  %s" % (st.dim(r["short"]), ui.fit(r["title"], 60), st.dim(r["ago"])))
+        _p(st.dim("  open one: chainlog resume ID"))
+    return 0
+
+
+def _ask_chat(rt, cfg, args, ask_mod, st):
+    """`chainlog ask` with no question, in a terminal: a small chat. An empty line ends it."""
+    history = []
+    _p(st.dim("Ask about your sessions. An empty line ends the chat."))
+    while True:
+        question = (_ask("you> ") or "").strip()
+        if not question:
+            return 0
+        index = load(rt, cfg)
+        try:
+            res = ask_mod.ask(rt, cfg, index, question, history=history, engine=args.engine,
+                              progress=lambda t: sys.stderr.write(st.dim(t) + "\n"))
+        except ask_mod.AskError as e:
+            _err(e.message)
+            if e.code in ("not_connected", "no_consent", "not_installed", "not_signed_in"):
+                return 1
+            continue
+        _p(ask_mod.plain(res["answer"], res["sessions"]))
+        _p("")
+        history += [{"role": "user", "text": question}, {"role": "assistant", "text": res["answer"]}]
+
+
+def cmd_ask_stream(rt, args):
+    """What the menu bar app talks to: a JSON request on stdin, one JSON object per line back (status…, then answer or error)."""
+    import signal
+    from chainlog import ask as ask_mod
+
+    def emit(obj):
+        _p(json.dumps(obj, separators=(",", ":")))
+
+    def stop(*_a):  # the app's Stop button: end the request, and the AI process with it (the runner kills its group)
+        raise KeyboardInterrupt
+
+    signal.signal(signal.SIGTERM, stop)
+    try:
+        request = json.loads(rt.stdin.read() or "{}")
+        if not isinstance(request, dict):
+            raise ValueError("the request must be a JSON object")
+        cfg = config_mod.load(rt)
+        res = ask_mod.ask(rt, cfg, load(rt, cfg), request.get("question"), history=request.get("history") or [],
+                          engine=request.get("engine") or None, progress=lambda t: emit({"type": "status", "text": t}))
+        emit(dict(res, type="answer"))
+        return 0
+    except ask_mod.AskError as e:
+        emit({"type": "error", "code": e.code, "message": e.message})
+        return 0
+    except ValueError as e:
+        emit({"type": "error", "code": "bad_request", "message": "chainlog could not read the request: %s" % e})
+        return 0
+
+
 def cmd_setup(rt, args):
     from chainlog import setup as setup_mod
     return setup_mod.run(rt, args, _p)
@@ -1282,6 +1406,19 @@ def build_parser():
     mn = sub.add_parser("_menu")
     mn.add_argument("--find", metavar="TEXT", help="instead of the lists: search every session for TEXT")
     mn.add_argument("--starred", action="store_true", help="with --find: only among starred sessions")
+    ak = sub.add_parser("ask", help="ask Claude or Codex about your sessions",
+                        description="Ask Claude or Codex about the sessions you worked on, or search them with details. It uses "
+                                    "the `claude` / `codex` you are already signed in to. Connect once with --connect; "
+                                    "with no question in a terminal it starts a small chat.")
+    ak.add_argument("question", nargs="*", help="what to ask, e.g.: which sessions touched the refund PR, and how did they end?")
+    ak.add_argument("--connect", choices=list(config_mod.ASK_ENGINES), metavar="claude|codex",
+                    help="agree to send session text to that tool, and use it")
+    ak.add_argument("--disconnect", action="store_true", help="stop sending session text to any tool")
+    ak.add_argument("--status", action="store_true", help="what is installed, signed in and connected")
+    ak.add_argument("-e", "--engine", choices=list(config_mod.ASK_ENGINES), help="use this tool for this question")
+    ak.add_argument("-y", "--yes", action="store_true", help="with --connect: agree without asking")
+    ak.add_argument("--json", action="store_true")
+    sub.add_parser("_ask")
     sub.add_parser("help")
     # hidden commands must not show in `chainlog --help`
     if hasattr(sub, "_choices_actions"):  # argparse internals; if they ever change, the hidden commands just show in --help
@@ -1295,7 +1432,7 @@ DISPATCH = {
     "star": cmd_star, "unstar": cmd_unstar, "keep": cmd_keep, "unkeep": cmd_unkeep, "restore": cmd_restore,
     "delete": cmd_delete, "retention": cmd_retention, "forget": cmd_forget, "undo": cmd_undo, "review": cmd_review, "config": cmd_config,
     "setup": cmd_setup, "uninstall": cmd_uninstall, "doctor": cmd_doctor, "scan": cmd_scan,
-    "_sweep": cmd_sweep, "_nudge": cmd_nudge, "_menu": cmd_menu,
+    "_sweep": cmd_sweep, "_nudge": cmd_nudge, "_menu": cmd_menu, "ask": cmd_ask, "_ask": cmd_ask_stream,
 }
 
 

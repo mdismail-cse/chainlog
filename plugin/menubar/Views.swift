@@ -9,7 +9,11 @@ struct PopoverView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            SearchBar(model: model, focused: $searchFocused, close: close)
+            if model.tab == .ask {
+                AskHeader(model: model, chat: model.chat)  // the same place and size as the search box: the tabs do not move
+            } else {
+                SearchBar(model: model, focused: $searchFocused, close: close)
+            }
             TabBar(model: model)
             Divider()
             ZStack(alignment: .bottom) {
@@ -25,17 +29,24 @@ struct PopoverView: View {
                 }
             }
             Divider()
-            PreviewPanel(hover: model.hover)
-            Divider()
+            if model.tab != .ask {  // the chat uses that room
+                PreviewPanel(hover: model.hover)
+                Divider()
+            }
             Footer(model: model)
         }
         .frame(width: 440, height: 560)
         .onAppear { DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { searchFocused = true } }
+        .onReceive(model.$tab) { t in  // leaving the chat: the search box comes back, ready to type in
+            if t != .ask { DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { searchFocused = true } }
+        }
     }
 
     @ViewBuilder var content: some View {
         if model.data == nil {
             ProblemView(problem: model.problem)
+        } else if model.tab == .ask {
+            AskView(model: model, chat: model.chat, close: close)
         } else if model.tab == .chains {
             ChainsList(model: model)
         } else {
@@ -82,6 +93,7 @@ struct TabBar: View {
                 Button { model.tab = t } label: {
                     HStack(spacing: 5) {
                         if t == .starred { Image(systemName: "star.fill").font(.system(size: 10)).foregroundColor(.yellow) }
+                        if t == .ask { Image(systemName: "sparkles").font(.system(size: 10)).foregroundColor(.accentColor) }
                         Text(t.title).font(.system(size: 12.5, weight: selected ? .semibold : .regular))
                         if let n = model.count(for: t) {
                             Text("\(n)").font(.system(size: 10.5, weight: .medium))
@@ -218,7 +230,7 @@ struct EmptyState: View {
     }
 
     var q: String { model.query.trimmingCharacters(in: .whitespacesAndNewlines) }
-    var icon: String { !q.isEmpty ? "magnifyingglass" : (model.tab == .starred ? "star" : (model.tab == .chains ? "link" : "tray")) }
+    var icon: String { !q.isEmpty ? "magnifyingglass" : (model.tab == .starred ? "star" : (model.tab == .chains ? "link" : (model.tab == .ask ? "sparkles" : "tray"))) }
     var title: String {
         if !q.isEmpty {
             let what = model.tab == .chains ? "chain" : "session"
@@ -227,7 +239,7 @@ struct EmptyState: View {
         switch model.tab {
         case .starred: return "Nothing starred yet"
         case .chains: return "No PR chains yet"
-        case .sessions: return "No sessions yet"
+        case .sessions, .ask: return "No sessions yet"
         }
     }
     var detail: String {
@@ -243,7 +255,7 @@ struct EmptyState: View {
         switch model.tab {
         case .starred: return "Hover a session and click the star to keep it here."
         case .chains: return "Save sessions that mention a PR (say “PR 4321”) and chainlog groups the rounds."
-        case .sessions: return "Use Claude Code or Codex as usual and they show up here."
+        case .sessions, .ask: return "Use Claude Code or Codex as usual and they show up here."
         }
     }
 }

@@ -132,9 +132,16 @@ def _default_run(argv, timeout=5.0, input=None, env=None, cwd=None):
         out, err = p.communicate(input=input, timeout=timeout)
         return p.returncode, out, err
     except subprocess.TimeoutExpired:
-        try:
-            os.killpg(p.pid, 9)
-        except OSError:
-            p.kill()
+        _kill_group(p)
         p.communicate()
         return 124, "", "timeout after %ss" % timeout
+    except BaseException:  # Ctrl-C, or SIGTERM turned into an exception by the caller: leave nothing running
+        _kill_group(p)
+        raise
+
+
+def _kill_group(p):
+    try:
+        os.killpg(p.pid, 9)
+    except OSError:
+        p.kill()

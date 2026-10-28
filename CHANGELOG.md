@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+- Ask Claude or Codex about your sessions: `chainlog ask "which sessions touched the refund PR, and how did each end?"`, and an **Ask**
+  tab in the menu bar app (connect screen, chat, the sessions an answer mentions as rows you can open or copy, Stop, New chat). It uses
+  the `claude` / `codex` you are signed in to, after you agree to what is sent (`chainlog ask --connect`). Everything sent is redacted;
+  the AI gets no tools and runs in an empty folder; links in an answer never work; a session it names is checked against your list.
+  When the answer needs more it asks for the detail of a few sessions or a search, up to 3 requests per question.
+  `chainlog ask --status`, `--disconnect`, `-e codex`, `--json`; settings `ask.model` and `ask.timeout`.
+- Security: the AI summaries (`summary.engine claude|codex`) were run in a way that let the AI read files and, for Claude, use every
+  connector of your account (Docs, Slack, …), and let Codex run shell commands, so text recorded in an old session could steer it.
+  Both now run with no tools and no user config (`--tools "" --strict-mcp-config`; `--ignore-user-config --disable shell_tool …`).
+  `chainlog` also ends the AI process when it is interrupted, not only when it times out.
+- Menu bar app: the popover no longer closes when you reach for a menu bar that hides itself (full-screen apps, or "Automatically hide
+  and show the menu bar"). Touching the top edge makes macOS give focus back to the app underneath, which closed the popover; it now
+  closes on a click anywhere else, when the app loses focus away from the top of a display, or when you switch Space; a click on the
+  icon moves a popover left on another Space to the one you are on.
 - Keep what you want: `chainlog keep REF` copies a session (compressed) into chainlog's folder so Claude's cleanup cannot take it.
   Saving or starring a session does this automatically (`keep.auto`). Reopening a session whose original Claude deleted puts the copy
   back first (also from the menu bar app and VS Code). `chainlog unkeep`, `ls --kept`, `restore` and `keep --refresh` round it out.

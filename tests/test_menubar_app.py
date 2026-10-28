@@ -291,6 +291,162 @@ class AppEndToEnd(Home):
             self.assertEqual(rc, 0)
             self.assertIn(text, out)
 
+    # --- the Ask tab: the app, the real chainlog, and a stand-in for `claude` ----------------------------------------------
+
+    CLAUDE_STUB = """#!/bin/sh
+case "$1" in auth) echo '{"loggedIn": true}'; exit 0;; esac
+prompt=$(cat)
+printf '%s' "$prompt" >> "$HOME/prompts.txt"
+printf '%s\\n' "$@" > "$HOME/last-args.txt"
+echo $$ > "$HOME/stub.pid"
+[ -f "$HOME/stub-sleep" ] && sleep 60
+if [ -f "$HOME/stub-fail" ]; then echo "Invalid API key · Please run /login" >&2; exit 1; fi
+need=$(cat "$HOME/need.txt" 2>/dev/null)
+if [ -n "$need" ] && ! printf '%s' "$prompt" | grep -q '<detail id='; then
+  printf '{"is_error": false, "result": "NEED: %s"}' "$need"; exit 0
+fi
+printf '{"is_error": false, "result": "The zebra work is in [[%s]]. DB_PASSWORD=hunter2hunter2"}' "$(cat "$HOME/ref.txt")"
+"""
+
+    def isolate_tools(self):
+        """Only the tools of this fake HOME are found: the real `claude` and `codex` on your PATH are not."""
+        (self.home / ".local" / "bin").mkdir(parents=True, exist_ok=True)
+        self.env["PATH"] = "%s:/usr/bin:/bin" % (self.home / ".local" / "bin")
+
+    def claude_stub(self, ref=None):
+        self.isolate_tools()
+        bin_dir = self.home / ".local" / "bin"
+        (bin_dir / "claude").write_text(self.CLAUDE_STUB)
+        (bin_dir / "claude").chmod(0o755)
+        (self.home / "ref.txt").write_text(ref or IDS[3][:8])
+
+    def chainlog(self, *args):
+        p = subprocess.run([LAUNCHER, *args], env=self.env, capture_output=True, text=True, timeout=60)
+        return p.returncode, p.stdout, p.stderr
+
+    def connect_claude(self):
+        self.claude_stub()
+        self.assertEqual(self.chainlog("ask", "--connect", "claude", "--yes")[0], 0)
+
+    def consent(self):
+        return json.loads((self.data / "config.json").read_text())["ask"]["consent"]
+
+    def test_the_ask_tab_is_there_and_shows_what_is_installed_before_you_connect(self):
+        self.claude_stub()
+        out = self.dump("--tab", "ask")
+        self.assertIn("| Ask*", out.splitlines()[0])
+        self.assertIn("ask: not connected", out)
+        self.assertIn("Claude: signed in | Connect enabled", out)
+        self.assertIn("Codex: not installed", out)
+        self.assertIn("Codex: not installed (npm install -g @openai/codex) | Connect disabled", out)
+
+    def test_connect_shows_what_is_sent_first_and_a_no_changes_nothing(self):
+        self.claude_stub()
+        rc, out, err = self.app("--ask-connect", "claude", "--refuse")
+        self.assertEqual(rc, 0, err)
+        self.assertIn("asked: Connect Claude? |", out)
+        for must in ("sent to Claude", "redacted", "no files, no shell", "1 to 3 requests"):
+            self.assertIn(must, out)
+        self.assertIn("toast: -", out)
+        self.assertFalse((self.data / "config.json").exists() and self.consent())
+        rc, out, _ = self.app("--ask-connect", "claude")
+        self.assertIn("toast: Connected to Claude", out)
+        self.assertEqual(self.consent(), ["claude"])
+        again = self.dump("--tab", "ask")
+        self.assertIn("ask: connected to Claude (sonnet)", again)
+        self.assertIn("suggestion: What did I work on this week?", again)
+
+    def test_connecting_a_tool_that_is_missing_fails_with_the_reason_and_changes_nothing(self):
+        self.isolate_tools()
+        rc, out, _ = self.app("--ask-connect", "codex")
+        self.assertIn("toast: Could not connect:", out)
+        self.assertIn("not installed", out)
+        self.assertFalse((self.data / "config.json").exists() and self.consent())
+
+    def test_a_question_goes_through_the_whole_chain_and_comes_back_with_the_session(self):
+        self.connect_claude()
+        rc, out, err = self.app("--ask", "what happened in the zebra session?")
+        self.assertEqual(rc, 0, err)
+        self.assertIn("status: Reading 12 sessions…", out)
+        self.assertIn("status: Asking Claude…", out)
+        self.assertIn("you: what happened in the zebra session?", out)
+        self.assertIn("The zebra work is in Shop PR 5000 review (%s)." % IDS[3][:8], out)  # the id became the session's name
+        self.assertIn("→ [%s] Shop PR 5000 review" % IDS[3][:8], out)
+        self.assertIn("(Claude · sonnet · 1 request)", out)
+        self.assertNotIn("hunter2hunter2", out)  # a secret the AI repeats is hidden again
+        self.assertIn("[REDACTED", out)
+        self.assertNotIn("! ", out)
+
+    def test_what_the_ai_is_given_when_the_app_asks(self):
+        self.connect_claude()
+        self.app("--ask", "what happened in the zebra session?")
+        prompt = (self.home / "prompts.txt").read_text()
+        args = (self.home / "last-args.txt").read_text().splitlines()
+        self.assertIn("what happened in the zebra session?", prompt)
+        self.assertIn('did: "worked on item 3 with the zebra widget"', prompt)  # the catalog line of that session
+        self.assertEqual(prompt.count("<sessions listed="), 1)
+        self.assertNotIn(str(self.home), prompt)  # no folder of yours
+        self.assertNotIn(str(self.proj), prompt)
+        self.assertEqual(args[args.index("--tools") + 1], "")  # no tools
+        self.assertIn("--strict-mcp-config", args)
+        self.assertIn("--no-session-persistence", args)
+        self.assertEqual(self.chainlog("ls", "--json")[1].count('"harness"'), 12)  # the chat made no sessions of its own
+
+    def test_when_the_ai_asks_for_more_the_tab_says_so(self):
+        self.connect_claude()
+        (self.home / "need.txt").write_text(IDS[3][:8])
+        rc, out, err = self.app("--ask", "give me the details of the zebra session")
+        self.assertEqual(rc, 0, err)
+        for line in ("status: Asking Claude…", "status: Reading 1 session in detail…", "status: Asking Claude again…"):
+            self.assertIn(line, out)
+        self.assertIn("(Claude · sonnet · 2 requests)", out)
+        self.assertIn('<detail id="%s">' % IDS[3][:8], (self.home / "prompts.txt").read_text())
+
+    def test_two_questions_in_one_chat_carry_the_first_answer(self):
+        self.connect_claude()
+        rc, out, _ = self.app("--ask", "first question", "--ask", "and the second one?")
+        self.assertEqual(out.count("you: "), 2)
+        prompts = (self.home / "prompts.txt").read_text()
+        second = prompts.split("<sessions listed=")[2]
+        self.assertIn("USER: first question", second)
+        self.assertIn("ASSISTANT: The zebra work is in", second)
+
+    def test_signed_out_is_a_message_in_the_chat(self):
+        self.connect_claude()
+        (self.home / "stub-fail").write_text("")
+        rc, out, _ = self.app("--ask", "anything")
+        self.assertIn("! Claude says you are not signed in", out)
+        self.assertIn("`claude`", out)
+
+    def test_not_connected_asks_nothing(self):
+        self.claude_stub()
+        rc, out, _ = self.app("--ask", "anything")
+        self.assertIn("ask: not connected", out)
+        self.assertNotIn("you:", out)
+        self.assertFalse((self.home / "prompts.txt").exists())  # nothing left the machine
+
+    def test_stop_ends_the_ai_process_too(self):
+        self.connect_claude()
+        (self.home / "stub-sleep").write_text("")
+        rc, out, _ = self.app("--ask", "slow question", "--ask-stop-after", "5")
+        self.assertEqual(rc, 0)
+        self.assertIn("! Stopped.", out)
+        pidfile = self.home / "stub.pid"
+        self.assertTrue(pidfile.exists(), "the AI stand-in had not started before Stop was pressed:\n" + out)
+        pid = int(pidfile.read_text())
+        end = time.time() + 8
+        gone = False
+        while time.time() < end:
+            try:
+                os.kill(pid, 0)
+            except ProcessLookupError:
+                gone = True
+                break
+            time.sleep(0.1)
+        if not gone:
+            os.kill(pid, 9)
+        self.assertTrue(gone, "the AI process was still running after Stop")
+
 
 if __name__ == "__main__":
     unittest.main()

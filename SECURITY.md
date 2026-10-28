@@ -14,7 +14,8 @@ databases, and `~/.claude/.credentials.json`. This is enforced in code (`paths.s
 
 ## What chainlog writes
 - Its own data in `~/.local/share/chainlog` (0700/0600): your notes, statuses, chains, hook metadata,
-  and 160-character redacted previews. Set `snippets` to false to drop the previews.
+  and 160-character redacted previews. Set `snippets` to false to drop the previews. `config.json` also records which AI tool
+  you agreed to send session text to (`ask.consent`); the chat itself is kept only in the menu bar app's memory.
 - A compressed **copy of the whole transcript** of each session you keep, in `~/.local/share/chainlog/kept/` (0700/0600). You keep a
   session with `chainlog keep`, or automatically by saving or starring it (setting `keep.auto`, on by default; turn it off with
   `chainlog config set keep.auto false`). The copy is **not redacted**: it holds everything the original holds, including anything you
@@ -37,9 +38,17 @@ databases, and `~/.claude/.credentials.json`. This is enforced in code (`paths.s
 - chainlog never edits herdr's hook scripts, herdr's hook entries, or `~/.claude/settings.json`.
 
 ## Network
-None by default. With `summary.engine` set to `auto`, `claude` or `codex`, a short redacted excerpt
-goes to the provider that ran the session, through that provider's own CLI. The excerpt contains only
-user and assistant text, at most 12k characters. Notifications show only the title and short ID.
+None by default. Two features send text to an AI provider, through that provider's own signed-in CLI (`claude -p`, `codex exec`),
+and only when you turn them on:
+- **Summaries.** With `summary.engine` set to `auto`, `claude` or `codex`, a short redacted excerpt goes to the provider that ran the
+  session. The excerpt contains only user and assistant text, at most 12k characters.
+- **Ask** (`chainlog ask`, the menu bar app's Ask tab). After you agree (`chainlog ask --connect`, which shows exactly what is sent), each
+  question sends the question, the last messages of the chat, and a redacted text catalog of your sessions (titles, notes, short
+  previews, results; plus, when the AI asks for them, a few sessions' in-depth text) to the tool you chose, which can be a different
+  provider from the one that ran a session. `chainlog ask --disconnect` withdraws the agreement.
+
+Both run the AI with **no tools** (no files, shell, connectors, plugins, hooks or your own config), from an empty temporary folder,
+and leave no session behind. Notifications show only the title and short ID.
 
 ## Reporting
 Please open a private security advisory on https://github.com/mdismail-cse/chainlog/security/advisories.

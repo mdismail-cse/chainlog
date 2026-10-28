@@ -54,7 +54,7 @@ flowchart LR
 ## Is it safe?
 
 - **It stays on your computer.** No account, nothing is sent online, nothing is shared with your team.
-  The one exception is AI-written summaries, which you must turn on yourself ([details](SECURITY.md)).
+  The two exceptions are AI-written summaries and the **Ask** chat, which you must turn on yourself ([details](SECURITY.md)).
 - **It reads your sessions and changes nothing of theirs unless you ask.** Only four things ever write to Claude's folders, and each
   runs only when you say so: `chainlog delete` (removes sessions you name), `chainlog retention` (edits one setting after showing
   you the change), putting back a copy you kept when you reopen a session Claude deleted, and `chainlog setup`.
@@ -247,12 +247,38 @@ A small icon at the top of your screen shows how many sessions are unsaved. Clic
 - **Sessions** shows what is unsaved, then what you used recently. **Starred** keeps the sessions you want close. **Chains** lists every PR with its rounds.
 - **Click** a session to reopen it in a new Terminal window, in its own folder. To open it somewhere else, hover the row and press the **copy** button (or hold **⌥** while clicking): it copies the command, which works in any terminal. Sessions started in VS Code also have a **link** button that copies their `vscode://` link; right-click → *Copy session id* gives the bare id. This works on search results too.
 - **Hover** a session: the **★** stars it (the same as `chainlog star`), and the **pencil** saves it with a note and a result (pass, fail …) without leaving the app.
+- **Ask** is a chat with Claude or Codex about your sessions ([below](#ask-claude-or-codex-about-your-sessions)).
 
 Get it once: `chainlog setup menubar`. It builds a tiny app on your Mac in about 5 seconds and puts it in `~/Applications`.
-It needs Apple's command line tools (`xcode-select --install`). Nothing is sent anywhere: the app only runs `chainlog` on your computer.
+It needs Apple's command line tools (`xcode-select --install`). Nothing is sent anywhere: the app only runs `chainlog` on your computer,
+unless you connect the **Ask** tab.
 
 The ⚙ menu has **Open at login** and **Open sessions in** (Terminal, iTerm2, or "only copy the command").
 Remove it with `chainlog uninstall`.
+
+## Ask Claude or Codex about your sessions
+
+Instead of scrolling, ask. Open the **Ask** tab in the menu bar app, or type `chainlog ask` in a terminal:
+
+```sh
+chainlog ask "which sessions did I use for the refund PR, and how did each one end?"
+chainlog ask "what did I work on last week?"
+chainlog ask            # a small chat: an empty line ends it
+```
+
+You get a short answer, and the sessions it mentions come with it: click one to reopen it, or copy its command.
+If the answer needs more, chainlog gives the AI the details of those sessions or runs another search for it, up to 3 requests per question.
+
+**Connect once.** In the tab (or `chainlog ask --connect claude`, or `codex`) chainlog finds the `claude` / `codex` you are already
+signed in to. There are no API keys and no extra account. Before it connects it shows exactly what is sent:
+
+- your question, and the **titles, notes and short excerpts** of the sessions chainlog picks to answer it, go to Claude or Codex;
+- secrets (passwords, tokens, keys) are **redacted first**, in everything it sends;
+- the AI gets **no files, no shell and no other tools**, and runs in an empty folder: text recorded in an old session cannot make it do anything;
+- links in an answer never work, and a session it names is checked against your own list before it is shown;
+- each question uses 1 to 3 requests on your Claude or Codex plan. Sessions of both tools are included, so Codex sessions can go to Claude and the other way round.
+
+`chainlog ask --disconnect` takes your agreement back. Until you connect, nothing is ever sent.
 
 ## If you forget to save
 
@@ -318,6 +344,7 @@ Read the titles and the "last work" lines. Press **Enter** for the first one, ty
 | Undo my last save or change | `chainlog undo` |
 | Star a session I want to keep close | `chainlog star @N` (see them: `chainlog ls --starred`) |
 | See my sessions from the menu bar (Mac) | `chainlog setup menubar`, then click the icon |
+| Ask an AI about my sessions | `chainlog ask --connect claude` once, then `chainlog ask "…"` (or the **Ask** tab) |
 | Handle sessions I forgot to save | `chainlog review` (or `chainlog review --auto` to save them all) |
 | Change what happens when I forget | `chainlog setup policy` |
 | Check that everything works | `chainlog doctor` |

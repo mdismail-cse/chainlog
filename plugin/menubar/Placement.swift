@@ -16,6 +16,20 @@ struct ToggleGuard {
     }
 }
 
+/// A transient popover also closes whenever the app is deactivated. macOS deactivates it when the pointer touches the top edge
+/// of a display to bring back a menu bar that hides itself (full-screen apps, or "Automatically hide and show the menu bar"):
+/// it hands focus back to the app underneath, so the popover vanished just as you reached for the menu bar. We close it
+/// ourselves instead: on a click anywhere else, and when the app loses focus anywhere but at the top of a display.
+enum Dismissal {
+    static let menuBarZone: CGFloat = 44  // taller than the menu bar, so a pointer resting on a revealed bar still counts
+
+    /// Is the pointer at the top of a display, where the menu bar is or is about to appear? (On macOS 26 a display's menu bar
+    /// can sit just above its top edge, so the strip reaches a little past it.)
+    static func atMenuBar(_ p: NSPoint, frames: [NSRect]) -> Bool {
+        frames.contains { p.x >= $0.minX && p.x <= $0.maxX && abs(p.y - $0.maxY) <= menuBarZone }
+    }
+}
+
 enum Placement {
     static let width: CGFloat = 440
     static let margin: CGFloat = 8

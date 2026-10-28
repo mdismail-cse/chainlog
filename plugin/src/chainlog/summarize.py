@@ -44,11 +44,11 @@ def local_summary(s, limit=200):
     return clean(" · ".join(parts), limit)
 
 
-def excerpt(s, max_chars=EXCERPT_MAX):
-    """Last user/assistant text blocks from the transcript tail; no tool output, redacted."""
+def text_blocks(s):
+    """[("USER" | "ASSISTANT", text)] from the transcript, oldest first; no tool output; [] when it cannot be read."""
     path = (s.get("transcript") or {}).get("path")
     if not path or not os.path.isfile(path):
-        return ""
+        return []
     blocks = []
     try:
         size = os.path.getsize(path)
@@ -57,11 +57,11 @@ def excerpt(s, max_chars=EXCERPT_MAX):
             for _part, o in iter_json_lines(path, size):
                 u = _user_text(o)
                 if u:
-                    blocks.append("USER: " + u)
+                    blocks.append(("USER", u))
                     continue
                 a = _assistant_text(o)
                 if a:
-                    blocks.append("ASSISTANT: " + a)
+                    blocks.append(("ASSISTANT", a))
         else:
             from chainlog.sources.codex import _user_text as codex_user
             for _part, o in iter_json_lines(path, size):
@@ -69,11 +69,17 @@ def excerpt(s, max_chars=EXCERPT_MAX):
                 if o.get("type") == "response_item" and p.get("type") == "message" and p.get("role") == "user":
                     u = codex_user(p)
                     if u:
-                        blocks.append("USER: " + u)
+                        blocks.append(("USER", u))
                 elif o.get("type") == "event_msg" and p.get("type") == "agent_message" and p.get("message"):
-                    blocks.append("ASSISTANT: " + p["message"])
+                    blocks.append(("ASSISTANT", p["message"]))
     except OSError:
-        return ""
+        return []
+    return blocks
+
+
+def excerpt(s, max_chars=EXCERPT_MAX):
+    """Last user/assistant text blocks from the transcript tail; no tool output, redacted."""
+    blocks = ["%s: %s" % b for b in text_blocks(s)]
     out, total = [], 0
     for b in reversed(blocks[-30:]):
         b, _ = redact(" ".join(b.split())[:2000])
@@ -82,6 +88,15 @@ def excerpt(s, max_chars=EXCERPT_MAX):
         out.append(b)
         total += len(b)
     return "\n".join(reversed(out))
+
+
+# What the AI is run with. It is given text and answers with text: no file, shell or connector tool, and no user config
+# (which can name MCP servers, hooks and plugins). Without these flags `claude -p` can read files in its folder and use
+# every connector the account has (Docs, Slack, ...), and `codex exec -s read-only` can still run shell commands, so
+# text recorded in an old session could make either one do things.
+CLAUDE_NO_TOOLS = ["--tools", "", "--strict-mcp-config", "--setting-sources", "project"]
+CODEX_NO_TOOLS = ["--ignore-user-config", "--disable", "shell_tool", "--disable", "plugins", "--disable", "apps",
+                  "--disable", "hooks", "-s", "read-only"]
 
 
 def _child_env(rt):
@@ -94,7 +109,7 @@ def _child_env(rt):
 
 def _run_claude(rt, text, timeout):
     with tempfile.TemporaryDirectory(prefix="chainlog-sum-") as tmp:
-        rc, out, err = rt.run(["claude", "-p", "--no-session-persistence", "--setting-sources", "project",
+        rc, out, err = rt.run(["claude", "-p", "--no-session-persistence", *CLAUDE_NO_TOOLS,
                                "--model", "haiku", "--output-format", "text", PROMPT],
                               timeout=timeout, input=text, env=_child_env(rt), cwd=tmp)
     if rc != 0:
@@ -107,7 +122,7 @@ def _run_claude(rt, text, timeout):
 def _run_codex(rt, text, timeout):
     with tempfile.TemporaryDirectory(prefix="chainlog-sum-") as tmp:
         last = os.path.join(tmp, "last.txt")
-        rc, out, err = rt.run(["codex", "exec", "--ephemeral", "--skip-git-repo-check", "-s", "read-only",
+        rc, out, err = rt.run(["codex", "exec", "--ephemeral", "--skip-git-repo-check", *CODEX_NO_TOOLS,
                                "-C", tmp, "-o", last, "-"],
                               timeout=timeout, input=PROMPT + "\n\n<session>\n" + text + "\n</session>\n",
                               env=_child_env(rt), cwd=tmp)

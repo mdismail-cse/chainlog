@@ -81,7 +81,7 @@ New fields may be added within `/1`.
 ## Menu data (`chainlog _menu`, schema `chainlog.menu/1`)
 
 One line of JSON for the Mac menu bar app (hidden command; not part of the public CLI). Top level:
-`schema`, `chainlog` (version), `generated_at`, `unsaved_window_hours`, `keep_auto`, `retention {days, is_default, expiring, expiring_unkept, expiring_within}`
+`schema`, `chainlog` (version), `generated_at`, `unsaved_window_hours`, `keep_auto`, `ask {engine, connected}` (the Ask tab: the engine you chose, and whether you agreed to send it session text), `retention {days, is_default, expiring, expiring_unkept, expiring_within}`
 (how long Claude keeps transcripts, and how many expire within `expiring_within` days / have no kept copy), `counts {unsaved, starred, chains, all}`, `unsaved[]`, `recent[]`,
 `starred[]`, `chains[]`. `chainlog _menu --find TEXT` adds `query` and `results[]`: every matching session
 (not only the listed ones), best match first, at most 40.
@@ -102,6 +102,23 @@ One line of JSON for the Mac menu bar app (hidden command; not part of the publi
 - A chain: `id`, `rounds`, `status`, `title`, `ago`, `members[]` (rows, with `round`).
 
 New fields may be added within `/1`; `plugin/menubar/sample.json` shows the shape and is checked by the tests.
+
+## Ask (`chainlog ask`, `chainlog _ask`)
+
+`chainlog ask --status --json` prints `{engine, consented[], model, ready, engines{claude|codex: {installed, signed_in, detail}},
+disclosure{claude, codex}}`. `signed_in` is `true`, `false`, or `null` when the tool could not say. `model` is what would be used.
+`disclosure` is the text shown before connecting: one source for the terminal and the app.
+
+`chainlog _ask` (hidden; the menu bar app) reads one JSON object on stdin, `{"question": "…", "history": [{"role": "user"|"assistant",
+"text": "…"}], "engine": "claude"|"codex" (optional)}`, and prints one compact JSON object per line:
+
+- `{"type":"status","text":"Asking Claude…"}`: zero or more, while it works;
+- then exactly one of
+  `{"type":"answer","answer":"… [[id]] …","sessions":[row…],"engine":"claude","model":"sonnet","calls":2,"listed":47}`
+  (`sessions` are rows as in `_menu`, for the ids named in the answer, at most 12) or
+  `{"type":"error","code":"not_connected|no_consent|not_installed|not_signed_in|timeout|empty|failed|bad_request","message":"…"}`.
+
+It exits 0 for both. SIGTERM stops it and the AI process it started (exit 130).
 
 ## Sources (read-only)
 

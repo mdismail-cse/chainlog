@@ -43,6 +43,14 @@ enum CLI {
         ProcessInfo.processInfo.environment["CHAINLOG_MENUBAR_TIMEOUT"].flatMap(TimeInterval.init) ?? 20
     }
 
+    /// What chainlog is run with: no prompts, and the PATH a Terminal would have (a menu bar app is not given yours).
+    static func environment() -> [String: String] {
+        var env = ProcessInfo.processInfo.environment
+        env["CHAINLOG_NO_PROMPT"] = "1"
+        env["PATH"] = "\(homeDirectory())/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:" + (env["PATH"] ?? "")
+        return env
+    }
+
     /// Runs a program and returns what it printed. Never blocks past `timeout`, even when the program
     /// leaves a child behind that keeps its output open: the read is event-driven, not "until EOF".
     static func run(_ exe: String, _ args: [String], timeout: TimeInterval = CLI.timeout,
@@ -50,11 +58,7 @@ enum CLI {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: exe)
         p.arguments = args
-        var env = ProcessInfo.processInfo.environment
-        env["CHAINLOG_NO_PROMPT"] = "1"
-        let home = homeDirectory()
-        env["PATH"] = "\(home)/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:" + (env["PATH"] ?? "")
-        p.environment = env
+        p.environment = environment()
         let pipe = Pipe()
         p.standardOutput = pipe
         p.standardError = mergeStderr ? pipe : FileHandle.nullDevice
@@ -163,6 +167,17 @@ enum Alerts {
         a.addButton(withTitle: "Cancel")
         a.window.initialFirstResponder = field
         return a.runModal() == .alertFirstButtonReturn ? field.stringValue : nil
+    }
+
+    /// A message with one OK button.
+    @MainActor
+    static func info(_ title: String, _ detail: String) {
+        NSApp.activate(ignoringOtherApps: true)
+        let a = NSAlert()
+        a.messageText = title
+        a.informativeText = detail
+        a.addButton(withTitle: "OK")
+        a.runModal()
     }
 
     @MainActor

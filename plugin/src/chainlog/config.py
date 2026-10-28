@@ -10,6 +10,8 @@ from chainlog.paths import atomic_write, ensure_private_dir, safe_open
 
 ACTIONS = ("summarize", "list", "remind", "off")
 ENGINES = ("local", "auto", "claude", "codex")
+ASK_ENGINES = ("claude", "codex")  # who `chainlog ask` can talk to
+_MODEL = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:\[\]-]{0,63}")  # never starts with "-": it goes into a command line
 
 DEFAULTS = {
     "v": 1,
@@ -19,6 +21,8 @@ DEFAULTS = {
     "unsaved": {"action": "list", "after": 600, "lookback": 86400},
     "keep": {"auto": True},
     "summary": {"engine": "local", "timeout": 60},
+    # engine: who answers (set by `chainlog ask --connect`); consent: the engines you agreed may be sent your session text
+    "ask": {"engine": "", "model": "", "timeout": 90, "consent": []},
     "installed_at": None,
 }
 
@@ -29,6 +33,8 @@ KEYS = {
     "unsaved.lookback": "duration, e.g. 24h",
     "summary.engine": "one of: local, auto, claude, codex",
     "summary.timeout": "seconds",
+    "ask.model": "model `chainlog ask` uses, e.g. sonnet or opus (empty = the tool's default for chat)",
+    "ask.timeout": "seconds one request to Claude / Codex may take (10 … 600)",
     "snippets": "true/false (store redacted last-ask / last-work previews)",
     "auto_chain": "true/false (link saves to a PR chain automatically)",
     "hints": "true/false (one-line tips under the list, e.g. when Claude Code is not connected)",
@@ -68,6 +74,10 @@ _TYPES = {"unsaved.action": lambda v: v in ACTIONS, "summary.engine": lambda v: 
           "unsaved.after": lambda v: isinstance(v, int) and 60 <= v <= 86400,
           "unsaved.lookback": lambda v: isinstance(v, int) and v >= 60,
           "summary.timeout": lambda v: isinstance(v, int) and 5 <= v <= 600,
+          "ask.engine": lambda v: v == "" or v in ASK_ENGINES,
+          "ask.model": lambda v: isinstance(v, str) and (v == "" or bool(_MODEL.fullmatch(v))),
+          "ask.timeout": lambda v: isinstance(v, int) and not isinstance(v, bool) and 10 <= v <= 600,
+          "ask.consent": lambda v: isinstance(v, list) and all(e in ASK_ENGINES for e in v),
           "snippets": lambda v: isinstance(v, bool), "auto_chain": lambda v: isinstance(v, bool),
           "hints": lambda v: isinstance(v, bool), "keep.auto": lambda v: isinstance(v, bool)}
 
@@ -163,6 +173,17 @@ def set_value(cfg, key, raw) -> dict:
             raise ValueError("summary.timeout must be a number of seconds")
         if not 5 <= value <= 600:
             raise ValueError("summary.timeout must be between 5 and 600 seconds")
+    elif key == "ask.timeout":
+        try:
+            value = int(raw)
+        except ValueError:
+            raise ValueError("ask.timeout must be a number of seconds")
+        if not 10 <= value <= 600:
+            raise ValueError("ask.timeout must be between 10 and 600 seconds")
+    elif key == "ask.model":
+        value = str(raw).strip()
+        if value and not _MODEL.fullmatch(value):
+            raise ValueError("ask.model must be a model name such as sonnet, opus or gpt-5 (letters, digits and . _ : - only)")
     else:
         v = str(raw).strip().lower()
         if v in ("1", "true", "yes", "on"):

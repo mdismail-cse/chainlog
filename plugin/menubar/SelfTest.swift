@@ -407,6 +407,18 @@ func selfTest(sample path: String?) -> Int {
         check("a deliberate click a moment later opens it again", g.shouldOpen(at: t0.addingTimeInterval(0.9)))
     }
 
+    // reaching for a menu bar that hides itself must not close the popover (macOS hands focus back to the app underneath)
+    do {
+        let frames = [NSRect(x: 0, y: 0, width: 1728, height: 1117), NSRect(x: 1728, y: 37, width: 1920, height: 1080)]
+        check("the pointer on the very top edge of a display is at the menu bar", Dismissal.atMenuBar(NSPoint(x: 2600, y: 1117), frames: frames))
+        check("  ... on the built-in display's menu bar", Dismissal.atMenuBar(NSPoint(x: 900, y: 1100), frames: frames))
+        check("  ... just above a display's top edge (the bar that sits above it)", Dismissal.atMenuBar(NSPoint(x: 3000, y: 1140), frames: frames))
+        check("the pointer in the middle of a display is not", !Dismissal.atMenuBar(NSPoint(x: 900, y: 600), frames: frames))
+        check("  ... nor on the popover's own list, a screenful below the top", !Dismissal.atMenuBar(NSPoint(x: 2600, y: 700), frames: frames))
+        check("  ... nor at the bottom edge", !Dismissal.atMenuBar(NSPoint(x: 900, y: 0), frames: frames))
+        check("  ... nor off to the side of every display", !Dismissal.atMenuBar(NSPoint(x: 5000, y: 1117), frames: frames))
+    }
+
     // hover: the preview follows the pointer, and a late "exit" never wipes the row you moved onto
     do {
         let m = model()
@@ -416,6 +428,223 @@ func selfTest(sample path: String?) -> Int {
         m.hover.exit(r2)
         check("leaving the row clears the preview", m.hover.row == nil)
         check("a row's folder is shown with ~ for the home folder", row().folder == "/tmp")
+    }
+
+    // Ask: chatting with Claude or Codex about your sessions
+    do {
+        final class Calls: @unchecked Sendable {
+            var requests: [AskRequest] = []
+            var onEvent: [(AskEvent) -> Void] = []
+            var onDone: [(Int32) -> Void] = []
+            var cancelled = 0
+            var statusReads = 0
+            var ran: [[String]] = []
+            var asked: [(String, String)] = []
+            var opened: [String] = []
+            var copied: [String] = []
+        }
+        let calls = Calls()
+        func ev(_ json: String) -> AskEvent { try! JSONDecoder().decode(AskEvent.self, from: Data(json.utf8)) }
+        let connectedJSON = #"{"engine":"claude","connected":true}"#
+        func chatModel(connected: Bool = true) -> AppModel {
+            var d = data
+            d.ask = try! JSONDecoder().decode(AskConfig.self, from: Data((connected ? connectedJSON : #"{"engine":null,"connected":false}"#).utf8))
+            let m = AppModel(); m.data = d
+            m.copier = { calls.copied.append($0) }
+            m.launcher = { cmd, _, _ in calls.opened.append(cmd); return true }
+            m.runner = { args in calls.ran.append(args); return (true, "ok") }
+            m.chat.inline = true
+            m.chat.starter = { req, onEvent, onDone in
+                calls.requests.append(req); calls.onEvent.append(onEvent); calls.onDone.append(onDone)
+                return { calls.cancelled += 1 }
+            }
+            m.chat.statusReader = { calls.statusReads += 1; return try? JSONDecoder().decode(AskStatus.self, from: Data(statusJSON.utf8)) }
+            m.chat.connectConfirmer = { t, d in calls.asked.append((t, d)); return true }
+            m.chat.disconnectConfirmer = { t, d in calls.asked.append((t, d)); return true }
+            return m
+        }
+        let statusJSON = #"""
+        {"engine":null,"consented":[],"model":null,"ready":false,
+         "engines":{"claude":{"installed":true,"signed_in":true,"detail":"signed in"},
+                    "codex":{"installed":false,"signed_in":null,"detail":"not installed (npm install -g @openai/codex)"}},
+         "disclosure":{"claude":"Text is sent to Claude. Secrets are redacted.","codex":"Text is sent to Codex."}}
+        """#
+        let shown = data.recent[0]
+        func rowJSON(_ r: Row) -> String {  // a row as `chainlog _ask` sends it (only what the app reads)
+            let o: [String: Any] = ["ref": r.ref, "short": r.short, "harness": r.harness, "title": r.title, "saved": r.saved, "status": NSNull(),
+                                    "live": false, "starred": false, "chain": NSNull(), "round": NSNull(), "ago": r.ago, "last_work": NSNull(),
+                                    "resume": ["cwd": r.resume.cwd, "command": r.resume.command, "blockers": [String](), "notes": [String]()] as [String: Any]]
+            return String(data: try! JSONSerialization.data(withJSONObject: o), encoding: .utf8)!
+        }
+        let answerJSON = """
+        {"type":"answer","answer":"It ended in a failure. [[\(shown.short)]] and [[ffffffff]] **bold**","engine":"claude","model":"sonnet","calls":2,
+         "sessions":[\(rowJSON(shown))]}
+        """
+
+        // not connected: nothing is sent, and it says why
+        var m = chatModel(connected: false)
+        m.chat.send("hello")
+        check("Ask: not connected, nothing is asked", calls.requests.isEmpty && m.chat.messages.isEmpty && m.toast == "Connect Claude or Codex first", m.toast ?? "")
+        check("Ask: the tab knows it is not connected", !m.chat.connected && m.chat.supported)
+        var old = data; old.ask = nil
+        let oldModel = AppModel(); oldModel.data = old
+        check("Ask: a chainlog without the Ask tab is recognised", !oldModel.chat.supported && !oldModel.chat.connected)
+        check("Ask: the tab has no count and no rows", m.count(for: .ask) == nil && Tab.allCases.last == .ask && Layout.sections(tab: .ask, query: "", data: data, results: nil).isEmpty)
+
+        // a question: sent once, history empty, shown as thinking until it answers
+        m = chatModel()
+        check("Ask: connected, the engine is the one chainlog reports", m.chat.connected && m.chat.engine == .claude)
+        m.chat.draft = "  what did I do?  "
+        m.chat.send()
+        check("Ask: a question is sent trimmed, and the box is emptied", calls.requests.count == 1 && calls.requests[0].question == "what did I do?" && m.chat.draft == "")
+        check("  ... with no earlier messages, and the tool chosen by chainlog", calls.requests[0].history.isEmpty && calls.requests[0].engine == nil)
+        check("  ... it shows as the user's message and as thinking", m.chat.messages.map { $0.role } == [.user] && m.chat.thinking && m.chat.progress == "Starting…")
+        m.chat.send("a second question while waiting")
+        m.chat.draft = "   "
+        m.chat.send()
+        check("Ask: nothing is sent while waiting, or for an empty box", calls.requests.count == 1 && m.chat.messages.count == 1)
+        calls.onEvent[0](ev(#"{"type":"status","text":"Asking Claude…"}"#))
+        check("Ask: its progress is shown", m.chat.progress == "Asking Claude…")
+        calls.onEvent[0](ev(answerJSON))
+        calls.onDone[0](0)
+        let reply = m.chat.messages.last
+        check("Ask: the answer arrives with the sessions it mentions and who answered", reply?.role == .assistant && reply?.sessions.map { $0.short } == [shown.short] && reply?.meta == "Claude · sonnet · 2 requests", reply?.meta ?? "-")
+        check("  ... and it is no longer thinking", !m.chat.thinking && m.chat.messages.count == 2)
+
+        // the next question carries the conversation, without errors, and at most the last eight messages
+        calls.onEvent.removeAll(); calls.onDone.removeAll()
+        m.chat.send("and the second round?")
+        check("Ask: the next question carries what was said before", calls.requests.last?.history.map { $0["role"] ?? "" } == ["user", "assistant"] && calls.requests.last?.history.first?["text"] == "what did I do?")
+        calls.onEvent[0](ev(#"{"type":"error","code":"timeout","message":"Claude took too long."}"#))
+        calls.onDone[0](0)
+        check("Ask: an error is shown as a message and the chat goes on", m.chat.messages.last?.role == .error && m.chat.messages.last?.code == "timeout" && !m.chat.thinking)
+        check("  ... and a plain failure does not send you back to the connect screen", calls.statusReads == 0)
+        for i in 0..<6 { m.chat.send("q\(i)"); calls.onEvent.last?(ev(#"{"type":"answer","answer":"a","engine":"claude","calls":1,"sessions":[]}"#)); calls.onDone.last?(0) }
+        let hist = m.chat.historyPayload()
+        check("Ask: at most the last eight messages are carried, and never an error", hist.count == 8 && hist.allSatisfy { $0["role"] == "user" || $0["role"] == "assistant" })
+        calls.onEvent.removeAll(); calls.onDone.removeAll()
+        m.chat.send("this one fails")
+        calls.onEvent[0](ev(#"{"type":"error","code":"failed","message":"Claude could not answer: boom"}"#)); calls.onDone[0](0)
+        let afterError = m.chat.historyPayload()
+        check("Ask: an error just shown is not sent back as part of the conversation", !afterError.contains { ($0["text"] ?? "").contains("boom") } && afterError.last?["text"] == "this one fails", "\(afterError.suffix(2))")
+
+        // signed out / not connected any more: back to the connect screen's information
+        calls.onEvent.removeAll(); calls.onDone.removeAll()
+        m.chat.send("one more")
+        calls.onEvent[0](ev(#"{"type":"error","code":"not_signed_in","message":"Claude says you are not signed in."}"#))
+        calls.onDone[0](0)
+        check("Ask: being signed out re-reads what is installed and signed in", calls.statusReads == 1 && m.chat.status?.engines["claude"]?.usable == true)
+
+        // chainlog ends without saying anything
+        calls.onEvent.removeAll(); calls.onDone.removeAll()
+        m.chat.send("silent?")
+        calls.onDone[0](3)
+        check("Ask: chainlog ending without an answer is reported, not waited on", !m.chat.thinking && m.chat.messages.last?.code == "failed" && (m.chat.messages.last?.text ?? "").contains("exit 3"), m.chat.messages.last?.text ?? "")
+
+        // Stop
+        calls.onEvent.removeAll(); calls.onDone.removeAll(); calls.cancelled = 0
+        m.chat.send("long one")
+        let before = m.chat.messages.count
+        m.chat.stop()
+        check("Ask: Stop ends the request and says so", calls.cancelled == 1 && !m.chat.thinking && m.chat.messages.last?.code == "stopped" && m.chat.messages.count == before + 1)
+        calls.onEvent[0](ev(answerJSON)); calls.onDone[0](0)
+        check("  ... and whatever it still prints is ignored", m.chat.messages.count == before + 1 && !m.chat.thinking)
+        m.chat.stop()
+        check("  ... stopping again does nothing", calls.cancelled == 1 && m.chat.messages.count == before + 1)
+        // a request that is far too slow
+        calls.onEvent.removeAll(); calls.onDone.removeAll(); calls.cancelled = 0
+        m.chat.send("slow")
+        m.chat.timedOut()
+        check("Ask: a request that never ends is stopped and reported", calls.cancelled == 1 && !m.chat.thinking && m.chat.messages.last?.code == "timeout")
+        // New chat
+        m.chat.send("pending")
+        m.chat.clear()
+        check("Ask: a new chat empties the conversation (and stops a pending question)", m.chat.messages.isEmpty && !m.chat.thinking && calls.cancelled == 2)
+        // chainlog missing
+        m.chat.starter = { _, _, _ in nil }
+        m.chat.send("hello?")
+        check("Ask: chainlog not being found is a message, not a hang", !m.chat.thinking && m.chat.messages.last?.code == "not_found")
+        // a suggestion sends itself and leaves what you typed
+        m.chat.clear(); m.chat.draft = "half typed"
+        m.chat.starter = { req, onEvent, onDone in calls.requests.append(req); return { } }
+        m.chat.send(ChatModel.suggestions[0])
+        check("Ask: a suggestion is sent as it is and does not touch the box", calls.requests.last?.question == ChatModel.suggestions[0] && m.chat.draft == "half typed")
+
+        // connecting: the details are shown first, and only a yes connects
+        m = chatModel(connected: false)
+        m.chat.loadStatus()
+        check("Ask: the connect screen reads what is installed and signed in", m.chat.status?.engines["claude"]?.usable == true && m.chat.status?.engines["codex"]?.usable == false && !m.chat.checking)
+        calls.ran = []; calls.asked = []
+        m.chat.connect(.claude)
+        check("Ask: connecting shows what is sent first", calls.asked.count == 1 && calls.asked[0].0 == "Connect Claude?" && calls.asked[0].1 == "Text is sent to Claude. Secrets are redacted.", calls.asked.first?.1 ?? "-")
+        check("  ... then runs one chainlog command", calls.ran == [["ask", "--connect", "claude", "--yes"]] && m.chat.connecting == nil, "\(calls.ran)")
+        calls.ran = []; calls.asked = []
+        m.chat.connectConfirmer = { t, d in calls.asked.append((t, d)); return false }
+        m.chat.connect(.claude)
+        check("Ask: saying no connects nothing", calls.ran.isEmpty && calls.asked.count == 1 && m.chat.connecting == nil)
+        calls.ran = []; calls.asked = []
+        m.chat.connectConfirmer = { t, d in calls.asked.append((t, d)); return true }
+        let agreed = #"{"engine":"claude","consented":["claude","codex"],"model":"sonnet","ready":true,"engines":{"claude":{"installed":true,"signed_in":true,"detail":"signed in"},"codex":{"installed":true,"signed_in":true,"detail":"signed in"}},"disclosure":{"claude":"c","codex":"x"}}"#
+        m.chat.statusReader = { try? JSONDecoder().decode(AskStatus.self, from: Data(agreed.utf8)) }
+        m.chat.loadStatus()
+        m.chat.connect(.codex)
+        check("Ask: switching to a tool you already agreed to does not ask again", calls.asked.isEmpty && calls.ran == [["ask", "--connect", "codex", "--yes"]], "\(calls.ran)")
+        m = chatModel()
+        calls.ran = []; calls.asked = []
+        m.chat.disconnectConfirmer = { t, d in calls.asked.append((t, d)); return false }
+        m.chat.disconnect()
+        check("Ask: Disconnect asks, and no changes nothing", calls.asked.count == 1 && calls.ran.isEmpty)
+        m.chat.disconnectConfirmer = { _, _ in true }
+        m.chat.send("something"); m.chat.stop()
+        m.chat.disconnect()
+        check("Ask: Disconnect runs one chainlog command and clears the chat", calls.ran == [["ask", "--disconnect"]] && m.chat.messages.isEmpty, "\(calls.ran)")
+
+        // links in an answer
+        m = chatModel()
+        m.chat.send("q")
+        calls.onEvent.last?(ev(answerJSON)); calls.onDone.last?(0)
+        let link = URL(string: "\(AskText.scheme)://s/\(shown.short)")!
+        calls.opened = []
+        check("Ask: a link to a session in the answer opens that session", m.chat.open(link) && calls.opened == [shown.resume.command], "\(calls.opened)")
+        check("  ... a link to some other session opens nothing", m.chat.open(URL(string: "\(AskText.scheme)://s/ffffffff")!) && calls.opened.count == 1)
+        check("  ... and any other link is not ours to open", !m.chat.open(URL(string: "https://evil.example/login")!) && !m.chat.open(URL(string: "file:///etc/passwd")!) && calls.opened.count == 1)
+        m.chat.copy(m.chat.messages.last!)
+        check("Ask: Copy puts the answer on the clipboard with session names, not ids", calls.copied.last?.contains("\(clip(shown.title, 40)) (\(shown.short))") == true && calls.copied.last?.contains("[[") == false && m.toast == "Answer copied", calls.copied.last ?? "-")
+    }
+
+    // the text of an answer: only sessions that came with it become links, whatever the AI wrote
+    do {
+        let a = data.recent[0], b = data.recent[1]
+        let text = "See [[\(a.short)]] then [[\(b.short.uppercased())]], not [[abcdef12]]. [phish](https://evil.example/x) and ![i](https://evil.example/i.png) and **bold**."
+        let attr = AskText.attributed(text, sessions: [a, b])
+        let links = attr.runs.compactMap { $0.link }
+        check("answer: each mentioned session is one link", links.count == 2 && links.allSatisfy { AskText.session(in: $0) != nil }, "\(links)")
+        check("  ... named after the session", String(attr.characters).contains(clip(a.title, 30)) && String(attr.characters).contains(clip(b.title, 30)))
+        check("  ... an unknown id disappears and no other link survives", !String(attr.characters).contains("[[") && !links.contains { $0.scheme != AskText.scheme })
+        check("  ... **bold** is kept as bold text", attr.runs.contains { $0.inlinePresentationIntent?.contains(.stronglyEmphasized) == true && String(attr[$0.range].characters) == "bold" })
+        check("  ... a link's text stays as plain text", String(attr.characters).contains("phish"))
+        let oddTitle = "*b* [x](https://evil.example) `c` <b>"
+        let odd = AskText.attributed("[[\(a.short)]]", sessions: [try! JSONDecoder().decode(Row.self, from: Data(#"{"ref":"claude:z","short":"\#(a.short)","harness":"claude","title":"*b* [x](https://evil.example) `c` <b>","saved":"none","status":null,"live":false,"starred":false,"chain":null,"round":null,"ago":"1h","last_work":null,"resume":{"cwd":"/tmp","command":"x","blockers":[],"notes":[]}}"#.utf8))])
+        check("answer: a title full of markdown is shown as typed, and is still one link", odd.runs.compactMap { $0.link }.count == 1 && String(odd.characters) == clip(oddTitle, 30), String(odd.characters))
+        check("  ... with no bold, italics or code made out of it", !odd.runs.contains { $0.inlinePresentationIntent != nil }, "\(odd.runs.map { String(describing: $0.inlinePresentationIntent) })")
+        check("answer: plain text names sessions and drops unknown ids", AskText.plain("[[\(a.short)]] [[abcdef12]]", sessions: [a]) == "\(clip(a.title, 40)) (\(a.short)) ")
+        check("answer: a link is recognised only in our own shape", AskText.session(in: URL(string: "chainlog-session://s/abc")!) == "abc" && AskText.session(in: URL(string: "chainlog-session://x/abc")!) == nil && AskText.session(in: URL(string: "https://s/abc")!) == nil)
+    }
+
+    // reading what `chainlog _ask` prints, which arrives in pieces
+    do {
+        let lines = AskLines()
+        var got = lines.feed(Data(#"{"type":"status","te"#.utf8))
+        check("lines: half a line gives nothing yet", got.isEmpty)
+        got = lines.feed(Data("xt\":\"a\"}\n{\"type\":\"status\",\"text\":\"b\"}\nnot json\n{\"type\":\"ans".utf8))
+        check("lines: the rest completes it, and a bad line is skipped", got.map { $0.text ?? "" } == ["a", "b"], "\(got.map { $0.text ?? "" })")
+        got = lines.feed(Data("wer\",\"answer\":\"x\"}".utf8))
+        check("lines: a last line without its newline waits for the end", got.isEmpty && lines.finish().first?.answer == "x")
+        check("lines: nothing is left after the end", lines.finish().isEmpty)
+        let req = AskRequest(question: "what's \"in\" a\nname 😀?", history: [["role": "user", "text": "hi"]], engine: "codex")
+        let obj = try? JSONSerialization.jsonObject(with: req.json) as? [String: Any]
+        check("request: the question, history and engine travel as JSON, whatever they hold", (obj?["question"] as? String) == "what's \"in\" a\nname 😀?" && (obj?["engine"] as? String) == "codex" && (obj?["history"] as? [[String: String]])?.count == 1)
+        check("request: no engine is left out, not null", (try? JSONSerialization.jsonObject(with: AskRequest(question: "q", history: [], engine: nil).json) as? [String: Any])?["engine"] == nil)
     }
 
     print(failed == 0 ? "selftest passed" : "selftest: \(failed) failed")

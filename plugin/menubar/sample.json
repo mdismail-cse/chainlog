@@ -359,5 +359,9 @@
   "expiring_unkept": 1,
   "expiring_within": 14
  },
- "keep_auto": true
+ "keep_auto": true,
+ "ask": {
+  "engine": null,
+  "connected": false
+ }
 }

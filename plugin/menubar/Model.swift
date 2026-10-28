@@ -4,13 +4,14 @@ import Combine
 import ServiceManagement
 
 enum Tab: String, CaseIterable, Identifiable {
-    case sessions, starred, chains
+    case sessions, starred, chains, ask
     var id: String { rawValue }
     var title: String {
         switch self {
         case .sessions: return "Sessions"
         case .starred: return "Starred"
         case .chains: return "Chains"
+        case .ask: return "Ask"
         }
     }
 }
@@ -57,7 +58,7 @@ enum Layout {
             if q.isEmpty { return data.starred.isEmpty ? [] : [RowSection(id: "starred", title: "Starred · \(data.starred.count)", rows: data.starred)] }
             let rows = results.map { $0.filter { $0.starred } } ?? data.starred.filter { $0.matches(q) }
             return [RowSection(id: "starred-results", title: "Starred matching · \(rows.count)", rows: rows)]
-        case .chains:
+        case .chains, .ask:
             return []
         }
     }
@@ -102,6 +103,7 @@ final class AppModel: ObservableObject {
     @Published var loginEnabled = false
 
     let hover = HoverModel()
+    let chat = ChatModel()  // the Ask tab's conversation: it outlives the popover being closed
     private var inFlight = false
     private var refreshAgain = false
     private var lastRaw: Data?
@@ -128,6 +130,8 @@ final class AppModel: ObservableObject {
     /// Runs a shell command without a terminal (reopening in VS Code). Tests replace it.
     var shell: (_ command: String, _ onFailure: @escaping @Sendable () -> Void) -> Void = { Launcher.shell($0, onFailure: $1) }
 
+    init() { chat.app = self }
+
     // MARK: what is shown
 
     var sections: [RowSection] {
@@ -152,6 +156,7 @@ final class AppModel: ObservableObject {
         case .sessions: let n = d.counts.all ?? (d.counts.unsaved + d.recent.count); return n > 0 ? n : nil  // every session, not just the unsaved
         case .starred: return d.counts.starred > 0 ? d.counts.starred : nil
         case .chains: let n = d.counts.chains ?? d.chains.count; return n > 0 ? n : nil
+        case .ask: return nil
         }
     }
 

@@ -70,6 +70,12 @@ struct RetentionPlan: Decodable {
     let would_delete_unkept: Int
 }
 
+/// Whether the Ask tab can chat: the tool you chose, and that you agreed to send it session text. Absent from an older chainlog.
+struct AskConfig: Decodable {
+    let engine: String?
+    let connected: Bool
+}
+
 struct MenuData: Decodable {
     let schema: String
     let chainlog: String
@@ -77,6 +83,7 @@ struct MenuData: Decodable {
     var unsaved_window_hours: Int?  // "unsaved" means: ended within this many hours, after chainlog was installed
     var retention: RetentionInfo?
     var keep_auto: Bool?            // saving or starring a session keeps a copy of it
+    var ask: AskConfig?
     var unsaved: [Row]
     var recent: [Row]
     var starred: [Row]

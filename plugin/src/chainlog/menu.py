@@ -50,6 +50,14 @@ def _row(rt, s, now, chain_id=None):
     }
 
 
+def _ask(index):
+    """Whether the Ask tab can chat: you chose an engine and agreed to send it session text (config only: it does not
+    check that the tool is still installed and signed in, `chainlog ask --status` does)."""
+    a = index.cfg.get("ask") or {}
+    engine = a.get("engine") or None
+    return {"engine": engine, "connected": bool(engine and engine in (a.get("consent") or []))}
+
+
 def build(index, unsaved_limit=8, recent_limit=300, chain_limit=30, round_limit=8, starred_limit=50,
           find=None, find_limit=40, find_starred=False):
     rt = index.rt
@@ -72,6 +80,7 @@ def build(index, unsaved_limit=8, recent_limit=300, chain_limit=30, round_limit=
         "unsaved_window_hours": round(index.cfg["unsaved"]["lookback"] / 3600),
         "retention": _retention(index),
         "keep_auto": bool((index.cfg.get("keep") or {}).get("auto", True)),
+        "ask": _ask(index),
         "unsaved": [_row(rt, s, now) for s in unsaved[:unsaved_limit]],
         "recent": [_row(rt, s, now) for s in recent],
         "starred": [_row(rt, s, now) for s in starred[:starred_limit]],

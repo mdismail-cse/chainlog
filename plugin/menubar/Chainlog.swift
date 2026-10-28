@@ -16,6 +16,10 @@
 //                                       answers "no" if it asks to confirm a shortening. Prints what it asked and the toast
 //   --copy command|id|link [--pick SHORT]   (with --query TEXT to search first) press the copy button, or the right-click item, on the first row
 //                                       shown (or the one whose short id is SHORT). Prints what reached the clipboard and the toast; the clipboard itself is not touched
+//   --ask QUESTION [--ask QUESTION…]    (needs a connected chainlog) ask in the Ask tab, wait for the answers, print the chat
+//   --ask-stop-after SECONDS            (with --ask) press Stop that many seconds after the question is sent
+//   --ask-connect claude|codex [--refuse]   do what the Ask tab's Connect button does; --refuse answers "no" to the question it asks
+//   --chat-file FILE [--ask-status-file FILE]   (with --dump or --render, --tab ask) show a conversation / a connect screen
 //   --hover-first                       (with --render, --dump or --open-on-launch) show the preview panel for the first row
 //   --edit-first                        (with --render or --open-on-launch) open the "save with a note" editor on the first row
 //   --selftest SAMPLE.json              run the model's own checks (drafts, tabs, search, confirmations …); exit 1 on a failure
@@ -35,11 +39,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     var cancellables = Set<AnyCancellable>()
     var toggleGuard = ToggleGuard()
     var anchorWindow: NSWindow?  // an invisible 2-pt window the popover hangs from, on the display that was clicked
+    var clickMonitor: Any?       // while the popover is open: a click in any other app closes it
+    var resignObserver: NSObjectProtocol?  // ... and so does the app losing focus, except at the menu bar (see Dismissal)
+    var activateObserver: NSObjectProtocol?  // ... or another app coming forward while we were already out of focus
+    var spaceObserver: NSObjectProtocol?     // ... or switching to another Space (the popover would be left behind, open but out of sight)
     let pinned = CommandLine.arguments.contains("--open-on-launch") || ProcessInfo.processInfo.environment["CHAINLOG_MENUBAR_PIN"] != nil
 
     func applicationDidFinishLaunching(_ note: Notification) {
         NSApp.setActivationPolicy(.accessory)
-        popover.behavior = pinned ? .applicationDefined : .transient  // transient: closes when you click elsewhere
+        popover.behavior = .applicationDefined  // closing is ours (watchForDismissal): .transient also closed it when a hidden menu bar came back
         popover.animates = false
         popover.delegate = self
         popover.contentSize = NSSize(width: 440, height: 560)
@@ -106,8 +114,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     }
 
     @objc func toggle(_ sender: Any?) {
-        if popover.isShown { popover.performClose(sender); return }
-        guard toggleGuard.shouldOpen(at: Date()) else { dbg("that click is what just closed the popover: not reopening it"); return }
+        if popover.isShown {
+            let inSight = popover.contentViewController?.view.window?.isOnActiveSpace ?? true
+            popover.performClose(sender)
+            if inSight { return }  // a click on the icon closes the popover you can see
+            dbg("the open popover was on another Space: opening it here")  // ... and one left behind on another Space is moved here
+        } else {
+            guard toggleGuard.shouldOpen(at: Date()) else { dbg("that click is what just closed the popover: not reopening it"); return }
+        }
         show()
     }
 
@@ -153,7 +167,67 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         popover.show(relativeTo: anchor.bounds, of: anchor, preferredEdge: .minY)
         dbg("popover window frame=\(popover.contentViewController?.view.window?.frame ?? .zero)")
         popover.contentViewController?.view.window?.makeKey()
+        watchForDismissal()
         model.refresh()  // what you see is at most a moment old
+    }
+
+    /// What a transient popover did for us, minus its one mistake: it closes on a click in another app, and when the app
+    /// loses focus, but not when that is only the system giving focus back to the app underneath as a hidden menu bar slides in.
+    func watchForDismissal() {
+        stopWatching()
+        guard !pinned else { return }  // --open-on-launch and screenshots keep it open
+        // all of this runs on the main thread, and the app lives as long as the process: a plain capture is enough
+        clickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown]) { _ in
+            MainActor.assumeIsolated {
+                dbg("a click in another app: closing")
+                self.closeFromOutside()
+            }
+        }
+        resignObserver = NotificationCenter.default.addObserver(forName: NSApplication.didResignActiveNotification, object: nil, queue: .main) { _ in
+            MainActor.assumeIsolated { self.lostFocus() }
+        }
+        let workspace = NSWorkspace.shared.notificationCenter
+        activateObserver = workspace.addObserver(forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main) { note in
+            MainActor.assumeIsolated {
+                let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
+                if app?.processIdentifier != ProcessInfo.processInfo.processIdentifier { self.lostFocus() }
+            }
+        }
+        spaceObserver = workspace.addObserver(forName: NSWorkspace.activeSpaceDidChangeNotification, object: nil, queue: .main) { _ in
+            MainActor.assumeIsolated {
+                dbg("switched Space: closing")
+                self.closeFromOutside()
+            }
+        }
+    }
+
+    /// Focus left the app: close, unless the pointer is at the top of a display (a hidden menu bar coming back).
+    func lostFocus() {
+        let p = NSEvent.mouseLocation
+        if Dismissal.atMenuBar(p, frames: NSScreen.screens.map { $0.frame }) {
+            dbg("lost focus with the pointer at the menu bar \(p): staying open")
+        } else {
+            dbg("lost focus with the pointer at \(p): closing")
+            closeFromOutside()
+        }
+    }
+
+    /// Close because of something outside the popover. Counts as the click that closed it, so a click on the menu bar icon
+    /// (mouse down closes, then the icon's own action runs on mouse up) does not open it straight again.
+    func closeFromOutside() {
+        toggleGuard.closed(at: Date())
+        popover.performClose(nil)
+    }
+
+    func stopWatching() {
+        if let m = clickMonitor { NSEvent.removeMonitor(m) }
+        if let o = resignObserver { NotificationCenter.default.removeObserver(o) }
+        if let o = activateObserver { NSWorkspace.shared.notificationCenter.removeObserver(o) }
+        if let o = spaceObserver { NSWorkspace.shared.notificationCenter.removeObserver(o) }
+        clickMonitor = nil
+        resignObserver = nil
+        activateObserver = nil
+        spaceObserver = nil
     }
 
     func showWhenReady(tries: Int) {
@@ -166,6 +240,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
     func popoverDidClose(_ notification: Notification) {
         toggleGuard.closed(at: Date())
+        stopWatching()
         anchorWindow?.orderOut(nil)
         model.popoverClosed()    // the next time starts with an empty search; the tab and any half-written note are kept
     }
@@ -178,12 +253,47 @@ func arg(_ name: String, in args: [String]) -> String? {
     return args[i + 1]
 }
 
+/// The Ask tab as text: the connect screen, or the conversation.
+@MainActor
+func dumpAsk(_ m: AppModel) {
+    let counts = Tab.allCases.map { t in "\(t.title)\(m.count(for: t).map { " \($0)" } ?? "")\(t == m.tab ? "*" : "")" }
+    print("tabs: " + counts.joined(separator: " | "))
+    let chat = m.chat
+    guard m.data != nil else { print("problem: \(m.problem ?? "loading")"); return }
+    if !chat.supported { print("ask: this chainlog cannot chat yet (run: chainlog setup menubar)"); return }
+    if !chat.connected {
+        print("ask: not connected")
+        if let s = chat.status {
+            for e in AskEngine.allCases {
+                let st = s.engines[e.rawValue]
+                print("  \(e.label): \(st?.detail ?? "could not check") | Connect \(st?.usable == true ? "enabled" : "disabled")")
+            }
+        } else { print("  (\(chat.checking ? "checking what is installed…" : "could not check what is installed"))") }
+        return
+    }
+    let who = chat.engine?.label ?? "?"
+    print("ask: connected to \(who)\(chat.status?.model.map { " (\($0))" } ?? "")")
+    if !chat.hasConversation { for s in ChatModel.suggestions { print("  suggestion: \(s)") } }
+    for msg in chat.messages {
+        switch msg.role {
+        case .user: print("  you: \(msg.text)")
+        case .assistant:
+            print("  \(who): \(AskText.plain(msg.text, sessions: msg.sessions).replacingOccurrences(of: "\n", with: "\n    "))")
+            for r in msg.sessions { print("    → [\(r.short)] \(clip(r.title, 60)) — \(r.detail)") }
+            if let meta = msg.meta { print("    (\(meta))") }
+        case .error: print("  ! \(msg.text)")
+        }
+    }
+    if chat.thinking { print("  … \(chat.progress)") }
+}
+
 @MainActor
 func dumpModel(_ m: AppModel) {
     func line(_ r: Row) -> String {
         let mark = "[\(r.live ? "running" : (r.saved == "user" ? "saved" : (r.saved == "auto" ? "auto-saved" : "not saved")))]"
         return "  \(mark) \(r.starred ? "★ " : "")\(r.canResume ? "" : "(can't reopen) ")\(r.canResume && r.warning != nil ? "(asks first) " : "")\(clip(r.title, 60))\(r.statusLabel.map { " <\($0)>" } ?? "") — \(r.detail)"
     }
+    if m.tab == .ask { dumpAsk(m); return }
     let counts = Tab.allCases.map { t in "\(t.title)\(m.count(for: t).map { " \($0)" } ?? "")\(t == m.tab ? "*" : "")" }
     print("tabs: " + counts.joined(separator: " | "))
     print("search: \"\(m.query)\"")
@@ -230,11 +340,22 @@ func headlessModel(_ args: [String]) -> AppModel? {
         m.data = d
     } else { return nil }
     if let t = arg("--tab", in: args), let tab = Tab(rawValue: t) { m.tab = tab }
+    if m.tab == .ask && file == nil && arg("--ask-status-file", in: args) == nil && arg("--chat-file", in: args) == nil {
+        m.chat.inline = true  // the real status, read now: `--dump --tab ask` shows what the Ask tab would
+        m.chat.loadStatus()
+    }
     if let ff = arg("--find-file", in: args) {
         let rows = FileManager.default.contents(atPath: ff).flatMap { try? JSONDecoder().decode(FindData.self, from: $0) }?.results
         m.finder = { _, _ in rows }
     }
     if let q = arg("--query", in: args) { m.query = q; m.answerSearchNow() }
+    if let f = arg("--chat-file", in: args) {
+        let msgs = FileManager.default.contents(atPath: f).flatMap { try? JSONDecoder().decode([ChatMessageFile].self, from: $0) } ?? []
+        let status = arg("--ask-status-file", in: args).flatMap { FileManager.default.contents(atPath: $0) }.flatMap { try? JSONDecoder().decode(AskStatus.self, from: $0) }
+        m.chat.preload(messages: msgs.map { $0.message }, status: status)
+    } else if let f = arg("--ask-status-file", in: args), let s = FileManager.default.contents(atPath: f).flatMap({ try? JSONDecoder().decode(AskStatus.self, from: $0) }) {
+        m.chat.preload(messages: [], status: s)
+    }
     if args.contains("--edit-first"), let r = m.visibleRows.first { m.beginSave(r) }
     if args.contains("--hover-first"), let r = m.visibleRows.first { m.hover.enter(r) }
     return m
@@ -318,6 +439,39 @@ struct ChainlogMain {
             m.askRetention()
             if !asked.isEmpty { print("asked: " + asked.replacingOccurrences(of: "\n", with: " ")) }
             print("toast: " + (m.toast ?? "-"))
+            exit(0)
+        }
+        if let i = args.firstIndex(of: "--ask-connect"), i + 1 < args.count, let engine = AskEngine(rawValue: args[i + 1]) {
+            guard let m = headlessModel(args) else { FileHandle.standardError.write(Data("could not read menu data\n".utf8)); exit(1) }
+            m.inline = true
+            m.chat.inline = true
+            m.tab = .ask
+            m.chat.loadStatus()  // the connect screen reads this first
+            var asked = ""
+            m.chat.connectConfirmer = { title, text in asked = title + " | " + text; return !args.contains("--refuse") }
+            m.chat.connect(engine)
+            if !asked.isEmpty { print("asked: " + asked.replacingOccurrences(of: "\n", with: " ")) }
+            print("toast: " + (m.toast ?? "-"))
+            exit(0)
+        }
+        if args.contains("--ask") {
+            guard let m = headlessModel(args) else { FileHandle.standardError.write(Data("could not read menu data\n".utf8)); exit(1) }
+            m.tab = .ask
+            let real = m.chat.starter
+            m.chat.starter = { req, onEvent, onDone in
+                real(req, { e in if e.type == "status" { print("status: \(e.text ?? "")") }; onEvent(e) }, onDone)  // what the tab shows while it waits
+            }
+            let stopAfter = arg("--ask-stop-after", in: args).flatMap(Double.init)
+            for (i, a) in args.enumerated() where a == "--ask" && i + 1 < args.count {
+                m.chat.send(args[i + 1])
+                let started = Date()
+                let deadline = started.addingTimeInterval(700)
+                while m.chat.thinking && Date() < deadline {
+                    RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+                    if let s = stopAfter, Date().timeIntervalSince(started) >= s { m.chat.stop() }
+                }
+            }
+            dumpAsk(m)
             exit(0)
         }
         if let i = args.firstIndex(of: "--copy"), i + 1 < args.count {

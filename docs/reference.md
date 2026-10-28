@@ -35,6 +35,7 @@ Everything chainlog can do, in detail. For a gentle introduction, start with the
 | `chainlog forget REF` | Hide a session from lists |
 | `chainlog undo` | Revert your last save / note / status / tag / star / forget |
 | `chainlog review` | Go through unsaved sessions one by one |
+| `chainlog ask [QUESTION]` | Ask Claude or Codex about your sessions (connect once with `--connect`) |
 | `chainlog config …` | Show or change settings |
 | `chainlog setup [PART…]` | Install integrations (asks first) |
 | `chainlog doctor` | Health check with fixes |
@@ -190,6 +191,43 @@ chainlog delete @3 --from chainlog  # only chainlog's side: Claude's file stays 
   keeps elsewhere (file history, to-dos, your prompt history) are left to Claude's own cleanup. chainlog's log of events is
   append-only, so a deleted session's notes stay in it; `chainlog uninstall --purge` removes all of chainlog's data.
 
+## ask
+
+```sh
+chainlog ask "which sessions touched the refund PR, and how did each end?"
+chainlog ask -e codex "what did I do last week?"   # this question to the other tool (you must have connected it)
+chainlog ask --json "…"                            # {answer, sessions[], engine, model, calls, listed}
+chainlog ask                                       # in a terminal: a small chat; an empty line ends it
+chainlog ask --status [--json]                     # what is installed, signed in and connected
+chainlog ask --connect claude|codex [--yes]        # shows what is sent, asks, then connects
+chainlog ask --disconnect                          # take your agreement back
+```
+
+It runs the `claude` or `codex` you are signed in to (`claude -p`, `codex exec`): no keys, no account of its own.
+
+**What it sends.** The question, the last few messages of the chat, and a catalog of your sessions as text: one line each with the
+short id, date, tool, chain and round, result, title, your note, the first ask and last thing done, branch, PR numbers and tags.
+The newest 250 sessions are listed, plus every starred or saved one and the ones matching the question's words, up to 70,000
+characters (the oldest go first). Everything goes through the same secret redaction as notes and previews, and `<` / `>` in session
+text are replaced so it cannot close or open the tags around it. The model can ask for more: `NEED: id…` returns the detail of up to 6 sessions
+(everything you asked in them, in order, your notes, and the assistant's last few replies, 5,500 characters each), and
+`SEARCH: words` returns matches from all sessions. That makes at most 3 requests per question; the last one must answer.
+
+**How it is run.** From an empty temporary folder, with no tools and no user config:
+`claude -p --no-session-persistence --tools "" --strict-mcp-config --setting-sources project --model sonnet` and
+`codex exec --ephemeral --ignore-user-config --disable shell_tool --disable plugins --disable apps --disable hooks -s read-only`.
+Without those flags `claude -p` can read files in its folder and use every connector on your account (Docs, Slack, …), and
+`codex exec -s read-only` can still run shell commands. The chat leaves no session behind in your list. The same flags are used for
+AI-written summaries. `Stop` in the app ends the AI process too.
+
+**The answer.** `[[id]]` marks a session; each one is checked against your own sessions before it is shown (an unknown id is dropped),
+and a link the AI writes is turned into plain text, so no link in an answer can open anything but one of your sessions.
+
+**Connecting** (`--connect`) shows the text above, asks, then records your agreement in `config.json`
+(`ask.engine`, `ask.consent`). Asking with a tool you have not agreed to is refused. Without a terminal `--connect` needs `--yes`.
+The settings `ask.model` (default `sonnet` for Claude; Codex uses its own default) and `ask.timeout` (seconds per request, default 90)
+are in [Settings](#settings).
+
 ## chain
 
 ```sh
@@ -293,6 +331,7 @@ Click the icon to open the popover.
 | Right-click → Open in VS Code | For a Claude session started in the VS Code extension (its row says "VS Code"): opens its folder in VS Code, then the session in the extension's own panel, through the extension's `vscode://anthropic.claude-code/open?session=ID` link. The terminal command in a plain click works for these sessions too (they share Claude's session store), this is for staying in the editor |
 | Hover: ☆ / ★ | Star or unstar. Shown at once; if `chainlog` refuses, it flips back and says why |
 | Hover: pencil | Save the session with a note and a result: `chainlog save --id REF [-s STATUS] -- NOTE`. A note that starts with a dash stays a note. What you type is kept if the popover closes, and given back if the save fails |
+| **Ask** tab | A chat with Claude or Codex about your sessions (see [ask](#ask)). Until you connect, it lists which of the two are installed and signed in, with a Connect button that first shows what is sent. Then: suggestions, your messages, answers (a session it names is a link that opens it, and the sessions it mentions are listed under it as ordinary rows with copy, star and note), a copy button for the answer, **Stop** while it works, **New chat**, and ⋯ → *Use the other tool* / *What is sent* / *Disconnect*. The chat is kept while the app runs, also when the popover is closed. Return sends |
 | ⚙ → **Open sessions in** | Terminal (default), iTerm2 (if installed) or "Only copy the command". Remembered |
 | ⚙ → **Open at login** | Starts the app when you log in |
 | ⚙ → **Keep a copy when I save or star** | The `keep.auto` setting (`chainlog config set keep.auto …`) |
@@ -337,6 +376,8 @@ the sample data.
 | `auto_chain` | `true` | Link saves to a PR chain automatically (never when the PR link and the title name different PRs) |
 | `hints` | `true` | One-line tips under the list, such as "Claude Code isn't connected". Only shown in a terminal |
 | `keep.auto` | `true` | Keep a copy of every session you save or star, so Claude's cleanup cannot delete it |
+| `ask.model` | *(empty)* | Model for `chainlog ask`, e.g. `sonnet` or `opus`; empty = `sonnet` for Claude, Codex's own default |
+| `ask.timeout` | `90` | Seconds one request to Claude / Codex may take (10–600) |
 
 ## Environment variables
 
