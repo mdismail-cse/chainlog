@@ -244,9 +244,9 @@ A small icon at the top of your screen shows how many sessions are unsaved. Clic
 
 - **Search** (top) looks through *all* your sessions: titles, your notes, PR numbers, branches, and what the assistant did.
   Press **Enter** to open the first match.
-- **Sessions** shows what is unsaved, then what you used recently. **Starred** keeps the sessions you want close. **Chains** lists every PR with its rounds.
+- **Sessions** shows what is unsaved, then what you used recently. **Starred** keeps the sessions you want close. **Chains** lists every PR (or any group you name) with its rounds.
 - **Click** a session to reopen it in a new Terminal window, in its own folder. To open it somewhere else, hover the row and press the **copy** button (or hold **⌥** while clicking): it copies the command, which works in any terminal. Sessions started in VS Code also have a **link** button that copies their `vscode://` link; right-click → *Copy session id* gives the bare id. This works on search results too.
-- **Hover** a session: the **★** stars it (the same as `chainlog star`), and the **pencil** saves it with a note and a result (pass, fail …) without leaving the app.
+- **Hover** a session: the **★** stars it (the same as `chainlog star`), and the **pencil** saves it with a note and a result (pass, fail …) without leaving the app. The pencil also has an **Add to a chain** line: type any name (or pick a chain that exists) and the session is listed with the others of that name in the Chains tab. Do it for each session you want together.
 - **Ask** is a chat with Claude or Codex about your sessions ([below](#ask-claude-or-codex-about-your-sessions)).
 
 Get it once: `chainlog setup menubar`. It builds a tiny app on your Mac in about 5 seconds and puts it in `~/Applications`.

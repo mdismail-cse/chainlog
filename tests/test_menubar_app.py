@@ -205,6 +205,30 @@ class AppEndToEnd(Home):
         self.assertIn("enter opens: Shop PR 5000 review (r3)", d)
         self.assertEqual(d.splitlines()[-1].count("(r3)"), 1)
 
+    def test_sessions_added_to_a_chain_by_name_are_listed_together_in_the_chains_tab(self):
+        # the editor's "Add to a chain" field: any name, no note or result needed
+        for i in (1, 4, 7):
+            self.assertEqual(self.app("--act", "save", self.ref(i), "-", "", "refund work")[:2], (0, "ok\n"))
+        d = self.dump("--tab", "chains")
+        self.assertIn("refund work", d)
+        self.assertIn("3 rounds", d)
+        self.assertEqual(self.show(4)["chains"][0]["id"], "refund work")
+        self.assertEqual([n for n in self.show(4)["notes"] if n.get("kind") == "note"], [], "no note was invented")
+        # a fourth session joins the same chain by the same name, and a note and result can go with it
+        self.assertEqual(self.app("--act", "save", self.ref(9), "fail", "still broken with coupons", "refund work")[0], 0)
+        self.assertIn("4 rounds", self.dump("--tab", "chains"))
+        self.assertEqual(self.show(9)["status"], "fail")
+
+    def test_a_chain_name_that_starts_with_a_dash_is_a_name(self):
+        self.assertEqual(self.app("--act", "save", self.ref(2), "-", "", "-v2 retest")[:2], (0, "ok\n"))
+        self.assertEqual(self.show(2)["chains"][0]["id"], "-v2 retest")
+
+    def test_a_blank_chain_name_alone_is_still_refused(self):
+        rc, out, _ = self.app("--act", "save", self.ref(3), "-", "", "   ")
+        self.assertEqual(rc, 1)
+        self.assertIn("nothing to save", out)
+        self.assertEqual(self.show(3)["saved"], "none")
+
     def test_rows_chainlog_warns_about_are_marked_as_asking_first(self):
         sample = json.loads((ROOT / "plugin" / "menubar" / "sample.json").read_text())
         sample["recent"][0]["live"] = True

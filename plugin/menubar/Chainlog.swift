@@ -498,7 +498,8 @@ struct ChainlogMain {
             case "star": r = Actions.star(ref: ref, on: true)
             case "unstar": r = Actions.star(ref: ref, on: false)
             case "save" where i + 4 < args.count:
-                r = Actions.save(ref: ref, note: args[i + 4], status: args[i + 3] == "-" ? nil : args[i + 3])
+                r = Actions.save(ref: ref, note: args[i + 4], status: args[i + 3] == "-" ? nil : args[i + 3],
+                                 chain: i + 5 < args.count ? args[i + 5] : nil)
             default: print("failed: unknown action"); exit(2)
             }
             print(r.ok ? "ok" : "failed: \(r.message)")

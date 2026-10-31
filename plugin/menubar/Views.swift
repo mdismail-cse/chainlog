@@ -254,7 +254,7 @@ struct EmptyState: View {
         }
         switch model.tab {
         case .starred: return "Hover a session and click the star to keep it here."
-        case .chains: return "Save sessions that mention a PR (say “PR 4321”) and chainlog groups the rounds."
+        case .chains: return "Hover a session, click the pencil, and add it to a chain: any name you like. Sessions in one chain are listed together here."
         case .sessions, .ask: return "Use Claude Code or Codex as usual and they show up here."
         }
     }
@@ -419,12 +419,17 @@ struct NoteEditor: View {
     // the text lives in the model, so closing the popover does not throw away what you were writing
     private var note: Binding<String> { Binding(get: { model.draft(for: row.ref).note }, set: { var d = model.draft(for: row.ref); d.note = $0; model.setDraft(d, for: row.ref) }) }
     private var status: Binding<String> { Binding(get: { model.draft(for: row.ref).status }, set: { var d = model.draft(for: row.ref); d.status = $0; model.setDraft(d, for: row.ref) }) }
+    private var chain: Binding<String> { Binding(get: { model.draft(for: row.ref).chain }, set: { var d = model.draft(for: row.ref); d.chain = $0; model.setDraft(d, for: row.ref) }) }
+    private func submit() { model.save(row, note: note.wrappedValue, status: status.wrappedValue.isEmpty ? nil : status.wrappedValue, chain: chain.wrappedValue) }
+    private var empty: Bool {
+        note.wrappedValue.trimmingCharacters(in: .whitespaces).isEmpty && status.wrappedValue.isEmpty && chain.wrappedValue.trimmingCharacters(in: .whitespaces).isEmpty
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             TextField("What happened? (e.g. “refund works, coupon gives 500”)", text: note, axis: .vertical)
                 .textFieldStyle(.roundedBorder).lineLimit(1...3).focused($focused)
-                .onSubmit { model.save(row, note: note.wrappedValue, status: status.wrappedValue.isEmpty ? nil : status.wrappedValue) }
+                .onSubmit { submit() }
             HStack(spacing: 8) {
                 Picker("", selection: status) {
                     Text("No result").tag("")
@@ -433,9 +438,22 @@ struct NoteEditor: View {
                 .labelsHidden().frame(width: 150)
                 Spacer()
                 Button("Cancel") { model.cancelSave() }.keyboardShortcut(.cancelAction)
-                Button("Save") { model.save(row, note: note.wrappedValue, status: status.wrappedValue.isEmpty ? nil : status.wrappedValue) }
+                Button("Save") { submit() }
                     .keyboardShortcut(.defaultAction)
-                    .disabled(note.wrappedValue.trimmingCharacters(in: .whitespaces).isEmpty && status.wrappedValue.isEmpty)
+                    .disabled(empty)
+            }
+            // sessions that share a chain are listed together in the Chains tab: type any name, or pick one that exists
+            HStack(spacing: 6) {
+                Image(systemName: "link").font(.system(size: 11)).foregroundColor(.secondary)
+                TextField(row.chain.map { "In chain “\(clip($0, 24))”. Type a name to add it to another" } ?? "Add to a chain: type a name (or a PR number)", text: chain)
+                    .textFieldStyle(.roundedBorder).onSubmit { submit() }
+                Menu {
+                    let chains = model.data?.chains ?? []
+                    if chains.isEmpty { Text("No chains yet: type a name") }
+                    ForEach(chains) { c in Button("\(c.label) · \(c.rounds) round\(c.rounds == 1 ? "" : "s")") { chain.wrappedValue = c.id } }
+                    if !chain.wrappedValue.isEmpty { Divider(); Button("Clear") { chain.wrappedValue = "" } }
+                } label: { Image(systemName: "chevron.down.circle").font(.system(size: 14)) }
+                .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().help("Pick a chain that already exists")
             }
         }
         .padding(.horizontal, 14).padding(.vertical, 8)

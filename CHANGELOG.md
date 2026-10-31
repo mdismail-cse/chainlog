@@ -16,6 +16,8 @@
   and show the menu bar"). Touching the top edge makes macOS give focus back to the app underneath, which closed the popover; it now
   closes on a click anywhere else, when the app loses focus away from the top of a display, or when you switch Space; a click on the
   icon moves a popover left on another Space to the one you are on.
+- Menu bar app: put sessions together in a chain from the app. The pencil on a session has an "Add to a chain" line: type any name
+  (not only a PR number) or pick a chain that exists, with or without a note. The empty Chains tab now says how to start one.
 - Keep what you want: `chainlog keep REF` copies a session (compressed) into chainlog's folder so Claude's cleanup cannot take it.
   Saving or starring a session does this automatically (`keep.auto`). Reopening a session whose original Claude deleted puts the copy
   back first (also from the menu bar app and VS Code). `chainlog unkeep`, `ls --kept`, `restore` and `keep --refresh` round it out.

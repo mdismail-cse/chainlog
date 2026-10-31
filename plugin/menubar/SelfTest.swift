@@ -45,10 +45,10 @@ func selfTest(sample path: String?) -> Int {
     // a note you are writing survives the popover closing; cancelling throws it away
     do {
         let m = model(); let r = data.unsaved[0]
-        m.beginSave(r); m.setDraft(Draft(note: "half a thought", status: "fail"), for: r.ref)
+        m.beginSave(r); m.setDraft(Draft(note: "half a thought", status: "fail", chain: "refund work"), for: r.ref)
         m.popoverClosed()
         check("closing the popover keeps the open editor", m.editing == r.ref)
-        check("  ... and what was typed", m.draft(for: r.ref) == Draft(note: "half a thought", status: "fail"))
+        check("  ... and what was typed", m.draft(for: r.ref) == Draft(note: "half a thought", status: "fail", chain: "refund work"))
         m.cancelSave()
         check("Cancel drops the editor and the draft", m.editing == nil && m.draft(for: r.ref) == Draft())
         m.query = "abc"; m.popoverClosed()

@@ -139,14 +139,17 @@ enum Actions {
     /// `chainlog delete REF --from both|claude|chainlog --yes` (the app has asked already).
     static func deleteArguments(ref: String, scope: String) -> [String] { ["delete", ref, "--from", scope, "--yes"] }
 
-    /// `chainlog save --id REF [-s STATUS] -- NOTE`: the `--` keeps a note that starts with a dash a note.
-    static func save(ref: String, note: String, status: String?) -> (ok: Bool, message: String) {
+    /// `chainlog save --id REF [-s STATUS] [--chain=NAME] -- NOTE`: the `--` keeps a note that starts with a dash a note,
+    /// and `--chain=NAME` does the same for a chain name.
+    static func save(ref: String, note: String, status: String?, chain: String? = nil) -> (ok: Bool, message: String) {
+        let name = (chain ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         // an empty save would only mark the session as saved without saying anything: refuse it here, whatever chainlog version is installed
-        if note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && (status ?? "").isEmpty {
-            return (false, "nothing to save: write a note or pick a result")
+        if note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && (status ?? "").isEmpty && name.isEmpty {
+            return (false, "nothing to save: write a note, pick a result or choose a chain")
         }
         var args = ["save", "--id", ref]
         if let s = status, !s.isEmpty { args += ["-s", s] }
+        if !name.isEmpty { args.append("--chain=" + name) }
         return run(args + ["--", note])
     }
 }

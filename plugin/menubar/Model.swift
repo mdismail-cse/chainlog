@@ -29,6 +29,7 @@ struct RowSection: Identifiable {
 struct Draft: Equatable {
     var note = ""
     var status = ""
+    var chain = ""  // the chain it is being added to: a name you typed, or one you picked
 }
 
 enum Layout {
@@ -428,20 +429,21 @@ final class AppModel: ObservableObject {
     }
     func cancelSave() { if let e = editing { drafts[e] = nil }; editing = nil }
 
-    func save(_ row: Row, note: String, status: String?) {
+    func save(_ row: Row, note: String, status: String?, chain: String = "") {
         let text = note.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty || !(status ?? "").isEmpty else { say("Write a note, or pick a result"); return }
+        let chain = chain.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty || !(status ?? "").isEmpty || !chain.isEmpty else { say("Write a note, pick a result or choose a chain"); return }
         editing = nil
         drafts[row.ref] = nil
         DispatchQueue.global(qos: .userInitiated).async {
-            let r = Actions.save(ref: row.ref, note: text, status: status)
+            let r = Actions.save(ref: row.ref, note: text, status: status, chain: chain)
             DispatchQueue.main.async {
                 MainActor.assumeIsolated {
                     if !r.ok {  // give the text back: the user should not have to type it again
-                        self.drafts[row.ref] = Draft(note: text, status: status ?? "")
+                        self.drafts[row.ref] = Draft(note: text, status: status ?? "", chain: chain)
                         if self.editing == nil { self.editing = row.ref }  // not if they have started another note meanwhile
                     }
-                    self.say(r.ok ? "Saved" : "Could not save: " + clip(r.message, 80) + (self.editing == row.ref ? "" : " (your note is kept: click the pencil)"))
+                    self.say(r.ok ? (chain.isEmpty ? "Saved" : "Saved and added to chain “\(clip(chain, 30))”") : "Could not save: " + clip(r.message, 80) + (self.editing == row.ref ? "" : " (your note is kept: click the pencil)"))
                     self.refresh()
                     if self.isSearching { self.queryChanged() }  // a saved note can change what the search finds
                 }
