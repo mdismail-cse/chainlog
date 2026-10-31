@@ -727,13 +727,15 @@ func selfTest(sample path: String?) -> Int {
         // starting a session, copying the reference, adding from a session's menu
         var launched: [String] = []
         m.launcher = { command, name, _ in launched.append(name + "|" + command); return true }
-        var planned: [String] = []
-        cx.launchPlanner = { args in planned = args; return (ContextLaunch(command: "cd /w && claude 'x' --add-dir /n", tool: "claude", cwd: "/w", session_id: "s"), "") }
+        // what the stand-ins saw (a class: Swift 5.9 does not let a @Sendable closure change a local variable)
+        final class Seen: @unchecked Sendable { var planned: [String] = []; var ran: [[String]] = [] }
+        let seen = Seen()
+        cx.launchPlanner = { args in seen.planned = args; return (ContextLaunch(command: "cd /w && claude 'x' --add-dir /n", tool: "claude", cwd: "/w", session_id: "s"), "") }
         cx.start(c)
-        check("Start asks chainlog for the command, with the context's tool", planned == ["context", "use", "shop-refunds", "--json", "--tool", "claude"])
+        check("Start asks chainlog for the command, with the context's tool", seen.planned == ["context", "use", "shop-refunds", "--json", "--tool", "claude"])
         check("  ... and opens it in a terminal", launched == ["context-shop-refunds|cd /w && claude 'x' --add-dir /n"] && (m.toast ?? "").contains("started with Shop refunds"))
         cx.start(c, tool: .codex, folder: "/elsewhere", task: "-v fix it")
-        check("a task that starts with a dash stays a task", planned == ["context", "use", "shop-refunds", "--json", "--tool", "codex", "--folder", "/elsewhere", "--", "-v fix it"])
+        check("a task that starts with a dash stays a task", seen.planned == ["context", "use", "shop-refunds", "--json", "--tool", "codex", "--folder", "/elsewhere", "--", "-v fix it"])
         cx.launchPlanner = { _ in (nil, "Build the context first") }
         cx.start(c)
         check("a launch chainlog refuses says why", (m.toast ?? "").contains("Build the context first"))
@@ -743,11 +745,10 @@ func selfTest(sample path: String?) -> Int {
         m.copier = { copied.append($0) }
         cx.copyReference(c)
         check("Copy reference copies the few lines that attach it", copied == [c.reference] && c.reference.hasPrefix("Context \"Shop refunds\" is attached"))
-        var ran: [[String]] = []
-        m.runner = { args in ran.append(args); return (true, "") }
+        m.runner = { args in seen.ran.append(args); return (true, "") }
         let outsider = data.unsaved.first { !c.members.contains($0.ref) }!
         cx.add(outsider, to: c)
-        check("a session's menu adds it to a context (read on the next Update)", ran == [["context", "add", "shop-refunds", outsider.ref]])
+        check("a session's menu adds it to a context (read on the next Update)", seen.ran == [["context", "add", "shop-refunds", outsider.ref]])
     }
 
     print(failed == 0 ? "selftest passed" : "selftest: \(failed) failed")
