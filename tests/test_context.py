@@ -431,6 +431,9 @@ class Updating(ContextBase):
                                 "message": {"role": "user", "content": "add resumable restores"}}) + "\n")
             f.write(json.dumps({"type": "last-prompt", "lastPrompt": "add resumable restores", "sessionId": new}) + "\n")
         self.assertEqual(ctx.pending(self.idx(), ctx.get(self.rt, "Cloud backup"))["following"], ["claude:" + new])
+        # one you told chainlog to forget does not join
+        self.run_cli(["forget", new[:8]])
+        self.assertEqual(ctx.pending(self.idx(), ctx.get(self.rt, "Cloud backup"))["following"], [])
 
 
 class Using(ContextBase):

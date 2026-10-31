@@ -253,7 +253,8 @@ def _following(index, meta):
     started from it (Claude's are known by the id chainlog gave them; a Codex one by its folder and start time)."""
     out = []
     if meta.get("chain") and meta["chain"] in index.chains:
-        out += [m["ref"] for m in index.chains[meta["chain"]]["members"]]
+        out += [m["ref"] for m in index.chains[meta["chain"]]["members"]
+                if not (index.sessions.get(m["ref"]) or {}).get("hidden")]
     for launch in meta.get("launched") or []:
         s = None
         if launch.get("tool") == "claude" and launch.get("session_id"):
@@ -262,6 +263,8 @@ def _following(index, meta):
             near = [x for x in index.sessions.values() if x["harness"] == "codex" and x.get("cwd") == launch["folder"]
                     and 0 <= (x["times"].get("started_at") or 0) - launch.get("at", 0) < 600]
             s = near[0] if len(near) == 1 else None
+        if s and s.get("hidden"):  # you told chainlog to forget it
+            s = None
         # only once it was used: a task came with it, or you asked something after the first message
         # (first_ask and last_ask are cut at different lengths, so only their starts are compared)
         if s and (launch.get("task") or (s.get("last_ask") and s["last_ask"][:100] != (s.get("first_ask") or "")[:100])):
