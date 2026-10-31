@@ -80,71 +80,15 @@ typealias AskCancel = () -> Void
 
 // MARK: - running `chainlog _ask`
 
-/// Splits what a process prints into lines and reads each as an event. A line may arrive in pieces.
-final class AskLines: @unchecked Sendable {
-    private var buffer = Data()
-    func feed(_ d: Data) -> [AskEvent] {
-        buffer.append(d)
-        var out: [AskEvent] = []
-        while let nl = buffer.firstIndex(of: 10) {
-            let line = buffer[buffer.startIndex..<nl]
-            buffer = Data(buffer[buffer.index(after: nl)...])
-            if let e = try? JSONDecoder().decode(AskEvent.self, from: line) { out.append(e) }
-        }
-        return out
-    }
-    /// What is left when the process has ended (a last line without its newline).
-    func finish() -> [AskEvent] {
-        defer { buffer = Data() }
-        return (try? JSONDecoder().decode(AskEvent.self, from: buffer)).map { [$0] } ?? []
-    }
-}
+/// Splits what `chainlog _ask` prints into events (a line may arrive in pieces).
+typealias AskLines = JSONLines<AskEvent>
 
 enum AskRunner {
     /// Start `chainlog _ask`. `onEvent` gets each line it prints and `onDone` its exit status, both on the main queue and in
     /// order. nil when chainlog cannot be found. The returned closure stops it (SIGTERM: chainlog ends the AI process too).
     static func start(_ request: AskRequest, onEvent: @escaping @Sendable (AskEvent) -> Void,
                       onDone: @escaping @Sendable (Int32) -> Void) -> AskCancel? {
-        guard let exe = CLI.locate() else { return nil }
-        let p = Process()
-        p.executableURL = URL(fileURLWithPath: exe)
-        p.arguments = ["_ask"]
-        p.environment = CLI.environment()
-        let out = Pipe(), input = Pipe()
-        p.standardOutput = out
-        p.standardInput = input
-        p.standardError = FileHandle.nullDevice
-        let lines = AskLines()
-        let finished = DispatchGroup()
-        finished.enter()  // output closed
-        finished.enter()  // process ended
-        let deliver: @Sendable ([AskEvent]) -> Void = { events in
-            guard !events.isEmpty else { return }
-            DispatchQueue.main.async { events.forEach(onEvent) }
-        }
-        out.fileHandleForReading.readabilityHandler = { h in
-            let d = h.availableData
-            if d.isEmpty {
-                h.readabilityHandler = nil
-                deliver(lines.finish())
-                finished.leave()
-                return
-            }
-            deliver(lines.feed(d))
-        }
-        p.terminationHandler = { _ in finished.leave() }
-        do { try p.run() } catch {
-            out.fileHandleForReading.readabilityHandler = nil
-            return nil
-        }
-        input.fileHandleForWriting.write(request.json)
-        try? input.fileHandleForWriting.close()
-        finished.notify(queue: .main) { onDone(p.terminationStatus) }
-        return {
-            guard p.isRunning else { return }
-            p.terminate()
-            DispatchQueue.global().asyncAfter(deadline: .now() + 3) { if p.isRunning { kill(p.processIdentifier, SIGKILL) } }
-        }
+        StreamRunner.start(["_ask"], input: request.json, onEvent: onEvent, onDone: onDone)
     }
 
     /// `chainlog ask --status --json`: what is installed, signed in and connected. nil when it cannot be read.

@@ -307,6 +307,7 @@ func dumpModel(_ m: AppModel) {
         return
     }
     if m.tab == .chains {
+        if dumpContexts(m) { return }
         let chains = m.chains
         if chains.isEmpty { print("(empty: \(EmptyState(model: m).title) — \(EmptyState(model: m).detail))") } else { print(m.chainsHeader) }
         for c in chains {
@@ -325,6 +326,104 @@ func dumpModel(_ m: AppModel) {
         if let n = s.reviewAll { print("  → Review all \(n) unsaved…") }
         if let note = s.note { print("  (\(note))") }
     }
+}
+
+/// The contexts at the top of the Chains tab, or the context screen shown instead of the list. true = only that is shown.
+@MainActor
+func dumpContexts(_ m: AppModel) -> Bool {
+    let cx = m.contexts
+    switch cx.screen {
+    case .list:
+        guard cx.supported, !m.isSearching else { return false }
+        print("contexts: \(cx.contexts.count)\(cx.contexts.isEmpty ? " (none yet: + New context)" : "")")
+        for c in cx.contexts {
+            let state = c.built ? "built \(c.ago)" : "not built"
+            print("  \(c.name) · \(c.sessions) session\(c.sessions == 1 ? "" : "s") · \(state)\(c.needs_update ? " · \(c.pending.text) → Update" : "")")
+            if cx.isOpen(c) {
+                if !c.gist.isEmpty { print("    gist: \(c.gist)") }
+                if c.built { print("    → Start in \(c.tool.label) · Copy reference\(c.needs_update ? " · Update" : "")") } else { print("    → Build") }
+            }
+        }
+        return false
+    case .builder:
+        print("context screen: builder (\(cx.target.map { "add to " + $0.name } ?? "new"))")
+        if cx.target == nil { print("  name: \"\(cx.name)\"") }
+        print("  picked: \(cx.selected.count)\(cx.selected.isEmpty ? "" : " · " + cx.selected.map { clip($0.title, 30) }.joined(separator: " | "))")
+        if !cx.pickQuery.isEmpty { print("  search: \"\(cx.pickQuery)\" → \(cx.pickResults?.count ?? 0) found") }
+        print("  candidates: \(cx.candidates.count)")
+        for r in cx.candidates.prefix(8) { print("    [\(cx.isMember(r) ? "in" : (cx.isSelected(r) ? "x" : " "))] \(clip(r.title, 50))") }
+        print("  questions: \(cx.cleanQuestions.count)\(cx.questionsChanged ? " (changed)" : "")")
+        print("  footer: \(cx.blocker ?? cx.estimate)")
+    case .building:
+        print("context screen: building \(cx.building) · \(cx.progressDone)/\(cx.progressTotal) · \(cx.progressText)")
+    case .done:
+        if let c = cx.result {
+            print("context screen: done · \(c.name) · \(c.sessions) sessions · \(cx.resultUpToDate ? "up to date" : "\(cx.resultRequests) requests")")
+            print("  gist: \(c.gist)")
+        }
+    case .failed:
+        print("context screen: failed · \(cx.failure)")
+    }
+    return true
+}
+
+/// `--context …`: drive the contexts the way a person would, against the real chainlog, and print what is shown.
+@MainActor
+func runContextFlow(_ args: [String]) -> Int32 {
+    guard let m = headlessModel(args) else { FileHandle.standardError.write(Data("could not read menu data\n".utf8)); return 1 }
+    let cx = m.contexts
+    m.inline = true
+    cx.inline = true
+    m.tab = .chains
+    var asked: [String] = []
+    var launched: [String] = []
+    var copied: [String] = []
+    cx.consentConfirmer = { title, text in asked.append(title + " | " + text); return !args.contains("--refuse") }
+    m.launcher = { command, name, _ in launched.append(name + ": " + command); return true }
+    m.copier = { copied.append($0) }
+    m.askText = { _, _, _ in arg("--context-task", in: args) }
+    func wait() {
+        let started = Date()
+        let deadline = started.addingTimeInterval(600)
+        while cx.screen == .building && Date() < deadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+            if let s = arg("--context-stop-after", in: args).flatMap(Double.init), Date().timeIntervalSince(started) >= s { cx.stop() }
+        }
+    }
+    func named(_ n: String) -> ContextInfo? { cx.contexts.first { $0.name == n || $0.slug == n } }
+    let what = arg("--context", in: args) ?? ""
+    switch what {
+    case "new":
+        cx.beginNew(chain: args.contains("--from-first-chain") ? m.chains.first : nil)
+        if let n = arg("--context-name", in: args) { cx.name = n }
+        if let q = arg("--context-pick", in: args) { cx.pickQuery = q; if args.contains("--pick-all") { cx.selectAll(cx.pickResults ?? []) } }
+        if args.contains("--build") { cx.build(); wait() }
+    case "add":
+        guard let c = named(arg("--context-name", in: args) ?? "") else { print("no such context"); return 2 }
+        cx.beginAdd(to: c)
+        if let q = arg("--context-pick", in: args) { cx.pickQuery = q; cx.selectAll(cx.pickResults ?? []) }
+        if args.contains("--build") { cx.build(); wait() }
+    case "update":
+        guard let c = named(arg("--context-name", in: args) ?? "") else { print("no such context"); return 2 }
+        cx.update(c); wait()
+    case "start", "start-task", "copy":
+        guard let c = named(arg("--context-name", in: args) ?? "") else { print("no such context"); return 2 }
+        if what == "copy" { cx.copyReference(c) } else if what == "start-task" { cx.startWithTask(c) } else {
+            cx.start(c, tool: arg("--context-tool", in: args).flatMap(AskEngine.init(rawValue:)))
+        }
+    default:
+        print("unknown --context \(what)"); return 2
+    }
+    if arg("--data", in: args) == nil { m.refreshNow() }  // what the list shows afterwards
+    for a in asked { print("asked: " + a.replacingOccurrences(of: "\n", with: " ")) }
+    for l in launched {  // one line each: a command can hold newlines (the first message has a few lines)
+        let json = (try? JSONSerialization.data(withJSONObject: [l], options: [])).flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
+        print("launched: " + json)
+    }
+    for c in copied { print("copied: " + c.replacingOccurrences(of: "\n", with: " / ")) }
+    print("toast: " + (m.toast ?? "-"))
+    dumpModel(m)
+    return 0
 }
 
 /// A model filled from the command line the way the real app fills it.
@@ -358,6 +457,13 @@ func headlessModel(_ args: [String]) -> AppModel? {
     }
     if args.contains("--edit-first"), let r = m.visibleRows.first { m.beginSave(r) }
     if args.contains("--hover-first"), let r = m.visibleRows.first { m.hover.enter(r) }
+    // screenshots of the contexts: every one open, or the builder (from the first chain, or the newest sessions)
+    if args.contains("--open-contexts") { for c in m.contexts.contexts { m.contexts.expanded[c.slug] = true } }
+    if args.contains("--context-builder") {
+        m.contexts.beginNew(rows: args.contains("--from-first-chain") ? [] : Array(m.visibleRows.prefix(2)),
+                            chain: args.contains("--from-first-chain") ? m.chains.first : nil)
+        if args.contains("--show-questions") { m.contexts.showQuestions = true }
+    }
     return m
 }
 
@@ -473,6 +579,9 @@ struct ChainlogMain {
             }
             dumpAsk(m)
             exit(0)
+        }
+        if args.contains("--context") {
+            exit(runContextFlow(args))
         }
         if let i = args.firstIndex(of: "--copy"), i + 1 < args.count {
             guard let m = headlessModel(args) else { FileHandle.standardError.write(Data("could not read menu data\n".utf8)); exit(1) }

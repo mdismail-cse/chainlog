@@ -25,9 +25,9 @@ from chainlog.runtime import Runtime
 from chainlog.store.events import NOTE_MAX, new_event
 
 VISIBLE = ("save", "ls", "find", "show", "resume", "chain", "next", "note", "status", "tag", "star", "unstar",
-           "keep", "unkeep", "restore", "delete", "retention", "forget", "undo", "review", "config", "setup", "uninstall", "doctor", "scan", "ask")
+           "keep", "unkeep", "restore", "delete", "retention", "forget", "undo", "review", "config", "setup", "uninstall", "doctor", "scan", "ask", "context")
 ALIASES = {"list": "ls", "r": "resume", "chains": "chain"}
-HIDDEN = ("_sweep", "_nudge", "_menu", "_ask", "help")
+HIDDEN = ("_sweep", "_nudge", "_menu", "_ask", "_context", "help")
 STATUSES = ("wip", "pass", "fail", "blocked")
 UNDOABLE = ("save", "note", "status", "tag", "star", "unstar", "chain.link", "chain.unlink", "forget")
 
@@ -1080,10 +1080,11 @@ def cmd_nudge(rt, args):
 
 def cmd_menu(rt, args):
     """The Mac menu bar app polls this: sessions, chains and ready-made resume commands as JSON."""
-    if args.starred and args.find is None:
-        raise Exit(2, "--starred only narrows a search: use it with --find TEXT")
+    if (args.starred or args.every_word) and args.find is None:
+        raise Exit(2, "--starred and --every-word only narrow a search: use them with --find TEXT")
     index = load(rt, config_mod.load(rt))
-    _p(json.dumps(menu_mod.build(index, find=args.find, find_starred=args.starred), indent=None, separators=(",", ":")))
+    _p(json.dumps(menu_mod.build(index, find=args.find, find_starred=args.starred, find_every_word=args.every_word,
+                                 find_limit=200 if args.every_word else 40), indent=None, separators=(",", ":")))
     return 0
 
 
@@ -1204,6 +1205,275 @@ def cmd_ask_stream(rt, args):
         emit(dict(res, type="answer"))
         return 0
     except ask_mod.AskError as e:
+        emit({"type": "error", "code": e.code, "message": e.message})
+        return 0
+    except ValueError as e:
+        emit({"type": "error", "code": "bad_request", "message": "chainlog could not read the request: %s" % e})
+        return 0
+
+# --- contexts ------------------------------------------------------------------------------------
+def _ctx_refs(index, refs, words=None):
+    """Sessions from ids/refs (each must match one) and from a search; each listed once, oldest first."""
+    out = [one(index, r) for r in refs or []]
+    if words:
+        out += query.find(index, words, limit=200, every_word=True)  # a near miss would be read and merged for nothing
+    seen, uniq = set(), []
+    for s in out:
+        if s["ref"] not in seen:
+            seen.add(s["ref"])
+            uniq.append(s)
+    return sorted(uniq, key=lambda s: s["times"].get("started_at") or s["times"].get("last_activity_at") or 0)
+
+
+def _ctx_list_sessions(st, sessions, now, limit=25):
+    for s in sessions[:limit]:
+        _p("  %s  %s  %s  %s" % (st.dim(s["short"]), time.strftime("%b %d", time.localtime(s["times"].get("last_activity_at") or now)),
+                                 ui.pad(s["harness"], 6), ui.fit(ui.headline(s), 64)))
+    if len(sessions) > limit:
+        _p(st.dim("  … and %d more" % (len(sessions) - limit)))
+
+
+def _ctx_consent(rt, cfg, args, ctx_mod, engine):
+    """Agreement to send whole sessions to `engine` for contexts: asked once, in words (--yes agrees)."""
+    if ctx_mod.consented(cfg, engine):
+        return cfg
+    _p(ctx_mod.disclosure(engine))
+    if not args.yes:
+        if not rt.isatty():
+            raise Exit(2, "building a context asks for your agreement first; run it in a terminal, or add --yes to agree")
+        reply = _ask("Agree and build with %s? [y/N] " % ctx_mod.LABEL[engine])
+        if (reply or "").strip().lower() not in ("y", "yes"):
+            raise Exit(1, "cancelled. Nothing was sent.")
+    return ctx_mod.agree(rt, cfg, engine)
+
+
+def _ctx_build(rt, cfg, args, ctx_mod, index, meta, st):
+    try:
+        engine = ctx_mod._engine(rt, cfg, args.engine)[0]
+    except ctx_mod.AskError as e:
+        raise Exit(1, e.message)
+    est = ctx_mod.estimate(index, meta)
+    if est["requests"] == 0:
+        _p("%s is up to date: nothing new to read." % st.bold(meta["name"]))
+        return 0
+    cfg = _ctx_consent(rt, cfg, args, ctx_mod, engine)
+    if not args.json:
+        _p(st.dim("Reading %d session%s with %s (about %d requests, ~%dk tokens of reading). Ctrl-C stops; what is read is kept." % (
+            est["sessions"], "" if est["sessions"] == 1 else "s", ctx_mod.LABEL[engine], est["requests"], max(1, est["chars"] // 4000))))
+    progress = (lambda t, _d=0, _n=0: sys.stderr.write(st.dim("  " + t) + "\n")) if not args.json else None
+    try:
+        res = ctx_mod.build(rt, cfg, index, meta, engine=engine, progress=progress)
+    except ctx_mod.AskError as e:
+        raise Exit(1, e.message)
+    except KeyboardInterrupt:
+        _p("")
+        raise Exit(130, "stopped. The sessions read so far are kept: `chainlog context update %s` carries on." % shlex.quote(meta["name"]))
+    m = res["meta"]
+    if args.json:
+        _p(json.dumps(dict(ctx_mod.summary(rt, load(rt, cfg), m), requests=res["requests"]), separators=(",", ":")))
+        return 0
+    _p("%s %s: %d session%s, %d request%s." % (st.green("✓"), st.bold(m["name"]), len(m["members"]), "" if len(m["members"]) == 1 else "s",
+                                               res["requests"], "" if res["requests"] == 1 else "s"))
+    if m.get("gist"):
+        _p("  " + ui.safe(m["gist"]))
+    _p(st.dim("  file: %s" % ctx_mod.files(rt, m)["context"]))
+    _p(st.dim("  start a session with it: chainlog context use %s" % shlex.quote(m["name"])))
+    return 0
+
+
+def cmd_context(rt, args):
+    """Contexts: what many sessions taught you, in one file a new session reads when it needs it."""
+    from chainlog import context as ctx_mod
+    cfg = config_mod.load(rt)
+    st = ui.Style(rt.color())
+    now = rt.now()
+    action = args.cx or "ls"
+    if action == "questions":
+        if args.reset:
+            config_mod.save(rt, config_mod._put(cfg, "context.questions", []))
+            _p("Questions are back to chainlog's ten.")
+        elif args.set:
+            try:
+                qs = ctx_mod.clean_questions(args.set)
+            except ctx_mod.AskError as e:
+                raise Exit(2, e.message)
+            config_mod.save(rt, config_mod._put(cfg, "context.questions", qs))
+            _p("Saved %d question%s as your default for new contexts." % (len(qs), "" if len(qs) == 1 else "s"))
+        else:
+            qs = ctx_mod.questions_default(cfg)
+            if args.json:
+                _p(json.dumps({"questions": qs, "default": list(ctx_mod.DEFAULT_QUESTIONS)}))
+                return 0
+            for i, q in enumerate(qs, 1):
+                _p("%2d. %s" % (i, q))
+            _p(st.dim("Change them: chainlog context questions --set \"question 1\" \"question 2\" …   (--reset for these ten)"))
+        return 0
+    index = load(rt, cfg)
+    if action == "ls":
+        every = ctx_mod.all_contexts(rt)
+        if args.json:
+            _p(json.dumps([ctx_mod.summary(rt, index, m) for m in every], separators=(",", ":")))
+            return 0
+        if not every:
+            _p("No contexts yet. A context collects what several sessions taught you (say, all your cloud backup work) into one")
+            _p("file that a new session reads when it needs it. Make one:")
+            _p("  chainlog context new \"Cloud backup\" --find backup     (every session matching the words)")
+            _p("  chainlog context new \"Cloud backup\" ID ID ID          (ids from: chainlog find backup)")
+            return 0
+        w = max(ui.cells(m["name"]) for m in every)
+        for m in every:
+            sm = ctx_mod.summary(rt, index, m)
+            state = ("built %s" % sm["ago"]) if sm["built"] else st.yellow("not built yet")
+            todo = sm["pending"]["text"] if sm["built"] else ""
+            _p(" %s  %3d session%s  %s%s" % (st.bold(ui.pad(ui.safe(m["name"]), w)), sm["sessions"], " " if sm["sessions"] == 1 else "s", state,
+                                             st.yellow(" · " + todo + " → update") if todo else ""))
+        _p(st.dim(" start a session with one: chainlog context use NAME   ·   details: chainlog context show NAME"))
+        return 0
+    if action == "new":
+        try:
+            name = ctx_mod.clean_name(args.name)
+            if args.chain and args.chain not in index.chains:
+                raise ctx_mod.AskError("bad_request", "no chain %r (chainlog chain lists them)" % args.chain)
+        except ctx_mod.AskError as e:
+            raise Exit(2, e.message)
+        sessions = _ctx_refs(index, args.refs, " ".join(args.find) if args.find else None)
+        if args.chain:
+            sessions = _ctx_refs(index, [], None) + sessions
+            sessions = sorted({s["ref"]: s for s in sessions + [index.sessions[m["ref"]] for m in index.chains[args.chain]["members"]
+                                                               if m["ref"] in index.sessions]}.values(),
+                              key=lambda s: s["times"].get("started_at") or 0)
+        if not sessions:
+            raise Exit(1, "no sessions to put in it: give ids, --find WORDS or --chain KEY (chainlog find WORDS shows ids)")
+        if not args.json:
+            _p("%s · %d session%s:" % (st.bold(name), len(sessions), "" if len(sessions) == 1 else "s"))
+            _ctx_list_sessions(st, sessions, now)
+            if args.find and rt.isatty() and not args.yes:
+                reply = _ask("Use these? [Y/n] ")
+                if reply is None or reply.strip().lower().startswith("n"):
+                    raise Exit(1, "cancelled. Pick sessions by id instead: chainlog context new NAME ID ID …")
+        try:
+            meta = ctx_mod.create(rt, cfg, name, [s["ref"] for s in sessions], chain=args.chain,
+                                  questions=args.question or None)
+        except ctx_mod.AskError as e:
+            raise Exit(1, e.message)
+        if args.no_build:
+            _p("Saved. Build it when you are ready: chainlog context update %s" % shlex.quote(meta["name"]))
+            return 0
+        return _ctx_build(rt, cfg, args, ctx_mod, index, meta, st)
+    try:
+        meta = ctx_mod.get(rt, args.name)
+    except ctx_mod.AskError as e:
+        raise Exit(1, e.message)
+    if action == "update":
+        return _ctx_build(rt, cfg, args, ctx_mod, index, meta, st)
+    if action == "add":
+        sessions = _ctx_refs(index, args.refs, " ".join(args.find) if args.find else None)
+        if not sessions:
+            raise Exit(1, "no sessions given: ids, or --find WORDS")
+        added = ctx_mod.add(rt, meta, [s["ref"] for s in sessions])
+        _p("Added %d session%s to %s%s. They are read on the next update: chainlog context update %s" % (
+            len(added), "" if len(added) == 1 else "s", st.bold(meta["name"]),
+            (" (%d were already in it)" % (len(sessions) - len(added))) if len(sessions) > len(added) else "", shlex.quote(meta["name"])))
+        return 0
+    if action == "remove":
+        refs = [one(index, r)["ref"] if resolve.resolve_ref(index, r) else r for r in args.refs]
+        gone = ctx_mod.remove(rt, meta, refs)
+        _p("Removed %d session%s from %s. The next update leaves them out." % (len(gone), "" if len(gone) == 1 else "s", st.bold(meta["name"])))
+        return 0
+    if action == "rm":
+        if not args.yes:
+            if not rt.isatty():
+                raise Exit(2, "this deletes the context's files; add --yes to confirm")
+            reply = _ask("Delete the context %s (its notes, not your sessions)? [y/N] " % meta["name"])
+            if (reply or "").strip().lower() not in ("y", "yes"):
+                raise Exit(1, "cancelled")
+        ctx_mod.delete(rt, meta)
+        _p("Deleted the context %s. Your sessions are untouched." % st.bold(meta["name"]))
+        return 0
+    if action == "ref":
+        if not meta.get("built_at"):
+            raise Exit(1, "build it first: chainlog context update %s" % shlex.quote(meta["name"]))
+        text = ctx_mod.reference(rt, meta)
+        _p(text)
+        if args.copy:
+            sys.stderr.write(st.dim("(copied: paste it into any Claude or Codex session)\n") if _copy(rt, text) else "chainlog: could not copy\n")
+        return 0
+    if action == "use":
+        task = " ".join(args.task).strip() or None
+        try:
+            plan = ctx_mod.launch(rt, index, meta, tool=args.tool, where=args.folder, task=task)
+        except ctx_mod.AskError as e:
+            raise Exit(1, e.message)
+        if args.print or args.json:
+            _p(json.dumps(plan, separators=(",", ":")) if args.json else ui.safe(plan["command"]))
+            return 0
+        sys.stderr.write(st.dim("→ %s session in %s, with the context %s attached\n" % (ctx_mod.LABEL[plan["tool"]], plan["cwd"], meta["name"])))
+        try:
+            os.chdir(plan["cwd"])
+            os.execvp(plan["argv"][0], plan["argv"])
+        except OSError as e:
+            raise Exit(1, "could not start %s: %s" % (plan["argv"][0], e))
+    # show
+    sm = ctx_mod.summary(rt, index, meta)
+    if args.json:
+        _p(json.dumps(sm, separators=(",", ":")))
+        return 0
+    _p("%s · %d session%s · %s" % (st.bold(meta["name"]), sm["sessions"], "" if sm["sessions"] == 1 else "s",
+                                   ("built %s (%s)" % (sm["ago"], sm["period"])) if sm["built"] else "not built yet"))
+    if sm["gist"]:
+        _p("  " + ui.safe(sm["gist"]))
+    if sm["pending"]["text"] and sm["built"]:
+        _p(st.yellow("  %s: chainlog context update %s" % (sm["pending"]["text"], shlex.quote(meta["name"]))))
+    _p(st.dim("  file: %s" % sm["file"]))
+    members = [index.sessions[r] for r in meta["members"] if r in index.sessions]
+    _ctx_list_sessions(st, members, now)
+    _p(st.dim("  start a session with it: chainlog context use %s   ·   paste into one: chainlog context ref %s --copy" % (
+        shlex.quote(meta["name"]), shlex.quote(meta["name"]))))
+    return 0
+
+
+def cmd_context_stream(rt, args):
+    """What the menu bar app talks to for building: a JSON request on stdin, one JSON object per line back
+    (progress…, then done or error). {"name", "refs"?, "questions"?, "engine"?, "agree"?, "new"?}"""
+    import signal
+    from chainlog import context as ctx_mod
+
+    def emit(obj):
+        _p(json.dumps(obj, separators=(",", ":")))
+
+    def stop(*_a):
+        raise KeyboardInterrupt
+
+    signal.signal(signal.SIGTERM, stop)
+    try:
+        request = json.loads(rt.stdin.read() or "{}")
+        if not isinstance(request, dict):
+            raise ValueError("the request must be a JSON object")
+        cfg = config_mod.load(rt)
+        index = load(rt, cfg)
+        refs = [r for r in request.get("refs") or [] if isinstance(r, str) and r in index.sessions]
+        if request.get("new"):
+            meta = ctx_mod.create(rt, cfg, request.get("name"), refs, chain=request.get("chain") or None,
+                                  questions=request.get("questions") or None)
+        else:
+            meta = ctx_mod.get(rt, request.get("name"))
+            if refs:
+                ctx_mod.add(rt, meta, refs)
+            if request.get("questions"):
+                meta["questions"] = ctx_mod.clean_questions(request["questions"])
+                ctx_mod.save(rt, meta)
+        engine = ctx_mod._engine(rt, cfg, request.get("engine") or None)[0]
+        if not ctx_mod.consented(cfg, engine):
+            if not request.get("agree"):
+                emit({"type": "error", "code": "no_consent", "message": ctx_mod.disclosure(engine), "engine": engine})
+                return 0
+            cfg = ctx_mod.agree(rt, cfg, engine)
+        res = ctx_mod.build(rt, cfg, index, meta, engine=engine,
+                            progress=lambda t, d=0, n=0: emit({"type": "status", "text": t, "done": d, "total": n}))
+        emit({"type": "done", "requests": res["requests"], "up_to_date": res["up_to_date"],
+              "context": ctx_mod.summary(rt, load(rt, cfg), res["meta"])})
+        return 0
+    except ctx_mod.AskError as e:
         emit({"type": "error", "code": e.code, "message": e.message})
         return 0
     except ValueError as e:
@@ -1406,6 +1676,7 @@ def build_parser():
     mn = sub.add_parser("_menu")
     mn.add_argument("--find", metavar="TEXT", help="instead of the lists: search every session for TEXT")
     mn.add_argument("--starred", action="store_true", help="with --find: only among starred sessions")
+    mn.add_argument("--every-word", action="store_true", help="with --find: only sessions that contain every word")
     ak = sub.add_parser("ask", help="ask Claude or Codex about your sessions",
                         description="Ask Claude or Codex about the sessions you worked on, or search them with details. It uses "
                                     "the `claude` / `codex` you are already signed in to. Connect once with --connect; "
@@ -1419,6 +1690,51 @@ def build_parser():
     ak.add_argument("-y", "--yes", action="store_true", help="with --connect: agree without asking")
     ak.add_argument("--json", action="store_true")
     sub.add_parser("_ask")
+    cx = sub.add_parser("context", help="merge what many sessions taught you into one context a new session can use",
+                        description="A context collects what several sessions taught you (say, all your cloud backup work) into "
+                                    "one small file. A new session starts with a few lines that point to it, and reads it only "
+                                    "when its task needs it. With no subcommand: list your contexts.")
+    cxs = cx.add_subparsers(dest="cx", metavar="ACTION")
+    c_new = cxs.add_parser("new", help="make a context from sessions, and build it")
+    c_new.add_argument("name")
+    c_new.add_argument("refs", nargs="*", metavar="ID", help="sessions to put in it (ids from chainlog find / ls)")
+    c_new.add_argument("--find", nargs="+", metavar="WORDS", help="also every session a search for these words finds")
+    c_new.add_argument("--chain", metavar="KEY", help="also every round of this chain, and new rounds later")
+    c_new.add_argument("-q", "--question", action="append", help="a question to ask each session (repeat; default: your ten)")
+    c_new.add_argument("--no-build", action="store_true", help="only save it; build later with update")
+    c_upd = cxs.add_parser("update", help="read new and changed sessions, and merge again")
+    c_upd.add_argument("name")
+    c_add = cxs.add_parser("add", help="add sessions (read on the next update)")
+    c_add.add_argument("name")
+    c_add.add_argument("refs", nargs="*", metavar="ID")
+    c_add.add_argument("--find", nargs="+", metavar="WORDS")
+    c_rem = cxs.add_parser("remove", help="take sessions out (on the next update)")
+    c_rem.add_argument("name")
+    c_rem.add_argument("refs", nargs="+", metavar="ID")
+    c_use = cxs.add_parser("use", help="start a new Claude or Codex session with the context attached")
+    c_use.add_argument("name")
+    c_use.add_argument("task", nargs="*", help="what to do (optional): it goes into the first message")
+    c_use.add_argument("--tool", choices=list(config_mod.ASK_ENGINES), help="claude or codex (default: the newest session's)")
+    c_use.add_argument("--folder", metavar="DIR", help="where to start (default: the newest session's folder)")
+    c_use.add_argument("--print", action="store_true", help="only print the command")
+    c_ref = cxs.add_parser("ref", help="print the lines that attach the context, to paste into any session")
+    c_ref.add_argument("name")
+    c_ref.add_argument("--copy", action="store_true", help="also copy them to the clipboard")
+    c_show = cxs.add_parser("show", help="what is in a context")
+    c_show.add_argument("name")
+    c_rm = cxs.add_parser("rm", help="delete a context (its notes; never your sessions)")
+    c_rm.add_argument("name")
+    c_q = cxs.add_parser("questions", help="the questions new contexts ask each session")
+    c_q.add_argument("--set", nargs="+", metavar="QUESTION", help="save these as your default questions")
+    c_q.add_argument("--reset", action="store_true", help="back to chainlog's ten")
+    cxs.add_parser("ls", help="list contexts")
+    for c in (cx, c_new, c_upd, c_add, c_rem, c_use, c_ref, c_show, c_rm, c_q):
+        c.add_argument("--json", action="store_true", help=argparse.SUPPRESS if c is not cx else "machine-readable output")
+    for c in (cx, c_new, c_upd):
+        c.add_argument("-e", "--engine", choices=list(config_mod.ASK_ENGINES), help="build with claude or codex")
+    for c in (cx, c_new, c_upd, c_rm):
+        c.add_argument("-y", "--yes", action="store_true", help="agree / confirm without asking")
+    sub.add_parser("_context")
     sub.add_parser("help")
     # hidden commands must not show in `chainlog --help`
     if hasattr(sub, "_choices_actions"):  # argparse internals; if they ever change, the hidden commands just show in --help
@@ -1433,6 +1749,7 @@ DISPATCH = {
     "delete": cmd_delete, "retention": cmd_retention, "forget": cmd_forget, "undo": cmd_undo, "review": cmd_review, "config": cmd_config,
     "setup": cmd_setup, "uninstall": cmd_uninstall, "doctor": cmd_doctor, "scan": cmd_scan,
     "_sweep": cmd_sweep, "_nudge": cmd_nudge, "_menu": cmd_menu, "ask": cmd_ask, "_ask": cmd_ask_stream,
+    "context": cmd_context, "_context": cmd_context_stream,
 }
 
 

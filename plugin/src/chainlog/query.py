@@ -90,9 +90,10 @@ STOPWORDS = {"a", "an", "the", "and", "or", "of", "for", "to", "in", "on", "at",
              "show", "please", "about", "from", "did", "tested", "testing", "test", "last", "earlier"}
 
 
-def find(index, text, limit=30, starred=False):
+def find(index, text, limit=30, starred=False, every_word=False):
     """Rank sessions by how many search words they contain, then by field weight and recency.
-    Filler words ("the session where I tested …") are ignored, so natural phrases work."""
+    Filler words ("the session where I tested …") are ignored, so natural phrases work. `every_word`: only sessions that
+    contain all of them (picking sessions for a context, where a near miss would be read and merged for nothing)."""
     words = [t for t in re.split(r"[\s,;:!?\"']+", (text or "").lower().strip()) if t]
     tokens = [t for t in words if t not in STOPWORDS] or words
     if not tokens:
@@ -124,5 +125,7 @@ def find(index, text, limit=30, starred=False):
     top = max(m for m, _t, _s in scored)
     # with several words, drop weak partial matches when some session matches (nearly) all of them
     keep = [x for x in scored if x[0] >= max(1, top - (1 if len(tokens) > 2 else 0))]
+    if every_word:
+        keep = [x for x in keep if x[0] == len(tokens)]
     keep.sort(key=lambda x: (x[0], x[1]), reverse=True)
     return [s for _m, _t, s in keep[:limit]]

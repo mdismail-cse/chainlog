@@ -110,9 +110,9 @@ enum CLI {
 
     /// Search every session (or only the starred ones). nil when chainlog could not answer.
     /// `--find=TEXT` as one argument: a search that starts with a dash ("--json", "-v") is still text.
-    static func find(_ text: String, starredOnly: Bool = false) -> [Row]? {
+    static func find(_ text: String, starredOnly: Bool = false, everyWord: Bool = false) -> [Row]? {
         guard let exe = locate() else { return nil }
-        let r = run(exe, ["_menu", findArgument(text)] + (starredOnly ? ["--starred"] : []))
+        let r = run(exe, ["_menu", findArgument(text)] + (starredOnly ? ["--starred"] : []) + (everyWord ? ["--every-word"] : []))
         dbg("ran _menu --find %@ -> status \(r.status)".replacingOccurrences(of: "%@", with: clip(text, 20)))
         guard r.status == 0, let out = r.out, let d = try? JSONDecoder().decode(FindData.self, from: out) else { return nil }
         return d.results

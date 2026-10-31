@@ -647,6 +647,109 @@ func selfTest(sample path: String?) -> Int {
         check("request: no engine is left out, not null", (try? JSONSerialization.jsonObject(with: AskRequest(question: "q", history: [], engine: nil).json) as? [String: Any])?["engine"] == nil)
     }
 
+    // Contexts: picking sessions and questions, agreeing, building, and starting a session with one
+    do {
+        func ev(_ json: String) -> ContextEvent { try! JSONDecoder().decode(ContextEvent.self, from: Data(json.utf8)) }
+        let m = model()
+        m.inline = true
+        let cx = m.contexts
+        cx.inline = true
+        check("contexts: the sample's two are listed", cx.supported && cx.contexts.map(\.name) == ["Shop refunds", "Tracker export"])
+        check("  ... one waiting for Update says how much in a few words", cx.contexts[0].pendingShort == "1 new")
+        cx.beginNew()
+        check("New context: the Chains tab, the builder, your ten questions", m.tab == .chains && cx.screen == .builder && cx.questions.count == 10)
+        check("  ... it asks for a name first", cx.blocker == "Give it a name")
+        cx.name = "  Refunds "
+        check("  ... then for sessions", cx.blocker == "Pick the sessions to put in it")
+        let rows = Array(data.recent.prefix(3))
+        cx.selectAll(rows); cx.selectAll(rows)
+        check("Pick all twice picks each session once", cx.selected.count == 3)
+        cx.toggle(rows[0])
+        check("a click on a picked session unpicks it", cx.selected.count == 2 && !cx.isSelected(rows[0]))
+        check("the footer says what it will cost before anything is sent", cx.estimate == "Reads 2 sessions with Claude: about 3 requests on your plan.", cx.estimate)
+        cx.questions = ["  ", "What broke?", "What broke?", "How was it fixed?"]
+        check("blank and repeated questions are left out", cx.cleanQuestions == ["What broke?", "How was it fixed?"])
+        cx.questions = []
+        check("no question, no build", cx.blocker == "Add at least one question")
+        cx.questions = ["What broke?", "How was it fixed?"]
+        // the first build asks for agreement; a no sends nothing and keeps the context unbuilt
+        var requests: [ContextRequest] = []
+        var feed: ((ContextEvent) -> Void)?
+        var finish: ((Int32) -> Void)?
+        cx.starter = { req, onEvent, onDone in requests.append(req); feed = { onEvent($0) }; finish = { onDone($0) }; return {} }
+        var asked = ""
+        cx.consentConfirmer = { title, _ in asked = title; return false }
+        cx.build()
+        check("Build sends the name, the picked sessions in order, and the questions", requests.count == 1 && requests[0].isNew
+              && requests[0].name == "Refunds" && requests[0].refs == [rows[1].ref, rows[2].ref] && requests[0].questions! == cx.cleanQuestions)
+        check("  ... and shows the progress screen", cx.screen == .building)
+        feed?(ev(#"{"type":"error","code":"no_consent","message":"Building a context sends…","engine":"claude"}"#))
+        check("the first time, it asks before sending whole sessions", asked == "Send these sessions to Claude?")
+        check("  ... a no sends nothing and says so", cx.screen == .failed && cx.failure.hasPrefix("Nothing was sent") && requests.count == 1)
+        cx.consentConfirmer = { _, _ in true }
+        cx.retry()
+        feed?(ev(#"{"type":"error","code":"no_consent","message":"…","engine":"claude"}"#))
+        check("  ... a yes builds the context it already made, with the agreement", requests.count == 3 && requests[2].agree && !requests[2].isNew)
+        feed?(ev(#"{"type":"status","text":"Reading session 2 of 2: Shop PR 4321 refund","done":1,"total":2}"#))
+        check("progress: which session, and how far", cx.progressText.hasPrefix("Reading session 2 of 2") && cx.progressDone == 1 && cx.progressTotal == 2)
+        let built = String(data: try! JSONSerialization.data(withJSONObject: (try! JSONSerialization.jsonObject(with: raw) as! [String: Any])["contexts"].map { ($0 as! [Any])[0] }!), encoding: .utf8)!
+        feed?(ev(#"{"type":"done","requests":3,"up_to_date":false,"context":"# + built + #"}"#))
+        finish?(0)
+        check("done: the result screen, open in the list afterwards", cx.screen == .done && cx.result?.name == "Shop refunds" && cx.resultRequests == 3
+              && cx.expanded["shop-refunds"] == true)
+        cx.doneWithResult()
+        check("  ... Done goes back to the list", cx.screen == .list && cx.result == nil)
+        // a yes at the very first question builds the context that was just made (not a second new one)
+        requests = []
+        cx.beginNew(); cx.name = "Billing"; cx.selectAll(rows)
+        cx.consentConfirmer = { _, _ in true }
+        cx.build()
+        feed?(ev(#"{"type":"error","code":"no_consent","message":"…","engine":"claude"}"#))
+        check("a yes the first time builds the one just made, with the agreement", requests.count == 2 && requests[0].isNew
+              && !requests[1].isNew && requests[1].agree && requests[1].name == "Billing" && cx.screen == .building)
+        cx.stop()
+        // a name that is taken goes back to the builder, nothing lost
+        cx.beginNew(); cx.name = "Shop refunds"; cx.selectAll(rows)
+        cx.build()
+        feed?(ev(#"{"type":"error","code":"exists","message":"There is already a context called 'Shop refunds'."}"#))
+        check("a taken name: back to the builder with what you picked", cx.screen == .builder && cx.selected.count == 3)
+        cx.closeBuilder()
+        // stopping
+        cx.update(cx.contexts[0])
+        cx.stop()
+        check("Stop goes back to the list and says what is kept", cx.screen == .list && (m.toast ?? "").hasPrefix("Stopped. What was read is kept"))
+        // adding to a context that exists
+        let c = cx.contexts[0]
+        cx.beginAdd(to: c, rows: [rows[0]])
+        check("Add sessions: only the ones not in it count", cx.adding.count == (c.members.contains(rows[0].ref) ? 0 : 1))
+        check("  ... sessions already in it are not offered again", !cx.candidates.contains { c.members.contains($0.ref) })
+        cx.closeBuilder()
+        // starting a session, copying the reference, adding from a session's menu
+        var launched: [String] = []
+        m.launcher = { command, name, _ in launched.append(name + "|" + command); return true }
+        var planned: [String] = []
+        cx.launchPlanner = { args in planned = args; return (ContextLaunch(command: "cd /w && claude 'x' --add-dir /n", tool: "claude", cwd: "/w", session_id: "s"), "") }
+        cx.start(c)
+        check("Start asks chainlog for the command, with the context's tool", planned == ["context", "use", "shop-refunds", "--json", "--tool", "claude"])
+        check("  ... and opens it in a terminal", launched == ["context-shop-refunds|cd /w && claude 'x' --add-dir /n"] && (m.toast ?? "").contains("started with Shop refunds"))
+        cx.start(c, tool: .codex, folder: "/elsewhere", task: "-v fix it")
+        check("a task that starts with a dash stays a task", planned == ["context", "use", "shop-refunds", "--json", "--tool", "codex", "--folder", "/elsewhere", "--", "-v fix it"])
+        cx.launchPlanner = { _ in (nil, "Build the context first") }
+        cx.start(c)
+        check("a launch chainlog refuses says why", (m.toast ?? "").contains("Build the context first"))
+        cx.start(cx.contexts[1])
+        check("an unbuilt context cannot be started", (m.toast ?? "") == "Build it first")
+        var copied: [String] = []
+        m.copier = { copied.append($0) }
+        cx.copyReference(c)
+        check("Copy reference copies the few lines that attach it", copied == [c.reference] && c.reference.hasPrefix("Context \"Shop refunds\" is attached"))
+        var ran: [[String]] = []
+        m.runner = { args in ran.append(args); return (true, "") }
+        let outsider = data.unsaved.first { !c.members.contains($0.ref) }!
+        cx.add(outsider, to: c)
+        check("a session's menu adds it to a context (read on the next Update)", ran == [["context", "add", "shop-refunds", outsider.ref]])
+    }
+
     print(failed == 0 ? "selftest passed" : "selftest: \(failed) failed")
     return failed
 }

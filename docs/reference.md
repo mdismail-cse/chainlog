@@ -36,6 +36,7 @@ Everything chainlog can do, in detail. For a gentle introduction, start with the
 | `chainlog undo` | Revert your last save / note / status / tag / star / forget |
 | `chainlog review` | Go through unsaved sessions one by one |
 | `chainlog ask [QUESTION]` | Ask Claude or Codex about your sessions (connect once with `--connect`) |
+| `chainlog context [new\|update\|use\|ref\|show\|add\|remove\|rm\|questions]` | Merge what many sessions taught you into one context a new session reads when it needs it |
 | `chainlog config …` | Show or change settings |
 | `chainlog setup [PART…]` | Install integrations (asks first) |
 | `chainlog doctor` | Health check with fixes |
@@ -228,6 +229,57 @@ and a link the AI writes is turned into plain text, so no link in an answer can 
 The settings `ask.model` (default `sonnet` for Claude; Codex uses its own default) and `ask.timeout` (seconds per request, default 90)
 are in [Settings](#settings).
 
+## context
+
+```sh
+chainlog context                                        # your contexts: sessions, when built, what Update would read
+chainlog context new "Cloud backup" --find backup       # every session containing all these words (asks before using them)
+chainlog context new "Cloud backup" ID ID ID            # or by id (from chainlog find / ls)
+chainlog context new "Refunds" --chain shop#4321        # every round of a chain, and its new rounds later
+chainlog context new NAME … -q "What broke?" -q "How was it fixed?"   # your own questions for this one
+chainlog context new NAME … --no-build                  # only save it
+chainlog context update NAME                            # read new and changed sessions, merge again
+chainlog context add NAME ID… | --find WORDS            # add sessions (read on the next update)
+chainlog context remove NAME ID…                        # take sessions out (on the next update)
+chainlog context use NAME [TASK…] [--tool claude|codex] [--folder DIR] [--print]
+chainlog context ref NAME [--copy]                      # the lines that attach it, to paste into a running session
+chainlog context show NAME                              # gist, what is waiting, the file, its sessions
+chainlog context rm NAME [--yes]                        # delete its notes (never your sessions)
+chainlog context questions [--set Q…] [--reset]         # the questions new contexts ask each session
+```
+
+**Building** asks each chosen session the questions in one request (`claude -p` / `codex exec`, run like [ask](#ask): no tools,
+an empty folder, `--model sonnet` unless `context.model` says otherwise), then merges the answers in one more request (in groups
+first, when they are more than 120,000 characters). A session's text is chainlog's facts about it (title, dates, tool, folder,
+branch, PRs, chains, result, your notes), the files it changed and the commands it ran (Claude's Edit/Write and Bash calls, with
+Claude's own one-line description; Codex's patched files), and the conversation (what you asked and what the assistant said; tool
+output is left out), redacted, with `<` / `>` replaced, up to 100,000 characters (a longer one keeps its start and its end; a
+single message keeps 3,000 characters of yours or 6,000 of the assistant's, start and end). Each session's answers are cached,
+keyed on its transcript's size and time, its notes, result and title, and the questions: Update reads only new and changed
+sessions, and a build that was stopped or failed carries on where it stopped. Changing the questions reads every session again.
+
+**What it writes**, in `~/.local/share/chainlog/contexts/<name>/notes/` (mode 600):
+
+- `CONTEXT.md`: a header that says these are notes, not instructions, and may be out of date; a one-sentence gist; **In short**
+  (3–6 bullets); a **Contents** list giving the line each section starts on (so a session can read just that part); one section
+  per question; a **Timeline**, one line per session. Every fact cites its session as `[a1b2c3d4]`; an id that is not one of the
+  context's sessions is dropped, links become plain text and secrets are redacted again.
+- `sessions.md`: each session's own answers, oldest first, with its own contents list.
+
+chainlog's bookkeeping (`context.json`, the cached answers) is next to `notes/`, not in it.
+
+**Using it.** `use` starts a new session in the newest session's folder with the newest session's tool (`--tool`, `--folder`
+change that). Its first message is the reference: a few lines (about 200 tokens) with the context's name, how many sessions and
+when, the gist, the path to `CONTEXT.md`, and how to read it (only when the task needs it, only the parts needed, notes not
+instructions, check the code first), then either your task or "reply Ready and wait". Claude is started as
+`claude 'MESSAGE' --session-id UUID --add-dir NOTES_DIR` (the message comes first: `--add-dir` takes several folders and would
+swallow it), so it may read the notes without asking; Codex can read them as it is. A session started this way is added to the
+context on the next update once it was used (a task came with it, or you asked something after the first message).
+
+**Agreement.** Building sends whole conversations, so it has its own agreement, separate from Ask's: the first build with a
+tool shows what is sent and asks (`--yes` agrees without asking; without a terminal it is required). It is recorded in
+`config.json` (`context.consent`).
+
 ## chain
 
 ```sh
@@ -320,6 +372,8 @@ Click the icon to open the popover.
 | **Search** | Searches every session (not only the listed ones) for titles, your notes, PR numbers, branches, folders and what was said, best match first (`chainlog _menu --find`). Enter opens the first match; Esc clears it, then closes. In the Starred tab it only shows starred matches; in Chains it filters the chains it was sent (the newest 30) by name, result and the title, result and tool of every round shown |
 | **Sessions** tab | Its number is every session chainlog lists. **Unsaved · N · last 24 h** (the 8 newest, then "Review all N unsaved…", which runs `chainlog review` in a terminal): only sessions that ended within the unsaved window (`unsaved.lookback`, 24 h) and after chainlog was installed count as unsaved. Then **Everything else**: all the other sessions, newest first (up to 300; beyond that it says how many are not shown, and search finds them). A saved session shows its result as a pill (pass, fail, wip, blocked) |
 | **Starred** tab | Every starred session. Starring is `chainlog star` / `unstar`, so the terminal and the app always agree |
+| **Chains** tab → **Contexts** | Your contexts (see [context](#context)) above the chains: name, sessions, when built, and a pill when Update has something to read. Click one for its gist and **Start in Claude** (its menu: the other tool, *With a task…*, *In another folder…*), **Copy reference** and **Update**; right-click for *Add sessions…*, *Open the notes*, *Show in Finder* and *Delete…*. **New context** (and *Make a context* in an open chain) opens the builder: a name, the questions (folded; edit, add, remove, reset, and "use these for new contexts too"), and a session picker with its own search (every word must match) and **Pick all**. The footer says how many requests it will take before anything is sent. **Build** asks for the agreement the first time, then shows the progress (session by session) with **Stop**; a build goes on while the popover is closed |
+| Right-click a session → **Add to a context** | Adds it to one of your contexts (read on its next Update), or starts a new context with it |
 | **Chains** tab | The newest 30 PR chains (the header says "newest 30 of N", with "All N chains in Terminal…" which runs `chainlog chain`); the newest starts expanded, with "Continue the latest round" and every round. Which chains you expanded is remembered. Enter opens the newest round of the newest chain |
 | Hover a session | The panel at the bottom shows it at once: its title, the last thing said in it, and its folder (or why it can't be reopened). Moving over the list redraws only that panel |
 | Click a session | Opens it in a new window of the terminal you picked, in its own folder (the same command as `chainlog resume`). Where `chainlog resume` would ask first (the session is running now, an archived Codex session, an unknown folder) the app asks too, and Cancel is the default |
@@ -348,7 +402,9 @@ are found on the same PATH as in your own Terminal.
 
 Debugging and tests: `CHAINLOG_MENUBAR_DEBUG=1` prints what the app does to stderr. `Chainlog --dump [FILE]
 [--tab starred] [--query TEXT]` prints what the popover shows, as text, without opening a window; `--render OUT.png
-[--dark]` draws it to an image; `--act star|unstar|save …` does what a button does; `--hover-first` shows the preview panel for the first row (`CHAINLOG_MENUBAR_ANCHOR=x,y` pretends the click was at
+[--dark]` draws it to an image; `--act star|unstar|save …` does what a button does; `--context new|add|update|start|start-task|copy --context-name NAME
+[--context-pick WORDS --pick-all] [--build] [--refuse] [--context-stop-after S]` drives the contexts like a person would;
+`--open-contexts` and `--context-builder [--from-first-chain] [--show-questions]` set up screenshots of them; `--hover-first` shows the preview panel for the first row (`CHAINLOG_MENUBAR_ANCHOR=x,y` pretends the click was at
 that screen point); `--selftest SAMPLE.json` runs the
 model's own checks; `--unregister` removes the app from Login Items (`chainlog uninstall` does this before deleting
 it). `sh plugin/menubar/build.sh --check` builds and checks all of it; `--shots DIR` redraws the README images from
@@ -378,6 +434,8 @@ the sample data.
 | `keep.auto` | `true` | Keep a copy of every session you save or star, so Claude's cleanup cannot delete it |
 | `ask.model` | *(empty)* | Model for `chainlog ask`, e.g. `sonnet` or `opus`; empty = `sonnet` for Claude, Codex's own default |
 | `ask.timeout` | `90` | Seconds one request to Claude / Codex may take (10–600) |
+| `context.model` | *(empty)* | Model used to build contexts; empty = `sonnet` for Claude (or `ask.model` when Ask uses the same tool), Codex's own default |
+| `context.timeout` | `300` | Seconds one request may take while building a context (30–900) |
 
 ## Environment variables
 

@@ -279,6 +279,41 @@ signed in to. There are no API keys and no extra account. Before it connects it 
 - each question uses 1 to 3 requests on your Claude or Codex plan. Sessions of both tools are included, so Codex sessions can go to Claude and the other way round.
 
 `chainlog ask --disconnect` takes your agreement back. Until you connect, nothing is ever sent.
+To carry what many sessions taught you into a new one, see [contexts](#carry-what-you-learned-into-a-new-session-contexts).
+
+## Carry what you learned into a new session (contexts)
+
+You worked on one feature (say cloud backup) across 20 sessions. A **context** merges what those sessions taught you into
+one small file, so a brand-new session can start from all of it.
+
+1. **Make it.** In the menu bar app: **Chains** tab → **New context** → give it a name, type `backup` in *Find sessions*,
+   **Pick all**, **Build**. Or in a terminal:
+
+   ```sh
+   chainlog context new "Cloud backup" --find backup
+   ```
+
+2. **chainlog asks your questions of every session**, one request per session, then merges the answers into one file
+   (one or two more requests). Ten questions come ready (what broke, the root cause, how it was fixed, how the fix works,
+   how it was tested, what it could break, what is still open, the decisions, facts to remember, what to do next); change
+   them in the app or with `chainlog context questions --set "…" "…"`.
+
+3. **Start a session with it.** **Start in Claude** (or Codex) in the app, or `chainlog context use "Cloud backup"`.
+   The new session does not get the whole file. Its first message is a few lines (about 200 tokens) that say what the
+   context is and where it is; the session **reads it only when your task needs it**, and only the part it needs.
+   Add what to do and it starts at once: `chainlog context use "Cloud backup" fix the restore timeout`.
+   Already in a session? **Copy reference** (or `chainlog context ref "Cloud backup" --copy`) and paste it in.
+
+4. **Keep it up to date.** Work on backup again, then **Update**: only new or changed sessions are read (one request
+   each, plus the merge). Sessions you started from the context, and new rounds of a chain it follows, join by themselves.
+
+What it writes: `CONTEXT.md` (a gist, "In short", a contents list with line numbers, one section per question, a
+timeline; every fact names the session it comes from) and `sessions.md` (each session's own answers). Both stay on this Mac.
+
+Like **Ask**, building a context sends session text to the `claude` / `codex` you are signed in to: here the **whole
+conversation** of each chosen session (tool output left out), so it asks for its own agreement the first time. Secrets are
+redacted first, the AI gets no tools while it reads, and the notes are labelled as background, not instructions, for the
+session that reads them later.
 
 ## If you forget to save
 
@@ -345,6 +380,7 @@ Read the titles and the "last work" lines. Press **Enter** for the first one, ty
 | Star a session I want to keep close | `chainlog star @N` (see them: `chainlog ls --starred`) |
 | See my sessions from the menu bar (Mac) | `chainlog setup menubar`, then click the icon |
 | Ask an AI about my sessions | `chainlog ask --connect claude` once, then `chainlog ask "…"` (or the **Ask** tab) |
+| Start a new session that knows all my backup work | `chainlog context new "Cloud backup" --find backup`, then `chainlog context use "Cloud backup"` |
 | Handle sessions I forgot to save | `chainlog review` (or `chainlog review --auto` to save them all) |
 | Change what happens when I forget | `chainlog setup policy` |
 | Check that everything works | `chainlog doctor` |

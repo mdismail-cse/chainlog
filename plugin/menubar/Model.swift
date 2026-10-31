@@ -105,6 +105,7 @@ final class AppModel: ObservableObject {
 
     let hover = HoverModel()
     let chat = ChatModel()  // the Ask tab's conversation: it outlives the popover being closed
+    let contexts = ContextModel()  // the Chains tab's contexts: a build goes on while the popover is closed
     private var inFlight = false
     private var refreshAgain = false
     private var lastRaw: Data?
@@ -131,7 +132,10 @@ final class AppModel: ObservableObject {
     /// Runs a shell command without a terminal (reopening in VS Code). Tests replace it.
     var shell: (_ command: String, _ onFailure: @escaping @Sendable () -> Void) -> Void = { Launcher.shell($0, onFailure: $1) }
 
-    init() { chat.app = self }
+    init() {
+        chat.app = self
+        contexts.app = self
+    }
 
     // MARK: what is shown
 
@@ -174,6 +178,12 @@ final class AppModel: ObservableObject {
                 MainActor.assumeIsolated { self.apply(r.data, r.problem, r.raw) }
             }
         }
+    }
+
+    /// Headless runs: read chainlog now, on this thread.
+    func refreshNow() {
+        let r = CLI.fetch()
+        apply(r.data, r.problem, r.raw)
     }
 
     func apply(_ new: MenuData?, _ newProblem: String?, _ raw: Data?) {
@@ -291,6 +301,11 @@ final class AppModel: ObservableObject {
     }
 
     /// Run a `chainlog` command off the main thread, then say how it went and refresh.
+    /// One chainlog command from another part of the app (the contexts), with the usual toast and refresh.
+    func act(_ args: [String], done: String, failed: String = "Could not do it") {
+        perform(args, doing: "Working…", done: done, failed: failed)
+    }
+
     private func perform(_ args: [String], doing: String, done: String, failed: String) {
         say(doing)
         let run = runner

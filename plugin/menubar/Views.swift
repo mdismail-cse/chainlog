@@ -11,6 +11,8 @@ struct PopoverView: View {
         VStack(spacing: 0) {
             if model.tab == .ask {
                 AskHeader(model: model, chat: model.chat)  // the same place and size as the search box: the tabs do not move
+            } else if model.tab == .chains {
+                ChainsTop(model: model, cx: model.contexts, focused: $searchFocused, close: close)
             } else {
                 SearchBar(model: model, focused: $searchFocused, close: close)
             }
@@ -29,9 +31,8 @@ struct PopoverView: View {
                 }
             }
             Divider()
-            if model.tab != .ask {  // the chat uses that room
-                PreviewPanel(hover: model.hover)
-                Divider()
+            if model.tab != .ask {  // the chat uses that room, and so does making a context
+                PreviewSlot(model: model, cx: model.contexts)
             }
             Footer(model: model)
         }
@@ -48,7 +49,7 @@ struct PopoverView: View {
         } else if model.tab == .ask {
             AskView(model: model, chat: model.chat, close: close)
         } else if model.tab == .chains {
-            ChainsList(model: model)
+            ChainsList(model: model, cx: model.contexts)
         } else {
             SessionList(model: model)
         }
@@ -56,6 +57,28 @@ struct PopoverView: View {
 }
 
 // MARK: - search and tabs
+
+/// The Chains tab's top: the search box, or what a context screen is doing.
+struct ChainsTop: View {
+    @ObservedObject var model: AppModel
+    @ObservedObject var cx: ContextModel
+    var focused: FocusState<Bool>.Binding
+    var close: () -> Void
+    var body: some View {
+        if cx.screen == .list { SearchBar(model: model, focused: focused, close: close) } else { ContextHeader(cx: cx) }
+    }
+}
+
+struct PreviewSlot: View {
+    @ObservedObject var model: AppModel
+    @ObservedObject var cx: ContextModel
+    var body: some View {
+        if !(model.tab == .chains && cx.screen != .list) {
+            PreviewPanel(hover: model.hover)
+            Divider()
+        }
+    }
+}
 
 struct SearchBar: View {
     @ObservedObject var model: AppModel
@@ -144,11 +167,17 @@ struct SessionList: View {
 
 struct ChainsList: View {
     @ObservedObject var model: AppModel
+    @ObservedObject var cx: ContextModel
 
     var body: some View {
+        if cx.screen != .list { ContextScreen(model: model, cx: cx) } else { list }
+    }
+
+    var list: some View {
         let chains = model.chains
-        ScrollView {
+        return ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
+                if cx.supported && !model.isSearching { ContextsSection(model: model, cx: cx); Divider().padding(.vertical, 4) }
                 if !chains.isEmpty { SectionHeader(text: model.chainsHeader) }
                 ForEach(Array(chains.enumerated()), id: \.element.id) { i, c in ChainBlock(model: model, chain: c, defaultOpen: i == 0) }
                 if let footer = model.chainsFooter {
@@ -186,13 +215,22 @@ struct ChainBlock: View {
             }
             .buttonStyle(.plain)
             if open {
-                if let latest = chain.continuable {
-                    Button { model.open(latest) } label: {
-                        Label("Continue the latest round (r\(chain.rounds))", systemImage: "arrow.uturn.forward")
-                            .font(.system(size: 12.5)).foregroundColor(.accentColor)
+                HStack(spacing: 14) {
+                    if let latest = chain.continuable {
+                        Button { model.open(latest) } label: {
+                            Label("Continue the latest round (r\(chain.rounds))", systemImage: "arrow.uturn.forward")
+                                .font(.system(size: 12.5)).foregroundColor(.accentColor)
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain).padding(.leading, 34).padding(.vertical, 4)
+                    if model.contexts.supported {
+                        Button { model.contexts.beginNew(chain: chain) } label: {
+                            Label("Make a context", systemImage: "square.stack.3d.up").font(.system(size: 12.5)).foregroundColor(.accentColor)
+                        }
+                        .buttonStyle(.plain).help("Merge what these rounds taught you into one context (its new rounds join it later)")
+                    }
                 }
+                .padding(.leading, 34).padding(.vertical, 4)
                 ForEach(chain.members.reversed()) { m in SessionRow(model: model, row: m, round: m.round).padding(.leading, 14) }
             }
         }
@@ -342,6 +380,13 @@ struct SessionRow: View {
                 Divider()
                 Button(row.starred ? "Remove from Starred" : "Add to Starred") { model.toggleStar(row) }
                 Button("Save with a note…") { model.beginSave(row) }
+                if model.contexts.supported {
+                    Menu("Add to a context") {
+                        ForEach(model.contexts.contexts) { c in Button(c.name) { model.contexts.add(row, to: c) } }
+                        if !model.contexts.contexts.isEmpty { Divider() }
+                        Button("New context with this session…") { model.contexts.beginNew(rows: [row]) }
+                    }
+                }
                 if row.harness == "claude" {
                     Button(row.isKept ? "Stop keeping the copy" : "Keep a copy (Claude can't delete it)") { model.toggleKeep(row) }
                         .disabled(!row.isKept && !row.canResume)

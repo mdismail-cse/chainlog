@@ -50,6 +50,21 @@ def _row(rt, s, now, chain_id=None):
     }
 
 
+def _contexts(rt, index):
+    """The contexts the Chains tab lists (files on this Mac; nothing is asked of any AI here)."""
+    from chainlog import context as ctx_mod
+    try:
+        return [ctx_mod.summary(rt, index, m) for m in ctx_mod.all_contexts(rt)]
+    except Exception:  # a broken context file must not take the whole menu down
+        return []
+
+
+def _context_questions(index):
+    """The questions a new context starts with (yours, or chainlog's ten)."""
+    from chainlog import context as ctx_mod
+    return ctx_mod.questions_default(index.cfg)
+
+
 def _ask(index):
     """Whether the Ask tab can chat: you chose an engine and agreed to send it session text (config only: it does not
     check that the tool is still installed and signed in, `chainlog ask --status` does)."""
@@ -59,13 +74,14 @@ def _ask(index):
 
 
 def build(index, unsaved_limit=8, recent_limit=300, chain_limit=30, round_limit=8, starred_limit=50,
-          find=None, find_limit=40, find_starred=False):
+          find=None, find_limit=40, find_starred=False, find_every_word=False):
     rt = index.rt
     now = rt.now()
     if find is not None:
         # a search: every matching session (not only the listed ones), best match first, and nothing else
         return {"schema": SCHEMA, "chainlog": __version__, "generated_at": now, "query": find,
-                "results": [_row(rt, s, now) for s in query.find(index, find, limit=find_limit, starred=find_starred)]}
+                "results": [_row(rt, s, now) for s in query.find(index, find, limit=find_limit, starred=find_starred,
+                                                                       every_word=find_every_word)]}
     visible = index.visible()
     unsaved = review.unsaved(index)
     shown = {s["ref"] for s in unsaved[:unsaved_limit]}
@@ -81,6 +97,8 @@ def build(index, unsaved_limit=8, recent_limit=300, chain_limit=30, round_limit=
         "retention": _retention(index),
         "keep_auto": bool((index.cfg.get("keep") or {}).get("auto", True)),
         "ask": _ask(index),
+        "contexts": _contexts(rt, index),
+        "context_questions": _context_questions(index),
         "unsaved": [_row(rt, s, now) for s in unsaved[:unsaved_limit]],
         "recent": [_row(rt, s, now) for s in recent],
         "starred": [_row(rt, s, now) for s in starred[:starred_limit]],

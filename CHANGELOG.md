@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- Contexts: merge what many sessions taught you into one small file a new session reads only when it needs it.
+  `chainlog context new "Cloud backup" --find backup` (or ids, or `--chain KEY`) asks each session your questions (ten ready-made
+  ones: the problem, root cause, fix, how it works, testing, risks, what is open, decisions, facts, what next), one request
+  per session, then merges the answers: `CONTEXT.md` (gist, In short, contents with line numbers, a section per question,
+  timeline, every fact citing its session) and `sessions.md`. `chainlog context use NAME [task]` starts Claude or Codex with
+  only a few lines pointing to it (about 200 tokens; it reads the file when the task needs it), `ref --copy` gives those lines
+  for a running session, `update` reads only new and changed sessions (and the sessions started from the context, and new rounds
+  of a chain it follows). In the menu bar app: Contexts in the Chains tab, a builder with a session picker and editable
+  questions, progress with Stop, Start in Claude/Codex, Copy reference, and "Add to a context" on every session. Its own
+  agreement before whole sessions are sent; settings `context.model` and `context.timeout`.
+- Search: `_menu --find TEXT --every-word` (and `context … --find`) keeps only sessions that contain every word.
+
 - Ask Claude or Codex about your sessions: `chainlog ask "which sessions touched the refund PR, and how did each end?"`, and an **Ask**
   tab in the menu bar app (connect screen, chat, the sessions an answer mentions as rows you can open or copy, Stop, New chat). It uses
   the `claude` / `codex` you are signed in to, after you agree to what is sent (`chainlog ask --connect`). Everything sent is redacted;

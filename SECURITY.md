@@ -15,7 +15,10 @@ databases, and `~/.claude/.credentials.json`. This is enforced in code (`paths.s
 ## What chainlog writes
 - Its own data in `~/.local/share/chainlog` (0700/0600): your notes, statuses, chains, hook metadata,
   and 160-character redacted previews. Set `snippets` to false to drop the previews. `config.json` also records which AI tool
-  you agreed to send session text to (`ask.consent`); the chat itself is kept only in the menu bar app's memory.
+  you agreed to send session text to (`ask.consent`, and `context.consent` for contexts); the chat itself is kept only in the menu
+  bar app's memory.
+- **Contexts** you build, in `~/.local/share/chainlog/contexts/` (0700/0600): the AI's answers about each chosen session (redacted
+  when written) and the merged notes a new session reads. `chainlog context rm` deletes one; your sessions are never touched.
 - A compressed **copy of the whole transcript** of each session you keep, in `~/.local/share/chainlog/kept/` (0700/0600). You keep a
   session with `chainlog keep`, or automatically by saving or starring it (setting `keep.auto`, on by default; turn it off with
   `chainlog config set keep.auto false`). The copy is **not redacted**: it holds everything the original holds, including anything you
@@ -38,7 +41,7 @@ databases, and `~/.claude/.credentials.json`. This is enforced in code (`paths.s
 - chainlog never edits herdr's hook scripts, herdr's hook entries, or `~/.claude/settings.json`.
 
 ## Network
-None by default. Two features send text to an AI provider, through that provider's own signed-in CLI (`claude -p`, `codex exec`),
+None by default. Three features send text to an AI provider, through that provider's own signed-in CLI (`claude -p`, `codex exec`),
 and only when you turn them on:
 - **Summaries.** With `summary.engine` set to `auto`, `claude` or `codex`, a short redacted excerpt goes to the provider that ran the
   session. The excerpt contains only user and assistant text, at most 12k characters.
@@ -46,8 +49,17 @@ and only when you turn them on:
   question sends the question, the last messages of the chat, and a redacted text catalog of your sessions (titles, notes, short
   previews, results; plus, when the AI asks for them, a few sessions' in-depth text) to the tool you chose, which can be a different
   provider from the one that ran a session. `chainlog ask --disconnect` withdraws the agreement.
+- **Contexts** (`chainlog context`, the Chains tab). Building one sends, for each session you chose, its **whole conversation**
+  (what you and the assistant said; tool output left out), your notes, and the names of the files and commands it touched,
+  redacted, to the tool you build with: one request per session plus one or two to merge. It has its own agreement, asked the
+  first time with each tool (separate from Ask's, which covers only excerpts).
 
-Both run the AI with **no tools** (no files, shell, connectors, plugins, hooks or your own config), from an empty temporary folder,
+  What a context writes is later read by a session that **does** have tools. So: the AI that writes it is told to record what
+  happened and never to copy instructions, commands, links or keys aimed at an AI; every fact cites its session; links become
+  plain text and secrets are redacted again; and the file and the lines that attach it say they are notes, not instructions, to
+  be checked against the code. A new session is given access to the notes folder only (`--add-dir`), not to chainlog's other data.
+
+All three run the AI with **no tools** (no files, shell, connectors, plugins, hooks or your own config), from an empty temporary folder,
 and leave no session behind. Notifications show only the title and short ID.
 
 ## Reporting

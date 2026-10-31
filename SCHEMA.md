@@ -83,8 +83,9 @@ New fields may be added within `/1`.
 One line of JSON for the Mac menu bar app (hidden command; not part of the public CLI). Top level:
 `schema`, `chainlog` (version), `generated_at`, `unsaved_window_hours`, `keep_auto`, `ask {engine, connected}` (the Ask tab: the engine you chose, and whether you agreed to send it session text), `retention {days, is_default, expiring, expiring_unkept, expiring_within}`
 (how long Claude keeps transcripts, and how many expire within `expiring_within` days / have no kept copy), `counts {unsaved, starred, chains, all}`, `unsaved[]`, `recent[]`,
-`starred[]`, `chains[]`. `chainlog _menu --find TEXT` adds `query` and `results[]`: every matching session
-(not only the listed ones), best match first, at most 40.
+`starred[]`, `chains[]`, `contexts[]`, `context_questions[]` (what a new context asks each session: yours, or chainlog's ten).
+`chainlog _menu --find TEXT` adds `query` and `results[]`: every matching session (not only the listed ones), best match
+first, at most 40; with `--every-word`, only sessions that contain every word, at most 200 (the context builder's picker).
 
 - A row: `ref`, `short`, `harness`, `kept` (a copy is held), `via` (where it was started: `"VS Code"`, `"Desktop"`, or null for a plain terminal),
   `title` (one clean line), `saved` (`user|auto|none`), `status`, `live`, `starred`, `chain`, `round`, `at`, `ago`,
@@ -100,6 +101,10 @@ One line of JSON for the Mac menu bar app (hidden command; not part of the publi
   session), `chains[]` 30;
   `starred[]` holds all starred sessions (at most 50), newest activity first.
 - A chain: `id`, `rounds`, `status`, `title`, `ago`, `members[]` (rows, with `round`).
+- A context: `name`, `slug`, `sessions`, `built`, `built_at`, `ago`, `period`, `gist`, `chain` (the chain it follows, or null),
+  `questions[]`, `engine`, `pending {new, changed, questions, text}` (what Update would read), `needs_update`, `file`
+  (`CONTEXT.md`), `dir` (the notes folder a session may read), `reference` (the lines that attach it; empty until built),
+  `start {tool, folder}` (where `use` starts by default), `members[]` (session refs).
 
 New fields may be added within `/1`; `plugin/menubar/sample.json` shows the shape and is checked by the tests.
 
@@ -119,6 +124,27 @@ disclosure{claude, codex}}`. `signed_in` is `true`, `false`, or `null` when the 
   `{"type":"error","code":"not_connected|no_consent|not_installed|not_signed_in|timeout|empty|failed|bad_request","message":"…"}`.
 
 It exits 0 for both. SIGTERM stops it and the AI process it started (exit 130).
+
+## Contexts (`chainlog context`, `chainlog _context`)
+
+Files, in `~/.local/share/chainlog/contexts/<slug>/`: `context.json` (`v`, `name`, `slug`, `created`, `built_at`, `members[]`,
+`chain`, `questions[]`, `built {members {ref: fingerprint}, questions}`, `gist`, `engine`, `model`, `launched[] {tool,
+session_id, folder, at, task}`, `dates [first, last]`, `requests`), `cache/<ref>.json` (one session's answers:
+`{ref, fingerprint, questions, at, answers {"1": …}}`), and `notes/CONTEXT.md` + `notes/sessions.md` (what a session reads;
+see the reference). `chainlog context ls|show|update|new --json` print contexts in the `_menu` shape.
+
+`chainlog _context` (hidden; the menu bar app) reads one JSON object on stdin, `{"name": "…", "new": true|false, "refs":
+[session refs], "questions": […] (optional), "chain": "…" (optional), "engine": "claude"|"codex" (optional), "agree": true|false}`.
+`new` makes the context first (with `refs` and `questions`); otherwise `refs` are added and new `questions` replace the old ones.
+It prints one compact JSON object per line:
+
+- `{"type":"status","text":"Reading session 3 of 20: …","done":2,"total":20}`: while it reads, then `Merging what 20 sessions say…`;
+- then exactly one of `{"type":"done","requests":21,"up_to_date":false,"context":{…as in _menu}}` or
+  `{"type":"error","code":"no_consent|not_found|exists|bad_request|not_installed|not_signed_in|timeout|empty|failed","message":"…"}`.
+  `no_consent` carries the disclosure as its `message` and the tool as `engine`: show it, and send the request again with
+  `"agree": true` (and `"new": false`: the context was made before the question).
+
+It exits 0 for both. SIGTERM stops it and the AI process (what was read is kept).
 
 ## Sources (read-only)
 

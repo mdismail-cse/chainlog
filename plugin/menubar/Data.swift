@@ -76,6 +76,50 @@ struct AskConfig: Decodable {
     let connected: Bool
 }
 
+/// One context (`chainlog context`): what many sessions taught you, in one file a new session reads when it needs it.
+struct ContextInfo: Decodable {
+    let name: String
+    let slug: String
+    let sessions: Int
+    let built: Bool
+    let ago: String            // since it was built
+    let period: String         // "2026-08-03 to 2026-10-28"
+    let gist: String           // one sentence: what the work is and where it stands
+    let chain: String?         // the chain it follows (its new rounds join it)
+    let questions: [String]
+    let engine: String?        // what built it
+    let pending: ContextPending
+    let needs_update: Bool     // built, and something new or changed is waiting
+    let file: String           // CONTEXT.md
+    let dir: String
+    let reference: String      // the lines that attach it to a session (empty until it is built)
+    let start: ContextStart    // where a new session starts by default
+    let members: [String]      // session refs
+}
+
+struct ContextPending: Decodable {
+    let new: Int
+    let changed: Int
+    let questions: Bool
+    let text: String           // "3 new sessions, 1 changed"
+}
+
+struct ContextStart: Decodable {
+    let tool: String
+    let folder: String?
+}
+
+extension ContextInfo: Identifiable {
+    var id: String { slug }
+    var tool: AskEngine { AskEngine(rawValue: start.tool) ?? .claude }
+    /// What waits for Update, short enough for a pill: "3 new", "1 changed", "new questions".
+    var pendingShort: String {
+        if pending.new > 0 { return "\(pending.new) new" }
+        if pending.changed > 0 { return "\(pending.changed) changed" }
+        return pending.questions ? "new questions" : "update"
+    }
+}
+
 struct MenuData: Decodable {
     let schema: String
     let chainlog: String
@@ -84,6 +128,8 @@ struct MenuData: Decodable {
     var retention: RetentionInfo?
     var keep_auto: Bool?            // saving or starring a session keeps a copy of it
     var ask: AskConfig?
+    var contexts: [ContextInfo]?        // absent from an older chainlog
+    var context_questions: [String]?    // what a new context asks each session (yours, or chainlog's ten)
     var unsaved: [Row]
     var recent: [Row]
     var starred: [Row]

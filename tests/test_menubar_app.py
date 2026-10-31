@@ -472,5 +472,131 @@ printf '{"is_error": false, "result": "The zebra work is in [[%s]]. DB_PASSWORD=
         self.assertTrue(gone, "the AI process was still running after Stop")
 
 
+    # --- contexts: made, built, started and stopped from the Chains tab, against the real chainlog ----------------------
+    CONTEXT_STUB = """#!/bin/sh
+case "$1" in auth) echo '{"loggedIn": true}'; exit 0;; esac
+prompt=$(cat)
+printf '%s\\n=====\\n' "$prompt" >> "$HOME/prompts.txt"
+echo $$ > "$HOME/stub.pid"
+[ -f "$HOME/stub-sleep" ] && sleep 60
+case "$*" in
+  *"You merge"*) id=$(printf '%s' "$prompt" | sed -n 's/.*<session id="\\([0-9a-f]*\\)".*/\\1/p' | head -1)
+    printf '{"is_error": false, "result": "GIST: The zebra widget work, merged.\\\\n## In short\\\\n- zebra fixed [[%s]]\\\\n## 1. Goal\\\\n- fact [[%s]]\\\\n## Timeline\\\\n- 2026-10-01 [[%s]]: done"}' "$id" "$id" "$id";;
+  *) printf '{"is_error": false, "result": "### 1\\\\nworked on the zebra widget\\\\n### 2\\\\nNot stated."}';;
+esac
+"""
+
+    def context_stub(self):
+        self.isolate_tools()
+        bin_dir = self.home / ".local" / "bin"
+        (bin_dir / "claude").write_text(self.CONTEXT_STUB)
+        (bin_dir / "claude").chmod(0o755)
+
+    def prompts(self):
+        f = self.home / "prompts.txt"
+        return [p for p in f.read_text().split("\n=====\n") if p.strip()] if f.exists() else []
+
+    def make_context(self, *extra):
+        return self.app("--context", "new", "--context-name", "Zebra work", "--context-pick", "Shop PR 5000", "--pick-all", "--build", *extra)
+
+    def test_a_context_made_in_the_app_asks_first_and_a_no_sends_nothing(self):
+        self.context_stub()
+        rc, out, err = self.make_context("--refuse")
+        self.assertEqual(rc, 0, err)
+        self.assertIn("asked: Send these sessions to Claude? | Building a context sends the text of each session", out)
+        self.assertIn("context screen: failed · Nothing was sent.", out)
+        self.assertEqual(self.prompts(), [])
+        self.assertEqual(json.loads((self.data / "config.json").read_text())["context"]["consent"], [])
+        # it is kept, not built, and Build asks again
+        rc, out, _ = self.app("--context", "update", "--context-name", "Zebra work")
+        self.assertIn("asked: Send these sessions to Claude?", out)
+        self.assertIn("context screen: done · Zebra work · 4 sessions · 5 requests", out)
+
+    def test_a_context_made_from_a_search_is_built_listed_and_its_files_written(self):
+        self.context_stub()
+        rc, out, err = self.make_context()
+        self.assertEqual(rc, 0, err)
+        self.assertIn("context screen: done · Zebra work · 4 sessions · 5 requests", out)
+        self.assertIn("gist: The zebra widget work, merged.", out)
+        prompts = self.prompts()
+        self.assertEqual(len(prompts), 5)  # four sessions, one merge
+        self.assertTrue(all("<session id=" in p for p in prompts))
+        listed = self.dump("--tab", "chains", "--open-contexts")
+        self.assertIn("contexts: 1", listed)
+        self.assertIn("Zebra work · 4 sessions · built", listed)
+        self.assertIn("→ Start in Claude · Copy reference", listed)
+        text = (self.data / "contexts" / "zebra-work" / "notes" / "CONTEXT.md").read_text()
+        self.assertIn("# Context: Zebra work", text)
+        self.assertIn("- zebra fixed [", text)
+        # nothing new: Update asks nothing
+        rc, out, _ = self.app("--context", "update", "--context-name", "Zebra work")
+        self.assertIn("up to date", out)
+        self.assertEqual(len(self.prompts()), 5)
+
+    def test_starting_a_session_runs_the_right_command_in_the_right_folder(self):
+        self.context_stub()
+        self.make_context()
+        rc, out, err = self.app("--context", "start", "--context-name", "Zebra work")
+        self.assertEqual(rc, 0, err)
+        self.assertIn("toast: Claude started with Zebra work attached", out)
+        line = next(l for l in out.splitlines() if l.startswith("launched: "))
+        name, command = json.loads(line[len("launched: "):])[0].split(": ", 1)
+        self.assertEqual(name, "context-zebra-work")
+        # run it the way the terminal would, with a claude that records where it ran and what it was given
+        fake = self.root / "fakebin"
+        fake.mkdir()
+        (fake / "claude").write_text('#!/bin/sh\npwd > "$HOME/ran-in.txt"\nfor a in "$@"; do printf "%s\\0" "$a"; done > "$HOME/ran-args.bin"\n')
+        (fake / "claude").chmod(0o755)
+        p = subprocess.run(["sh", "-c", command], env=dict(self.env, PATH="%s:/usr/bin:/bin" % fake), capture_output=True, text=True)
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertEqual(os.path.realpath((self.home / "ran-in.txt").read_text().strip()), os.path.realpath(str(self.proj)))
+        argv = (self.home / "ran-args.bin").read_bytes().decode().split("\0")[:-1]
+        self.assertTrue(argv[0].startswith('Context "Zebra work" is attached'), argv[0])
+        self.assertIn('Reply only "Ready: context Zebra work is attached."', argv[0])
+        self.assertEqual(argv[1], "--session-id")
+        self.assertEqual(argv[-2:], ["--add-dir", str(self.data / "contexts" / "zebra-work" / "notes")])  # the notes only
+        meta = json.loads((self.data / "contexts" / "zebra-work" / "context.json").read_text())
+        self.assertEqual(meta["launched"][-1]["session_id"], argv[2])
+
+    def test_a_task_that_starts_with_a_dash_is_a_task_and_copy_gives_the_reference(self):
+        self.context_stub()
+        self.make_context()
+        rc, out, err = self.app("--context", "start-task", "--context-name", "Zebra work", "--context-task", "-v make restores resumable")
+        self.assertEqual(rc, 0, err)
+        self.assertIn("My task: -v make restores resumable", out)
+        rc, out, _ = self.app("--context", "copy", "--context-name", "Zebra work")
+        self.assertIn('copied: Context "Zebra work" is attached', out)
+        self.assertIn("toast: Copied: paste it into any Claude or Codex session", out)
+
+    def test_adding_sessions_reads_only_those_and_merges_once(self):
+        self.context_stub()
+        self.make_context()
+        rc, out, err = self.app("--context", "add", "--context-name", "Zebra work", "--context-pick", "Shop PR 5001", "--build")
+        self.assertEqual(rc, 0, err)
+        self.assertIn("context screen: done · Zebra work · 8 sessions · 5 requests", out)  # four new, one merge
+        self.assertEqual(len(self.prompts()), 10)
+
+    def test_stopping_a_build_ends_the_ai_process_and_keeps_the_context(self):
+        self.context_stub()
+        (self.home / "stub-sleep").write_text("")
+        rc, out, _ = self.make_context("--context-stop-after", "4")
+        self.assertEqual(rc, 0)
+        self.assertIn("toast: Stopped. What was read is kept: Update carries on", out)
+        self.assertIn("Zebra work · 4 sessions · not built", out)
+        pid = int((self.home / "stub.pid").read_text())
+        end = time.time() + 8
+        gone = False
+        while time.time() < end:
+            try:
+                os.kill(pid, 0)
+            except ProcessLookupError:
+                gone = True
+                break
+            time.sleep(0.1)
+        if not gone:
+            os.kill(pid, 9)
+        self.assertTrue(gone, "the AI process was still running after Stop")
+
+
 if __name__ == "__main__":
     unittest.main()

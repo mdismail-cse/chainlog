@@ -23,6 +23,9 @@ DEFAULTS = {
     "summary": {"engine": "local", "timeout": 60},
     # engine: who answers (set by `chainlog ask --connect`); consent: the engines you agreed may be sent your session text
     "ask": {"engine": "", "model": "", "timeout": 90, "consent": []},
+    # contexts (`chainlog context`): the model and time limit for building one, the tools you agreed may be sent whole
+    # sessions for it, and your own default questions (empty = chainlog's ten)
+    "context": {"model": "", "timeout": 300, "consent": [], "questions": []},
     "installed_at": None,
 }
 
@@ -35,6 +38,8 @@ KEYS = {
     "summary.timeout": "seconds",
     "ask.model": "model `chainlog ask` uses, e.g. sonnet or opus (empty = the tool's default for chat)",
     "ask.timeout": "seconds one request to Claude / Codex may take (10 … 600)",
+    "context.model": "model used to build contexts, e.g. sonnet or opus (empty = sonnet for Claude, Codex's own default)",
+    "context.timeout": "seconds one request may take while building a context (30 … 900)",
     "snippets": "true/false (store redacted last-ask / last-work previews)",
     "auto_chain": "true/false (link saves to a PR chain automatically)",
     "hints": "true/false (one-line tips under the list, e.g. when Claude Code is not connected)",
@@ -78,6 +83,10 @@ _TYPES = {"unsaved.action": lambda v: v in ACTIONS, "summary.engine": lambda v: 
           "ask.model": lambda v: isinstance(v, str) and (v == "" or bool(_MODEL.fullmatch(v))),
           "ask.timeout": lambda v: isinstance(v, int) and not isinstance(v, bool) and 10 <= v <= 600,
           "ask.consent": lambda v: isinstance(v, list) and all(e in ASK_ENGINES for e in v),
+          "context.model": lambda v: isinstance(v, str) and (v == "" or bool(_MODEL.fullmatch(v))),
+          "context.timeout": lambda v: isinstance(v, int) and not isinstance(v, bool) and 30 <= v <= 900,
+          "context.consent": lambda v: isinstance(v, list) and all(e in ASK_ENGINES for e in v),
+          "context.questions": lambda v: isinstance(v, list) and len(v) <= 15 and all(isinstance(q, str) and 0 < len(q) <= 300 for q in v),
           "snippets": lambda v: isinstance(v, bool), "auto_chain": lambda v: isinstance(v, bool),
           "hints": lambda v: isinstance(v, bool), "keep.auto": lambda v: isinstance(v, bool)}
 
@@ -180,10 +189,17 @@ def set_value(cfg, key, raw) -> dict:
             raise ValueError("ask.timeout must be a number of seconds")
         if not 10 <= value <= 600:
             raise ValueError("ask.timeout must be between 10 and 600 seconds")
-    elif key == "ask.model":
+    elif key == "ask.model" or key == "context.model":
         value = str(raw).strip()
         if value and not _MODEL.fullmatch(value):
-            raise ValueError("ask.model must be a model name such as sonnet, opus or gpt-5 (letters, digits and . _ : - only)")
+            raise ValueError("%s must be a model name such as sonnet, opus or gpt-5 (letters, digits and . _ : - only)" % key)
+    elif key == "context.timeout":
+        try:
+            value = int(raw)
+        except ValueError:
+            raise ValueError("context.timeout must be a number of seconds")
+        if not 30 <= value <= 900:
+            raise ValueError("context.timeout must be between 30 and 900 seconds")
     else:
         v = str(raw).strip().lower()
         if v in ("1", "true", "yes", "on"):
