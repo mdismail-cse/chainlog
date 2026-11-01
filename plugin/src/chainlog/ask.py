@@ -31,12 +31,12 @@ CATALOG_NEWEST = 250     # newest sessions always listed
 CATALOG_CHARS = 70000    # the catalog is cut here (older lines go first)
 SEARCH_HITS = 25         # sessions matching the question words that are listed even if old
 NEED_IDS = 6             # sessions one "NEED:" may open
-DETAIL_CHARS = 5500      # of one session's detail
+DETAIL_CHARS = 7500      # of one session's detail (its summary, notes, files and commands, asks, last replies)
 QUESTION_MAX = 2000
 HISTORY_MESSAGES = 8     # earlier messages of the chat that are sent along
 HISTORY_CHARS = 1500
 CHAINS_LISTED = 40
-LINE_CHARS = 600
+LINE_CHARS = 760         # of one catalog line (the summary headline must not push the branch, PR and tags off)
 
 # a Mac app is not given your shell's PATH; these are where the tools usually are
 _EXTRA_DIRS = (".local/bin", ".claude/local", ".npm-global/bin", ".volta/bin", ".bun/bin")
@@ -196,28 +196,45 @@ def _origin_key(s):
 
 
 def _note_text(s):
-    notes = [n for n in s.get("notes") or [] if n.get("text")]
-    mine = [n for n in notes if n.get("kind") == "note"]
-    return (mine or notes or [{}])[-1].get("text") or ""
+    """Your latest note, in your words only (a summary chainlog wrote is sent as `summary:`, not as a note)."""
+    mine = [n for n in s.get("notes") or [] if n.get("kind") == "note" and n.get("text")]
+    return (mine or [{}])[-1].get("text") or ""
+
+
+# the assistant's last message when it is only a sign-off ("Done! Pushed and opened PR #12"): not the outcome
+_SIGNOFF = re.compile(r"^\W*(done|all done|all set|pushed|committed|opened|created|merged|great|perfect|all tests pass|"
+                      r"let me know|you're all set|that's it|anything else)\b", re.I)
+
+
+def _summary_text(s):
+    return ((s.get("summary") or {}).get("text") or "") if (s.get("summary") or {}).get("engine") != "local" else ""
 
 
 def _line(s):
-    """One session, one line: what a person scanning a list would want to see."""
+    """One session, one line: what a person scanning a list would want to see. Your note and chainlog's summary say how it
+    went; the assistant's last message is sent only when there is nothing better and it is not just a sign-off."""
     parts = [s["short"], _date(s["times"].get("last_activity_at")), _tool(s)]
+    if s.get("cwd"):
+        parts.append("in " + clean(os.path.basename(s["cwd"].rstrip("/")), 40))
     link = s["chains"][-1] if s.get("chains") else None
     if link:
         parts.append("%s r%s" % (link["id"], link.get("round") or "?"))
     if s.get("status"):
         parts.append(clean(s["status"], 20))
     parts.append('"%s"' % clean(s["title"]["value"], 90))
+    summ = _summary_text(s)
+    if summ:
+        parts.append('summary%s: "%s"' % (" (older than the session)" if summarize.stale(s) else "",
+                                          clean(summarize.headline_of(summ), 150)))
     note = _note_text(s)
     if note:
         parts.append('note: "%s"' % clean(note, 170))
     first = s.get("first_ask")
     if first and clean(first, 60) != clean(s["title"]["value"], 60):
         parts.append('asked: "%s"' % clean(first, 100))
-    if s.get("last_work"):
-        parts.append('did: "%s"' % clean(s["last_work"], 120))
+    last = s.get("last_work") or ""
+    if last and not note and not summ and not _SIGNOFF.match(last):
+        parts.append('ended: "%s"' % clean(last, 120))
     branch = (s.get("git") or {}).get("branch")
     if branch and branch not in ("HEAD", "main", "master"):
         parts.append("branch %s" % clean(branch, 50))
@@ -240,23 +257,50 @@ def _chain_line(c, sessions):
 
 
 def detail(s):
-    """One session in depth: its lines, every note, what you asked (in order) and the last things the assistant said."""
-    out = [_line(s)]
-    for n in (s.get("notes") or [])[-6:]:
-        out.append(_data(clean("note %s: %s" % (_date(n.get("at")), n.get("text")), 400)))
+    """One session in depth: its line, its whole summary, your notes, the files it changed and the commands it ran, what
+    you asked (the first few and as many of the last as fit) and the last things the assistant said. The end of the
+    conversation is reserved first: it used to be what a blind cut lost, on exactly the long sessions people ask about."""
+    from chainlog import context as ctx  # context imports ask, so only here
+    head = [_line(s)]
+    summ = _summary_text(s)
+    if summ:
+        head.append(_data("summary (%s%s):" % (_date((s.get("summary") or {}).get("at")),
+                                                ", the session went on after it was written" if summarize.stale(s) else "")))
+        head += [_data(clean(l, 300)) for l in summ.splitlines()[:12] if l.strip()]
+    for n in [n for n in s.get("notes") or [] if n.get("kind") == "note" and n.get("text")][-6:]:
+        head.append(_data(clean("note %s: %s" % (_date(n.get("at")), n.get("text")), 400)))
+    facts = []
+    if s.get("cwd"):
+        facts.append("folder: " + clean(os.path.basename(s["cwd"].rstrip("/")), 60))
+    files_, commands = ctx.actions(s)
+    if files_:
+        facts.append("files changed: " + ", ".join(clean(ctx._short_path(f, s.get("cwd") or ""), 100) for f in files_[-15:]))
+    facts += ["command: " + clean(c, 160) for c in commands[-8:]]
+    facts = [_data(f) for f in facts]
     blocks = summarize.text_blocks(s)
     if not blocks:
-        out.append("(the transcript is not on disk any more, so only the lines above are known)")
+        facts.append("(the transcript is not on disk any more, so only the lines above are known)")
+    tail = [_data(clean("assistant: " + t, 450)) for t in [t for r, t in blocks if r == "ASSISTANT"][-4:]]
     asked = [t for r, t in blocks if r == "USER"]
-    if len(asked) > 24:
-        asked = asked[:4] + ["…"] + asked[-19:]
-    for t in asked:
-        out.append(_data(clean("you asked: " + t, 220)) if t != "…" else "…")
-    said = [t for r, t in blocks if r == "ASSISTANT"][-4:]
-    for t in said:
-        out.append(_data(clean("assistant: " + t, 450)))
-    text = "\n".join(out)
-    return text if len(text) <= DETAIL_CHARS else text[:DETAIL_CHARS - 1] + "…"
+
+    def ask_line(t):
+        t = " ".join(t.split())
+        if len(t) > 180:
+            t = t[:110] + " … " + t[-66:]  # a pasted log keeps the request at its end
+        return _data(clean("you asked: " + t, 220))
+    room = DETAIL_CHARS - len("\n".join(head + facts + tail)) - 50
+    first = [ask_line(t) for t in asked[:3]]
+    room -= sum(len(l) + 1 for l in first)
+    last = []
+    for t in reversed(asked[3:]):  # the newest asks are kept, the oldest dropped
+        l = ask_line(t)
+        if room - len(l) - 1 < 0:
+            break
+        last.append(l)
+        room -= len(l) + 1
+    last.reverse()
+    gap = ["…"] if len(first) + len(last) < len(asked) else []
+    return "\n".join(head + facts + first + gap + last + tail)
 
 
 def _system(now):
@@ -271,8 +315,23 @@ def _system(now):
         "- If the data cannot answer, say so plainly and say what the user could search for. Do not guess or invent sessions.\n"
         "- To see more, reply with ONLY lines of this form and nothing else: `NEED: id id id` (up to %d ids: more detail on those "
         "sessions) and/or `SEARCH: some words` (look for older sessions). You may do this at most twice, then answer.\n"
+        "- Each <sessions> line is one session, newest first: id | last worked on | tool | in folder | chain and round "
+        "(shop#4321 r2 = the 2nd session on that work) | result the user set (wip, pass, fail, blocked) | \"title\" | "
+        "summary: the headline of chainlog's summary of the whole session (its Result, Open and Next lines come with NEED; "
+        "'older than the session' means it went on afterwards) | note: the user's own words (the most reliable fact) | "
+        "asked: the first request | ended: the assistant's last message (often only a sign-off, not the outcome) | branch "
+        "| PR | tags | starred, kept, running now. A missing part is unknown. listed=\"N\" of=\"M\" means only N of M sessions "
+        "are shown: SEARCH before saying something does not exist.\n"
+        "- The list says WHICH sessions and WHEN. For how something ended, why, an error, a decision or what is left, first "
+        "NEED the 1 to %d most likely sessions (the matching chain's newest rounds first) and answer from their detail. "
+        "SEARCH when the question names something not in the list (a word, a PR number, a file). Never NEED a session "
+        "already shown in <detail>.\n"
+        "- Answer with facts a person can act on: what was decided and why, what broke (the exact error), what is still open "
+        "and the next step, with exact names copied as recorded (PR and issue numbers, branches, files, commands, settings, "
+        "numbers, dates). Prefer note:, summary: and the detail over ended:. Leave out routine steps (pushed, committed, "
+        "opened a PR, ran tests) unless the question is about them. Never repeat a session's title: [[id]] shows it.\n"
         "- Be brief: a few short sentences or a short list. Use plain text with **bold** and `-` lists only; no tables, no headings."
-        % (time.strftime("%A %Y-%m-%d %H:%M", time.localtime(now)), NEED_IDS))
+        % (time.strftime("%A %Y-%m-%d %H:%M", time.localtime(now)), NEED_IDS, NEED_IDS))
 
 
 def _history(history):
@@ -453,7 +512,7 @@ def ask(rt, cfg, index, question, history=(), engine=None, progress=None):
     now = rt.now()
     if not visible:
         return {"answer": "chainlog has not seen any sessions yet, so there is nothing to ask about.", "sessions": [],
-                "engine": engine, "model": None, "calls": 0, "listed": 0}
+                "engine": engine, "model": None, "calls": 0, "listed": 0, "total": 0}
     model = a.get("model") or DEFAULT_MODEL[engine]
     timeout = int(a.get("timeout") or 90)
     system = _system(now)
@@ -497,7 +556,8 @@ def ask(rt, cfg, index, question, history=(), engine=None, progress=None):
         reply = "I could not settle on an answer from these sessions. Try asking more specifically, for example with a PR number or a word from the title."
     text, mentioned = finish(reply, visible)
     now_rows = [menu._row(rt, s, now) for s in mentioned[:12]]
-    return {"answer": text, "sessions": now_rows, "engine": engine, "model": model, "calls": calls, "listed": listed}
+    return {"answer": text, "sessions": now_rows, "engine": engine, "model": model, "calls": calls, "listed": listed,
+            "total": total}
 
 
 def plain(answer, rows=()):

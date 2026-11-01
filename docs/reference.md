@@ -212,7 +212,8 @@ short id, date, tool, chain and round, result, title, your note, the first ask a
 The newest 250 sessions are listed, plus every starred or saved one and the ones matching the question's words, up to 70,000
 characters (the oldest go first). Everything goes through the same secret redaction as notes and previews, and `<` / `>` in session
 text are replaced so it cannot close or open the tags around it. The model can ask for more: `NEED: id…` returns the detail of up to 6 sessions
-(everything you asked in them, in order, your notes, and the assistant's last few replies, 5,500 characters each), and
+(its whole summary if it has one, your notes, the files it changed and the commands it ran, what you asked — the first three
+and as many of the last as fit — and the assistant's last few replies, 7,500 characters each; the end is never cut off), and
 `SEARCH: words` returns matches from all sessions. That makes at most 3 requests per question; the last one must answer.
 
 **How it is run.** From an empty temporary folder, with no tools and no user config:

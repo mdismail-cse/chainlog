@@ -126,7 +126,8 @@ disclosure{claude, codex}}`. `signed_in` is `true`, `false`, or `null` when the 
 
 - `{"type":"status","text":"Asking Claude…"}`: zero or more, while it works;
 - then exactly one of
-  `{"type":"answer","answer":"… [[id]] …","sessions":[row…],"engine":"claude","model":"sonnet","calls":2,"listed":47}`
+  `{"type":"answer","answer":"… [[id]] …","sessions":[row…],"engine":"claude","model":"sonnet","calls":2,"listed":47,"total":912}`
+  (`listed` of `total` sessions were in the catalog the answer read)
   (`sessions` are rows as in `_menu`, for the ids named in the answer, at most 12) or
   `{"type":"error","code":"not_connected|no_consent|not_installed|not_signed_in|timeout|empty|failed|bad_request","message":"…"}`.
 

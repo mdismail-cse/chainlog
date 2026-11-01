@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Ask reads your summaries and stops taking the assistant's sign-off for the outcome. Each catalog line now carries
+  `summary: "…"` (the whole-session summary's headline, marked when the session went on after it) and `note:` is your own
+  words only (a summary used to leak in as a note, flattened and cut); the assistant's last message is sent only when there
+  is neither, and never when it is just "Done! Pushed and opened PR #12". The detail a `NEED:` returns gains the whole
+  summary, the files changed and the commands run, and keeps the end of the conversation first (it used to be what a blind
+  cut lost). The system prompt now explains every part of a line, says when to NEED and when to SEARCH, and what a usable
+  answer is: decisions and why, the exact error, what is open and the next step, exact names as recorded, no routine steps,
+  no titles repeated. The answer reports how many of your sessions it read (`total`).
 - Contexts: the merge now gets each session's facts (your result, PRs, branch, folder, tool and your latest note, which only
   the per-session reader used to see), so the timeline says what each session changed and how it ended instead of its
   title, and a session that answered nothing is left out of the merge. "In short" has a fixed shape: Now, Decided, Gotchas,

@@ -353,6 +353,49 @@ class WhatTheAiIsGiven(World):
         self.assertLessEqual(len(q.strip()), ask_mod.QUESTION_MAX)
 
 
+class WhatSaysHowItWent(World):
+    def test_the_summary_is_sent_as_itself_and_a_sign_off_is_not_the_outcome(self):
+        from chainlog import summarize as sum_mod
+        from chainlog.index import load
+        s = load(self.rt, config_mod.load(self.rt)).sessions["claude:" + sid(2)]
+        sum_mod.save_full(self.rt, s, {"text": "HEADLINE: coupon tax rounding fixed in refund.py\nGoal: refunds with coupons\n"
+                                       "Result: tests pass\nOpen: EU orders\nNext: run pytest tests/test_refund.py",
+                                       "engine": "claude", "mark": sum_mod.mark(s)})
+        self.use("NEED: %s" % self.short(2), "ok")
+        self.ask("how did the coupon work end?")
+        p = self.fake.prompts[0]
+        l2 = next(l for l in p.splitlines() if l.startswith(self.short(2) + " | "))
+        self.assertIn('summary: "coupon tax rounding fixed in refund.py"', l2)
+        self.assertNotIn("HEADLINE", l2)
+        self.assertIn('note: "coupon fixed"', l2)  # your words, still
+        self.assertEqual(l2.count("coupon tax rounding fixed"), 1)  # not again as a note
+        self.assertNotIn("did:", p)
+        self.assertNotIn("ended:", l2)  # a note or a summary says how it went; the last reply is not needed
+        second = self.fake.prompts[1]
+        self.assertIn("summary (", second)
+        self.assertIn("Next: run pytest tests/test_refund.py", second)
+        self.assertIn("you asked: retry the refund with coupons", second)
+        self.assertIn("assistant: coupon fixed, tax rounding left", second)
+        system = self.fake.calls[0]["argv"][self.fake.calls[0]["argv"].index("--system-prompt") + 1]
+        for rule in ("ended: the assistant's last message", "first NEED the 1 to 6", "Never repeat a session's title",
+                     "pushed, committed", "SEARCH before saying something does not exist"):
+            self.assertIn(rule, system)
+
+    def test_a_sign_off_is_left_out_and_a_real_last_reply_is_sent_when_nothing_else_says_how_it_went(self):
+        self.claude_session(sid(7), NOW - 2 * H, NOW - 1 * H, title="Invoice emails", prompt="emails go out twice",
+                            work="Done! Pushed and opened PR #12.")
+        self.claude_session(sid(8), NOW - 2 * H, NOW - 1 * H, title="Invoice totals", prompt="totals are off by tax",
+                            work="the total is computed before tax in invoice.py line 40; fix pending")
+        self.use("ok")
+        res = self.ask("anything")
+        p = self.fake.prompts[0]
+        l7 = next(l for l in p.splitlines() if l.startswith(self.short(7) + " | "))
+        l8 = next(l for l in p.splitlines() if l.startswith(self.short(8) + " | "))
+        self.assertNotIn("ended:", l7)
+        self.assertIn('ended: "the total is computed before tax in invoice.py line 40; fix pending"', l8)
+        self.assertEqual((res["listed"], res["total"]), (8, 8))
+
+
 class MoreOnRequest(World):
     def test_need_opens_those_sessions_in_detail_and_asks_again(self):
         self.use("NEED: %s" % self.short(2), "It ended with tax rounding left. [[%s]]" % self.short(2))
