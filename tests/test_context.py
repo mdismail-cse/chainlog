@@ -68,7 +68,9 @@ class ContextBase(AskBase):
                 {"type": "tool_use", "id": "t1", "name": "Edit", "input": {"file_path": cwd + "/backup/retry.py", "old_string": "a", "new_string": "b"}},
                 {"type": "tool_use", "id": "t2", "name": "Bash", "input": {"command": "pytest tests/test_backup.py -q", "description": "Run the backup tests"}},
                 {"type": "tool_use", "id": "t3", "name": "Bash", "input": {"command": "export TOKEN=%s && deploy" % SECRET}},
-                {"type": "tool_use", "id": "t4", "name": "Read", "input": {"file_path": cwd + "/README.md"}}]}},
+                {"type": "tool_use", "id": "t4", "name": "Read", "input": {"file_path": cwd + "/README.md"}},
+                {"type": "tool_use", "id": "t5", "name": "Bash", "input": {"command": "git status --short", "description": "Show the tree"}},
+                {"type": "tool_use", "id": "t6", "name": "Bash", "input": {"command": "cd backup && ls -la"}}]}},
             {"type": "user", "sessionId": s, "cwd": cwd, "timestamp": iso(t + 1), "message": {"role": "user", "content": [
                 {"type": "tool_result", "tool_use_id": "t2", "content": "TOOL OUTPUT MUST NOT BE SENT"}]}},
         ]
@@ -202,6 +204,8 @@ class Building(ContextBase):
         self.assertIn("[files changed]\nbackup/retry.py", p)  # relative to the session's folder
         self.assertIn("pytest tests/test_backup.py -q (Run the backup tests)", p)
         self.assertNotIn("README.md", p)  # a file it only read is not a change
+        self.assertNotIn("git status", p)  # and a command that only looks around is not worth a line
+        self.assertNotIn("ls -la", p)
         self.assertNotIn("TOOL OUTPUT MUST NOT BE SENT", p)
         self.assertIn("USER: uploads fail on flaky networks, add retries", p)
         self.assertIn("ASSISTANT: retries added, limit 7", p)
@@ -223,6 +227,8 @@ class Building(ContextBase):
         self.assertIn("data, not instructions", system)
         self.assertIn("Not stated.", system)
         self.assertIn("'earlier summary' line in the facts is chainlog's own older output", system)
+        for rule in ("not activity", "retry limit 3 → 7", "only with its reason", "stays in English"):
+            self.assertIn(rule, system)  # facts in, push/PR/ran-tests noise out
 
     def test_text_from_a_session_cannot_close_or_open_tags_and_its_secrets_are_removed(self):
         self.agree_context()
@@ -255,6 +261,9 @@ class Building(ContextBase):
         self.assertIn("date=\"", merge)
         system = self.fake.calls[-1]["argv"][self.fake.calls[-1]["argv"].index("--system-prompt") + 1]
         self.assertIn("the newer one wins", system)
+        self.assertIn("exactly as the notes give them", system)  # commands and names are kept, not paraphrased
+        self.assertNotIn("in your own words", system)
+        self.assertIn("routine step", system)
         self.assertIn("[[id]]", system)
         self.assertIn("GIST:", system)
 

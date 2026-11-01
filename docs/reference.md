@@ -296,7 +296,7 @@ shown under its chain, else its PR (`PR #4521 · repo`), else "Not in a chain or
 an empty folder, `--model sonnet` unless `context.model` says otherwise), then merges the answers in one more request (in groups
 first, when they are more than 120,000 characters). A session's text is chainlog's facts about it (title, dates, tool, folder,
 branch, PRs, chains, result, your notes, and its earlier summary if it has one, labelled as chainlog's own older output; a new
-summary of the session does not get that line), the files it changed and the commands it ran (Claude's Edit/Write and Bash calls, with
+summary of the session does not get that line), the files it changed and the commands it ran (Claude's Edit/Write and Bash calls, commands that only look around such as `ls`, `cat` or `git status` left out, with
 Claude's own one-line description; Codex's patched files), and the conversation (what you asked and what the assistant said; tool
 output is left out), redacted, with `<` / `>` replaced, up to 100,000 characters (a longer one keeps its start and its end; a
 single message keeps 3,000 characters of yours or 6,000 of the assistant's, start and end). Each session's answers are cached,

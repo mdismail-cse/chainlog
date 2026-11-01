@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Contexts: the notes record facts, not activity. The per-session reader is told that "ran the tests", "committed", "pushed"
+  and "opened a PR" on their own are not facts (a test run counts with its command and result, a PR by its number and what
+  it contained), to prefer the exact thing over the verb ("retry limit 3 → 7 in backup/retry.py upload()", paths, settings,
+  commands, test-site URLs and error messages spelled as recorded), to note a decision only with its reason and the option
+  rejected, and to answer in the questions' language. The merge used to say "record only what happened, in your own words",
+  which paraphrased exact commands away; it now keeps paths, names, commands, numbers and error messages exactly as the notes
+  give them and drops bullets that are only a routine step. Commands that only look around (`ls`, `cat`, `git status`,
+  `git diff`…) are no longer listed under [commands run].
 - An automatic one-line summary no longer poses as the whole-session one, and never replaces it. The local summary (the
   facts the preview shows already, restated) is not shown as a summary line any more; an AI one-liner is shown as the
   line but the app offers *Summarize the whole session* instead of *Show its summary*; and when the sweep comes by a session
