@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Menu bar app, Summarize: the question "Send this session to Claude?" now comes first (it used to appear after a
+  "Summarizing…" toast and a failed request); the spinner stays on the row while the pointer is elsewhere (a request can
+  take minutes); a second click says "Already summarizing this one"; and every "Could not …" message stays until you
+  click it instead of vanishing after 2.5 seconds. `_menu` carries `summary {engine, agreed, disclosure}`.
 - Menu bar app: the hover preview shows the summary's **Next** step (else what is still open) instead of the assistant's
   raw last reply, which was usually a sign-off; without a summary the line says "Ended with". Your note and the summary
   are both shown (the summary used to hide whenever a note existed), an old summary is labelled so where it is read and

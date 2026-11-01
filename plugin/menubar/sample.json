@@ -678,5 +678,6 @@
       ]
     }
   ],
-  "summary_instructions": "Always name the PR and the test site."
+  "summary_instructions": "Always name the PR and the test site.",
+  "summary": {"engine": "claude", "agreed": true, "disclosure": "Summarizing a session sends its text to Claude, through the claude command you are already signed in to. One request on your Claude plan."}
 }

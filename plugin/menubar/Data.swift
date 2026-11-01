@@ -88,6 +88,14 @@ struct AskConfig: Decodable {
     let connected: Bool
 }
 
+/// Whether a summary can be made without asking first: the tool, whether you agreed to send whole sessions to it, and
+/// the words of that agreement. The app asks before it says "Summarizing…", not after a request has failed.
+struct SummaryConfig: Decodable {
+    let engine: String?
+    let agreed: Bool
+    let disclosure: String?
+}
+
 /// One context (`chainlog context`): what many sessions taught you, in one file a new session reads when it needs it.
 struct ContextInfo: Decodable {
     let name: String
@@ -154,6 +162,7 @@ struct MenuData: Decodable {
     var context_questions: [String]?    // what a new context asks each session (yours, or chainlog's ten)
     var context_presets: [ContextPreset]?  // ready-made question sets to start from
     var summary_instructions: String?      // your own instructions for every summary ("" = none)
+    var summary: SummaryConfig?            // whether a summary can be made without asking first (absent from an older chainlog)
     var unsaved: [Row]
     var recent: [Row]
     var starred: [Row]

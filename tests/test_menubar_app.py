@@ -624,6 +624,7 @@ esac
         self.assertEqual(rc, 0, err)
         self.assertIn("asked: Send this session to Claude? | Summarizing a session sends its text to Claude", out)
         self.assertIn("toast: Nothing was sent", out)
+        self.assertNotIn("toast: Summarizing", out)  # the question comes first, not after a "Summarizing…" toast
         self.assertEqual(self.prompts(), [])
         rc, out, err = self.app("--summarize", short)
         self.assertEqual(rc, 0, err)

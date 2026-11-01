@@ -258,14 +258,18 @@ final class AppModel: ObservableObject {
 
     // MARK: actions
 
-    func say(_ text: String) {
+    func say(_ text: String, sticky: Bool = false) {
         toast = text
         toastTask?.cancel()
+        if sticky { return }  // a failure stays until the next toast or a click: 2.5 s was not enough to read it
         toastTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: 2_500_000_000)
             if !Task.isCancelled { self?.toast = nil }
         }
     }
+    /// "Could not …": shown until read.
+    func fail(_ text: String) { say(text, sticky: true) }
+    func dismissToast() { toastTask?.cancel(); toast = nil }
 
     /// Click = open in the terminal you chose; ⌥-click = copy the command.
     func open(_ row: Row, copyOnly: Bool = false) {
@@ -278,7 +282,7 @@ final class AppModel: ObservableObject {
         // `chainlog resume` asks before it does these; so does the app (a running session would get a second copy)
         if let w = row.warning, !confirmer("Open this session?", w) { return }
         if !launcher(row.resume.command, "resume-" + row.short, {
-            MainActor.assumeIsolated { self.say("Could not open the terminal. The command is copied.") }  // called on the main queue
+            MainActor.assumeIsolated { self.fail("Could not open the terminal. The command is copied.") }  // called on the main queue
         }) {
             say("Command copied")  // no terminal to open (or you chose "only copy")
         }
@@ -290,7 +294,7 @@ final class AppModel: ObservableObject {
         if let w = row.warning, !confirmer("Open this session?", w) { return }
         say("Opening in VS Code…")
         shell(command, {
-            MainActor.assumeIsolated { self.say("Could not open VS Code. Is it installed?") }  // called on the main queue
+            MainActor.assumeIsolated { self.fail("Could not open VS Code. Is it installed?") }  // called on the main queue
         })
     }
 
@@ -319,10 +323,18 @@ final class AppModel: ObservableObject {
 
     /// Summarize the whole session with Claude or Codex: one request; the summary is saved with it and opens under the row.
     func summarize(_ row: Row, agreed: Bool = false, extra: String? = nil) {
-        guard !summarizing.contains(row.ref) else { return }
+        guard !summarizing.contains(row.ref) else { say("Already summarizing this one"); return }
+        // ask first, when chainlog says you have not agreed yet: the question used to come after a "Summarizing…" toast
+        // and a failed request (an older chainlog has no `summary`: then the no_consent answer below still asks)
+        if !agreed, let cfg = data?.summary, !cfg.agreed, let engine = cfg.engine {
+            let who = AskEngine(rawValue: engine)?.label ?? "the AI"
+            if summaryConsent("Send this session to \(who)?", cfg.disclosure ?? "") { summarize(row, agreed: true, extra: extra) }
+            else { say("Nothing was sent") }
+            return
+        }
         summarizing.insert(row.ref)
         let mine = !(data?.summary_instructions ?? "").isEmpty || !(extra ?? "").isEmpty
-        say("Summarizing \(clip(row.title, 30))… (1 request\(mine ? ", with your instructions" : ""))")
+        say("Summarizing \(clip(row.title, 30))…\(mine ? " with your instructions" : "")")
         // `--with=TEXT` in one argument: instructions that start with a dash stay text
         let args = ["summarize", row.ref, "--json"] + (agreed ? ["--yes"] : []) + ((extra ?? "").isEmpty ? [] : ["--with=" + extra!])
         let run = summarizer
@@ -356,14 +368,14 @@ final class AppModel: ObservableObject {
         summarizing.remove(row.ref)
         let line = out.flatMap { String(data: $0, encoding: .utf8) }?.split(separator: "\n").last { $0.hasPrefix("{") }
         guard let l = line, let r = try? JSONDecoder().decode(SummaryReply.self, from: Data(l.utf8)) else {
-            say("Could not summarize: chainlog did not answer"); return
+            fail("Could not summarize: chainlog did not answer"); return
         }
         if r.error == "no_consent" {
             let who = AskEngine(rawValue: r.engine ?? "")?.label ?? "the AI"
             if summaryConsent("Send this session to \(who)?", r.message ?? "") { summarize(row, agreed: true, extra: extra) } else { say("Nothing was sent") }
             return
         }
-        if let e = r.error { say("Could not summarize: " + clip(r.message ?? e, 90)); return }
+        if let e = r.error { fail("Could not summarize: " + clip(r.message ?? e, 160)); return }
         showingSummary = row.ref
         say("Summary saved")
         refresh()
@@ -425,7 +437,7 @@ final class AppModel: ObservableObject {
         let run = runner
         onMain({ run(["retention", "\(n)", "--json"]) }) { plan in  // writes nothing: only says what the change would do
             guard plan.ok, let raw = plan.message.data(using: .utf8), let p = try? JSONDecoder().decode(RetentionPlan.self, from: raw) else {
-                self.say("Could not check the change: " + clip(plan.message, 80))
+                self.fail("Could not check the change: " + clip(plan.message, 80))
                 return
             }
             if p.would_delete > 0 {
@@ -473,7 +485,7 @@ final class AppModel: ObservableObject {
                 MainActor.assumeIsolated {
                     if r.ok { self.refresh() } else {
                         self.setStarred(!on, ref: row.ref, row: row)
-                        self.say("Could not \(on ? "star" : "unstar"): " + clip(r.message, 80))
+                        self.fail("Could not \(on ? "star" : "unstar"): " + clip(r.message, 80))
                     }
                 }
             }
@@ -558,7 +570,7 @@ final class AppModel: ObservableObject {
         do {
             if on { try svc.register() } else { try svc.unregister() }
         } catch {
-            say("Could not change \"Open at login\". Move Chainlog.app to ~/Applications.")
+            fail("Could not change \"Open at login\". Move Chainlog.app to ~/Applications.")
         }
         loginEnabled = svc.status == .enabled
     }

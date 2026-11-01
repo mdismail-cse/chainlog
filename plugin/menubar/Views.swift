@@ -28,6 +28,7 @@ struct PopoverView: View {
                         .foregroundColor(Color(nsColor: .windowBackgroundColor))
                         .padding(.bottom, 10)
                         .transition(.opacity)
+                        .onTapGesture { model.dismissToast() }  // a failure stays until read; a click puts it away
                 }
             }
             Divider()
@@ -357,6 +358,10 @@ struct SessionRow: View {
                     }
                 }
                 Spacer(minLength: 4)
+                if model.summarizing.contains(row.ref) && !hovering && model.editing != row.ref {
+                    // a request can take minutes: the spinner stays when the pointer leaves the row
+                    ProgressView().controlSize(.small).scaleEffect(0.55).frame(width: 22, height: 22).help("Summarizing…")
+                }
                 if hovering || row.starred || model.editing == row.ref {
                     if hovering || model.editing == row.ref {
                         // paste it into any terminal, VS Code or a chat (⌥-click on the row and the right-click menu do the same)

@@ -214,6 +214,13 @@ class Summary(ContextBase):
         config_mod.save(self.rt, config_mod.set_value(self.cfg(), "summary.instructions", "Name the PR."))
         self.assertEqual(menu_mod.build(load(self.rt, self.cfg()))["summary_instructions"], "Name the PR.")
 
+    def test_the_menu_says_whether_a_summary_can_be_made_without_asking(self):
+        before = menu_mod.build(load(self.rt, self.cfg()))["summary"]  # the app asks first, not after a failed request
+        self.assertEqual((before["engine"], before["agreed"]), ("claude", False))
+        self.assertIn("Summarizing a session sends its text to Claude", before["disclosure"])
+        self.agree_context()
+        self.assertTrue(menu_mod.build(load(self.rt, self.cfg()))["summary"]["agreed"])
+
     def test_the_automatic_summaries_follow_them_and_read_the_start_too(self):
         msgs = ["GOAL-MARK the first ask"] + ["filler %d" % i for i in range(60)]
         self.claude_session(sid(31), NOW - 8 * H, NOW - 7 * H, title="Long", prompt=msgs[0], work="RESULT-MARK done")

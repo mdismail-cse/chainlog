@@ -32,6 +32,18 @@ def _took(s):
     return "%dm" % max(m, 1) if m < 120 else "%dh" % (m // 60)
 
 
+def _summary_config(rt, cfg):
+    """Whether a summary can be made without asking first: the tool it would use, whether you agreed to send whole
+    sessions to it, and the words of that agreement (the app asks before saying "Summarizing…", not after)."""
+    from chainlog import context as ctx_mod
+    from chainlog import summarize as sum_mod
+    try:
+        engine = ctx_mod._engine(rt, cfg, None)[0]
+    except Exception:  # not installed, not signed in: the summarize command will say so
+        return {"engine": None, "agreed": False, "disclosure": None}
+    return {"engine": engine, "agreed": ctx_mod.consented(cfg, engine), "disclosure": sum_mod.disclosure(engine)}
+
+
 def _preview(s):
     """What the hover panel shows besides the title, without reading the transcript: where the session started and where
     it ended, your latest note and its summary, and its PR, branch, size and length. Every key is always there (null when
@@ -156,6 +168,7 @@ def build(index, unsaved_limit=8, recent_limit=300, chain_limit=30, round_limit=
         "contexts": _contexts(rt, index),
         "context_questions": _context_questions(index),
         "summary_instructions": (index.cfg.get("summary") or {}).get("instructions") or "",
+        "summary": _summary_config(rt, index.cfg),
         "context_presets": _context_presets(),
         "unsaved": [_row(rt, s, now) for s in unsaved[:unsaved_limit]],
         "recent": [_row(rt, s, now) for s in recent],
