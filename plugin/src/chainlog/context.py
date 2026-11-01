@@ -434,11 +434,14 @@ def _short_path(path, cwd):
     return path
 
 
-def facts(s):
-    """chainlog's own lines about a session: what it was called, when, where, its PR and branch, your notes."""
+def facts(s, for_summary=False):
+    """chainlog's own lines about a session: what it was called, when, where, its PR and branch, your notes, and (unless
+    `for_summary`) its earlier summary, labelled as chainlog's own older output. The title is the session's real title and
+    the notes are yours only: the latest summary used to be sent as both, so a re-summary or a context build read
+    chainlog's stale words as the owner's and repeated them."""
     d = ask_mod._date
     t = s["times"]
-    out = ["id: %s" % s["short"], "title: %s" % clean(ui.headline(s), 200),
+    out = ["id: %s" % s["short"], "title: %s" % clean(s["title"]["value"], 200),
            "when: %s to %s" % (d(t.get("started_at")), d(t.get("last_activity_at"))), "tool: %s" % ask_mod._tool(s)]
     if s.get("cwd"):
         out.append("folder: %s" % clean(s["cwd"], 200))
@@ -453,16 +456,20 @@ def facts(s):
         out.append("chains: %s" % ", ".join(clean(c, 60) for c in chains))
     if s.get("status"):
         out.append("result: %s" % s["status"])
-    for n in (s.get("notes") or [])[-8:]:
-        if n.get("text"):
-            out.append("note (%s): %s" % (d(n.get("at")), clean(n["text"], 600)))
+    for n in [n for n in s.get("notes") or [] if n.get("kind") == "note" and n.get("text")][-8:]:
+        out.append("note (%s): %s" % (d(n.get("at")), clean(n["text"], 600)))
+    summ = s.get("summary") or {}
+    if summ.get("text") and not for_summary:
+        out.append("earlier summary (%s, chainlog's own older output, may be out of date%s): %s" % (
+            d(summ.get("at")), "; the session went on after it" if summarize.stale(s) else "", clean(summ["text"], 600)))
     return out
 
 
-def session_text(s):
+def session_text(s, for_summary=False):
     """What the AI reads about one session: chainlog's facts, the files and commands it touched, and the conversation
-    (tool output left out), redacted and unable to close our tags. A very long one keeps its start and its end."""
-    lines = ["[facts]"] + facts(s)
+    (tool output left out), redacted and unable to close our tags. A very long one keeps its start and its end.
+    `for_summary`: a new summary reads the session alone, not the summary it replaces."""
+    lines = ["[facts]"] + facts(s, for_summary=for_summary)
     files_, commands = actions(s)
     if files_:
         lines += ["[files changed]"] + [clean(_short_path(f, s.get("cwd") or ""), 200) for f in files_]
@@ -503,6 +510,8 @@ def _map_system():
         "- Be concrete: name the files, functions, settings, commands, error messages, PR and issue numbers, and results.\n"
         "- If the session does not say, write exactly: Not stated.\n"
         "- Do not guess, and do not add advice of your own.\n"
+        "- An 'earlier summary' line in the facts is chainlog's own older output, not the owner's words: where it and the "
+        "conversation differ, the conversation wins.\n"
         "- At most 80 words per answer. Short bullet points are fine.\n"
         "- If a Focus is given, answer only about the part of the session that concerns it, and leave other work in the "
         "session out. If nothing in the session concerns it, every answer is: Not stated.\n"

@@ -284,7 +284,7 @@ def full(rt, cfg, s, engine=None, extra=None):
         raise ctx_mod.AskError("no_consent", disclosure(engine))
     if not text_blocks(s) and not s.get("notes"):
         raise ctx_mod.AskError("empty", "This session has nothing to summarize: its transcript is gone and it has no notes.")
-    text = ctx_mod.session_text(s)
+    text = ctx_mod.session_text(s, for_summary=True)  # the session alone, not the summary this one replaces
     told = instructions(cfg, config_mod.clean_instructions(extra) if extra else None)
     reply = ask_mod._call(rt, engine, binary, model, timeout, with_instructions(_full_system(), told),
                           "<session id=\"%s\">\n%s\n</session>" % (s["short"], text))

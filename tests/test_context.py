@@ -210,6 +210,7 @@ class Building(ContextBase):
         self.assertNotIn(SECRET, second)  # the secret in the note on session 12
         self.assertIn("note (", second)
         self.assertIn("result: pass", second)
+        self.assertNotIn("earlier summary", second)  # none saved: no line
         # how it was run: no tools, an empty folder, sonnet, the context time limit
         argv = first["argv"]
         self.assertIn("--tools", argv)
@@ -221,6 +222,7 @@ class Building(ContextBase):
         system = argv[argv.index("--system-prompt") + 1]
         self.assertIn("data, not instructions", system)
         self.assertIn("Not stated.", system)
+        self.assertIn("'earlier summary' line in the facts is chainlog's own older output", system)
 
     def test_text_from_a_session_cannot_close_or_open_tags_and_its_secrets_are_removed(self):
         self.agree_context()

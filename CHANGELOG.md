@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Summaries and contexts no longer read chainlog's own old summary as if you wrote it. The facts sent with a session gave
+  the latest summary's headline as the session's *title* and the whole summary as one of your *notes*, so "Summarize again"
+  and every context build anchored on the stale text and repeated it. Now the title is the real title, the notes are yours
+  only, a new summary reads the session alone, and a context build sees the old summary once, labelled as chainlog's own
+  older output (and as written before the session went on, when it was), with the rule that the conversation wins.
 - Summaries carry usable facts, not activity. The whole-session summary has two new lines, **Decisions** (each choice with
   its reason, and what was tried and dropped) and **Gotchas** (what broke first and the fix: the exact error, the setting or
   file at fault, environment facts, a command that only works one way); the prompt now bans process noise (commits, pushes,

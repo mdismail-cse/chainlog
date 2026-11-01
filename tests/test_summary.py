@@ -111,6 +111,22 @@ class Summary(ContextBase):
                                 "message": {"role": "user", "content": "one more thing"}}) + "\n")
         self.assertTrue(sum_mod.stale(self.s(13)))
 
+    def test_a_new_summary_reads_the_session_alone_and_a_context_sees_the_old_one_labelled(self):
+        self.agree_context()
+        sum_mod.save_full(self.rt, self.s(13), self.full(GOOD, n=13))
+        self.full(GOOD, n=13)  # summarize again
+        p = self.fake.calls[0]["input"]  # use() starts a fresh call list
+        self.assertNotIn("Upload retries added", p)  # the old summary used to be sent as the title and as a note
+        self.assertNotIn("earlier summary", p)
+        self.assertIn("title: Cloud backup: restore timeouts", p)
+        from chainlog import context as ctx_mod
+        text = ctx_mod.session_text(self.s(13))  # what a context build reads
+        self.assertEqual(text.count("earlier summary ("), 1)
+        self.assertIn("chainlog's own older output", text)
+        self.assertIn("Upload retries added", text)
+        self.assertNotIn("note (", text)  # a summary is not one of your notes
+        self.assertIn("title: Cloud backup: restore timeouts", text)
+
     def test_an_empty_session_is_not_summarized(self):
         self.agree_context()
         s = self.s(11)
