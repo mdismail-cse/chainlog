@@ -172,6 +172,29 @@ enum Alerts {
         return a.runModal() == .alertFirstButtonReturn ? field.stringValue : nil
     }
 
+    /// A question with a box of several lines (instructions). nil when cancelled.
+    @MainActor
+    static func askLong(_ title: String, _ detail: String, initial: String, ok: String = "Save") -> String? {
+        NSApp.activate(ignoringOtherApps: true)
+        let a = NSAlert()
+        a.messageText = title
+        a.informativeText = detail
+        let scroll = NSScrollView(frame: NSRect(x: 0, y: 0, width: 340, height: 96))
+        scroll.hasVerticalScroller = true
+        scroll.borderType = .bezelBorder
+        let text = NSTextView(frame: scroll.bounds)
+        text.isRichText = false
+        text.font = NSFont.systemFont(ofSize: 12.5)
+        text.string = initial
+        text.autoresizingMask = [.width]
+        scroll.documentView = text
+        a.accessoryView = scroll
+        a.addButton(withTitle: ok)
+        a.addButton(withTitle: "Cancel")
+        a.window.initialFirstResponder = text
+        return a.runModal() == .alertFirstButtonReturn ? text.string : nil
+    }
+
     /// A message with one OK button.
     @MainActor
     static func info(_ title: String, _ detail: String) {

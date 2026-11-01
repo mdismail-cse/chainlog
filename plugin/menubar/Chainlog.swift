@@ -301,6 +301,7 @@ func dumpModel(_ m: AppModel) {
     print("search: \"\(m.query)\"")
     if let r = m.data?.retention { print("gear: \(r.title) | \(r.warning ?? "nothing about to be lost")") }
     print("gear: keep a copy when I save or star: \(m.data?.keep_auto ?? true ? "on" : "off")")
+    if let i = m.data?.summary_instructions { print("gear: summary instructions: \(i.isEmpty ? "none" : clip(i.replacingOccurrences(of: "\n", with: " / "), 80))") }
     if let r = m.hover.row {
         print("preview: \(clip(r.title, 60)) — \(r.last_work.map { clip($0, 80) } ?? "nothing said yet") — \(r.folder)")
         if let f = r.first_ask { print("  started: \(clip(f, 80))") }
@@ -582,6 +583,14 @@ struct ChainlogMain {
             print(opened ? "opened" : "copied")
             exit(opened ? 0 : 3)
         }
+        if let i = args.firstIndex(of: "--set-summary-instructions"), i + 1 < args.count {
+            guard let m = headlessModel(args) else { FileHandle.standardError.write(Data("could not read menu data\n".utf8)); exit(1) }
+            m.inline = true
+            m.askLongText = { _, _, _ in args[i + 1] }  // what is typed into the box
+            m.editSummaryInstructions()
+            print("toast: " + (m.toast ?? "-"))
+            exit(0)
+        }
         if let i = args.firstIndex(of: "--set-retention"), i + 1 < args.count {
             guard let m = headlessModel(args) else { FileHandle.standardError.write(Data("could not read menu data\n".utf8)); exit(1) }
             m.inline = true  // run the chainlog commands here instead of on another thread
@@ -635,7 +644,7 @@ struct ChainlogMain {
             var asked = ""
             m.summaryConsent = { title, text in asked = title + " | " + text; return !args.contains("--refuse") }
             guard let row = m.visibleRows.first(where: { $0.short == args[i + 1] }) else { print("no such row"); exit(2) }
-            m.summarize(row)
+            if let w = arg("--summary-with", in: args) { m.summarize(row, extra: w) } else { m.summarize(row) }
             if !asked.isEmpty { print("asked: " + asked.replacingOccurrences(of: "\n", with: " ")) }
             print("toast: " + (m.toast ?? "-"))
             m.refreshNow()

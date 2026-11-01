@@ -150,6 +150,7 @@ struct MenuData: Decodable {
     var contexts: [ContextInfo]?        // absent from an older chainlog
     var context_questions: [String]?    // what a new context asks each session (yours, or chainlog's ten)
     var context_presets: [ContextPreset]?  // ready-made question sets to start from
+    var summary_instructions: String?      // your own instructions for every summary ("" = none)
     var unsaved: [Row]
     var recent: [Row]
     var starred: [Row]

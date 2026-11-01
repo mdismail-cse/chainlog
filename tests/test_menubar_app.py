@@ -483,6 +483,7 @@ printf '{"is_error": false, "result": "The zebra work is in [[%s]]. DB_PASSWORD=
 case "$1" in auth) echo '{"loggedIn": true}'; exit 0;; esac
 prompt=$(cat)
 printf '%s\\n=====\\n' "$prompt" >> "$HOME/prompts.txt"
+printf '%s\\n' "$@" > "$HOME/last-args.txt"
 echo $$ > "$HOME/stub.pid"
 [ -f "$HOME/stub-sleep" ] && sleep 60
 case "$*" in
@@ -622,6 +623,18 @@ esac
         row = next(r for r in rows["unsaved"] + rows["recent"] if r["ref"] == self.ref(3))
         self.assertEqual(row["summary"], "Zebra widget fixed")
         self.assertFalse(row["summary_stale"])
+
+    def test_your_summary_instructions_reach_the_ai(self):
+        self.context_stub()
+        rc, out, err = self.app("--set-summary-instructions", "Always name the branch.")
+        self.assertEqual(rc, 0, err)
+        self.assertIn("toast: Summaries will follow your instructions", out)
+        self.assertEqual(json.loads((self.data / "config.json").read_text())["summary"]["instructions"], "Always name the branch.")
+        self.assertIn("gear: summary instructions: Always name the branch.", self.dump())
+        rc, out, err = self.app("--summarize", IDS[3][:8], "--summary-with", "Say which widget.")
+        self.assertIn("toast: Summary saved", out)
+        args = (self.home / "last-args.txt").read_text()
+        self.assertIn("Always name the branch.\nSay which widget.", args)  # yours, then this one's
 
     def test_a_context_found_by_describing_it(self):
         self.context_stub()

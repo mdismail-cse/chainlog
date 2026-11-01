@@ -113,6 +113,70 @@ class Summary(ContextBase):
         self.assertEqual(e.exception.code, "empty")
         self.assertEqual(self.fake.calls, [])
 
+    # --- your instructions ---------------------------------------------------------------------------------------------
+    def system(self, call):
+        return call["argv"][call["argv"].index("--system-prompt") + 1]
+
+    def test_your_instructions_and_this_ones_are_followed_after_chainlogs_rules(self):
+        self.agree_context()
+        self.full(GOOD)
+        self.assertNotIn("own instructions", self.system(self.fake.calls[0]))  # none set: nothing added
+        cfg = config_mod.set_value(self.cfg(), "summary.instructions", "Always name the PR and the test site.\nWrite in Bangla.")
+        config_mod.save(self.rt, cfg)
+        self.use(GOOD)
+        sum_mod.full(self.rt, self.cfg(), self.s(), extra="List the database migrations.")
+        system = self.system(self.fake.calls[0])
+        i = system.index("The owner's own instructions")
+        self.assertLess(system.index("keep the HEADLINE line and the labels"), i)  # chainlog's rules first
+        self.assertIn("Always name the PR and the test site.\nWrite in Bangla.\nList the database migrations.", system[i:])
+
+    def test_instructions_from_the_command(self):
+        code, out, _ = self.cli("summarize", "--instructions")
+        self.assertIn("(none", out)
+        code, out, _ = self.cli("summarize", "--instructions", "Always name the branch.\x1b[31m")
+        self.assertEqual(code, 0)
+        self.assertEqual(self.cfg()["summary"]["instructions"], "Always name the branch. [31m")  # no control characters
+        code, out, _ = self.cli("summarize", "--instructions")
+        self.assertIn("Always name the branch.", out)
+        code, _o, err = self.cli("summarize", "--instructions", "x" * 1001)
+        self.assertEqual(code, 2)
+        self.assertIn("at most 1000", err)
+        self.cli("config", "set", "summary.instructions", "From config.")
+        self.assertEqual(self.cfg()["summary"]["instructions"], "From config.")
+        self.cli("summarize", "--instructions", "")
+        self.assertEqual(self.cfg()["summary"]["instructions"], "")
+        self.agree_context()
+        self.use(GOOD)
+        code, out, err = self.cli("summarize", sid(11)[:8], "--with=-v list the migrations", "--json")
+        self.assertEqual(code, 0, err)
+        self.assertIn("-v list the migrations", self.system(self.fake.calls[0]))
+        self.assertEqual(json.loads(out)["instructions"], "-v list the migrations")
+
+    def test_the_menu_carries_your_instructions(self):
+        config_mod.save(self.rt, config_mod.set_value(self.cfg(), "summary.instructions", "Name the PR."))
+        self.assertEqual(menu_mod.build(load(self.rt, self.cfg()))["summary_instructions"], "Name the PR.")
+
+    def test_the_automatic_summaries_follow_them_and_read_the_start_too(self):
+        msgs = ["GOAL-MARK the first ask"] + ["filler %d" % i for i in range(60)]
+        self.claude_session(sid(31), NOW - 8 * H, NOW - 7 * H, title="Long", prompt=msgs[0], work="RESULT-MARK done")
+        path = next((self.home / ".claude" / "projects").rglob("%s.jsonl" % sid(31)))
+        with open(path, "a") as f:
+            for m in msgs[1:]:
+                f.write(json.dumps({"type": "user", "sessionId": sid(31), "timestamp": iso(NOW - 7 * H),
+                                    "message": {"role": "user", "content": m}}) + "\n")
+        ex = sum_mod.excerpt(self.s(31))
+        self.assertTrue(ex.startswith("USER: GOAL-MARK the first ask"), ex[:60])  # the goal is no longer cut off
+        self.assertIn("messages left out", ex)
+        self.assertIn("filler 59", ex)
+        cfg = config_mod.set_value(self.cfg(), "summary.instructions", "Name the PR.")
+        cfg = config_mod._put(cfg, "summary.engine", "claude")
+        self.use("Refund fixed in PR 12.")
+        out = sum_mod.summarize(self.rt, self.s(31), cfg)
+        self.assertEqual(out[1], "claude")
+        prompt = self.fake.calls[0]["argv"][-1]
+        self.assertIn("Name the PR.", prompt)
+        self.assertTrue(prompt.startswith(sum_mod.PROMPT))
+
     # --- the command ---------------------------------------------------------------------------------------------------
     def test_the_command_asks_first_then_prints_and_saves(self):
         code, out, err = self.cli("summarize", sid(11)[:8])

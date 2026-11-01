@@ -394,6 +394,7 @@ struct SessionRow: View {
                 } else {
                     Button("Summarize the session") { model.summarize(row) }.disabled(model.summarizing.contains(row.ref))
                 }
+                Button("Summarize with instructions…") { model.summarizeWithInstructions(row) }.disabled(model.summarizing.contains(row.ref))
                 if model.contexts.supported {
                     Menu("Add to a context") {
                         ForEach(model.contexts.contexts) { c in Button(c.name) { model.contexts.add(row, to: c) } }
@@ -610,6 +611,9 @@ struct Footer: View {
                 Divider()
                 Toggle("Open at login", isOn: Binding(get: { model.loginEnabled }, set: { model.setLogin($0) }))
                 Toggle("Keep a copy when I save or star", isOn: Binding(get: { model.data?.keep_auto ?? true }, set: { _ in model.toggleKeepAuto() }))
+                if model.data?.summary_instructions != nil {
+                    Button((model.data?.summary_instructions ?? "").isEmpty ? "Summary instructions…" : "Summary instructions (yours)…") { model.editSummaryInstructions() }
+                }
                 if let r = model.data?.retention {
                     Button(r.title) { model.askRetention() }
                     if let w = r.warning { Text("⚠︎ " + w) }

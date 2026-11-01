@@ -757,6 +757,29 @@ func selfTest(sample path: String?) -> Int {
         m.copySummary(withSummary)
         check("Copy copies the whole summary", copied == [withSummary.summary_full!] && withSummary.summary_full!.hasPrefix("HEADLINE:"))
         check("the preview's summary line is its headline", withSummary.summary == "Tracker CSV export added at /export.csv; month filter still to do")
+        // your instructions: for every summary (⚙), or for one (right-click)
+        final class Ran: @unchecked Sendable { var args: [[String]] = [] }
+        let ran = Ran()
+        m.runner = { a in ran.args.append(a); return (true, "") }
+        var typed: String? = "Always name the PR.\nList migrations."
+        m.askLongText = { _, _, initial in typed ?? initial }
+        m.editSummaryInstructions()
+        check("⚙ Summary instructions… saves what you typed", ran.args == [["summarize", "--instructions", "Always name the PR.\nList migrations."]])
+        ran.args = []
+        typed = data.summary_instructions
+        m.editSummaryInstructions()
+        check("  ... the same text again changes nothing", ran.args.isEmpty)
+        typed = nil
+        m.askLongText = { _, _, _ in nil }
+        m.editSummaryInstructions()
+        check("  ... and Cancel changes nothing", ran.args.isEmpty)
+        m.askLongText = { _, _, _ in "  -v list the migrations  " }
+        runs.args = []
+        runs.replies = [#"{"error":"no_consent","message":"…","engine":"claude"}"#, #"{"text":"HEADLINE: x","headline":"x","engine":"claude","saved":true}"#]
+        m.summaryConsent = { _, _ in true }
+        m.summarizeWithInstructions(r)
+        check("Summarize with instructions… sends them as one argument, also after the agreement",
+              runs.args == [["summarize", r.ref, "--json", "--with=-v list the migrations"], ["summarize", r.ref, "--json", "--yes", "--with=-v list the migrations"]], "\(runs.args)")
     }
 
     // questions: ready-made sets, where they came from, editing those of a context that exists

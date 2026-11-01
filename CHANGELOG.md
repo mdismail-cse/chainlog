@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Your own instructions for every summary: `chainlog summarize --instructions "…"` (setting `summary.instructions`) and ⚙ →
+  Summary instructions… in the app; `--with "…"` / right-click → Summarize with instructions… for one. The automatic
+  (forgot-to-save) summaries follow them too, and now read a session's first messages as well as its last ones.
 - Summarize a whole session: `chainlog summarize REF`, and a summary button on every session in the menu bar app. It reads
   the start and the end of the session (where the goal and the result are), the files it changed and the commands it ran,
   and writes a headline plus Goal, Done, Result, Files & PRs, Open and Next. Kept with the session without saving it, shown

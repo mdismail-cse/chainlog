@@ -20,7 +20,8 @@ DEFAULTS = {
     "hints": True,
     "unsaved": {"action": "list", "after": 600, "lookback": 86400},
     "keep": {"auto": True},
-    "summary": {"engine": "local", "timeout": 60},
+    # instructions: your own words, followed by every summary (the ones you ask for and the forgot-to-save ones)
+    "summary": {"engine": "local", "timeout": 60, "instructions": ""},
     # engine: who answers (set by `chainlog ask --connect`); consent: the engines you agreed may be sent your session text
     "ask": {"engine": "", "model": "", "timeout": 90, "consent": []},
     # contexts (`chainlog context`): the model and time limit for building one, the tools you agreed may be sent whole
@@ -36,6 +37,7 @@ KEYS = {
     "unsaved.lookback": "duration, e.g. 24h",
     "summary.engine": "one of: local, auto, claude, codex",
     "summary.timeout": "seconds",
+    "summary.instructions": "your own instructions for every summary, e.g. \"always name the PR and the test site\" (empty = none)",
     "ask.model": "model `chainlog ask` uses, e.g. sonnet or opus (empty = the tool's default for chat)",
     "ask.timeout": "seconds one request to Claude / Codex may take (10 … 600)",
     "context.model": "model used to build contexts, e.g. sonnet or opus (empty = sonnet for Claude, Codex's own default)",
@@ -79,6 +81,7 @@ _TYPES = {"unsaved.action": lambda v: v in ACTIONS, "summary.engine": lambda v: 
           "unsaved.after": lambda v: isinstance(v, int) and 60 <= v <= 86400,
           "unsaved.lookback": lambda v: isinstance(v, int) and v >= 60,
           "summary.timeout": lambda v: isinstance(v, int) and 5 <= v <= 600,
+          "summary.instructions": lambda v: isinstance(v, str) and len(v) <= 1000,
           "ask.engine": lambda v: v == "" or v in ASK_ENGINES,
           "ask.model": lambda v: isinstance(v, str) and (v == "" or bool(_MODEL.fullmatch(v))),
           "ask.timeout": lambda v: isinstance(v, int) and not isinstance(v, bool) and 10 <= v <= 600,
@@ -89,6 +92,18 @@ _TYPES = {"unsaved.action": lambda v: v in ACTIONS, "summary.engine": lambda v: 
           "context.questions": lambda v: isinstance(v, list) and len(v) <= 15 and all(isinstance(q, str) and 0 < len(q) <= 300 for q in v),
           "snippets": lambda v: isinstance(v, bool), "auto_chain": lambda v: isinstance(v, bool),
           "hints": lambda v: isinstance(v, bool), "keep.auto": lambda v: isinstance(v, bool)}
+
+
+INSTRUCTIONS_MAX = 1000
+
+
+def clean_instructions(raw):
+    """Your instructions for summaries: printable text, line breaks kept, at most INSTRUCTIONS_MAX characters."""
+    lines = [" ".join(re.sub(r"[\x00-\x1f\x7f]", " ", l).split()) for l in str(raw or "").splitlines()]
+    text = "\n".join(l for l in lines if l).strip()
+    if len(text) > INSTRUCTIONS_MAX:
+        raise ValueError("summary.instructions can be at most %d characters (got %d)" % (INSTRUCTIONS_MAX, len(text)))
+    return text
 
 
 def load(rt) -> dict:
@@ -175,6 +190,8 @@ def set_value(cfg, key, raw) -> dict:
         value = parse_duration(raw)
         if value < cfg["unsaved"]["after"]:
             raise ValueError("unsaved.lookback must be at least unsaved.after (%s)" % fmt_duration(cfg["unsaved"]["after"]))
+    elif key == "summary.instructions":
+        value = clean_instructions(raw)
     elif key == "summary.timeout":
         try:
             value = int(raw)

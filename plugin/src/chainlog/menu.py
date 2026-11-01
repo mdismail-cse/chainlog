@@ -148,6 +148,7 @@ def build(index, unsaved_limit=8, recent_limit=300, chain_limit=30, round_limit=
         "ask": _ask(index),
         "contexts": _contexts(rt, index),
         "context_questions": _context_questions(index),
+        "summary_instructions": (index.cfg.get("summary") or {}).get("instructions") or "",
         "context_presets": _context_presets(),
         "unsaved": [_row(rt, s, now) for s in unsaved[:unsaved_limit]],
         "recent": [_row(rt, s, now) for s in recent],

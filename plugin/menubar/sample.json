@@ -659,5 +659,6 @@
         "What should be done next?"
       ]
     }
-  ]
+  ],
+  "summary_instructions": "Always name the PR and the test site."
 }

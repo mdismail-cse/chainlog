@@ -290,6 +290,11 @@ labelled lines: a headline, **Goal**, **Done**, **Result**, **Files & PRs**, **O
 kept with the session (it does not save it): the preview and `chainlog show` show it, search finds it, and it says so when
 the session went on after it. The first time it asks before sending; that agreement also covers contexts.
 
+**Your own instructions for every summary**: ⚙ → **Summary instructions…** in the app, or
+`chainlog summarize --instructions "Always name the PR and the test site. List database migrations."` They are followed
+by every summary (also the automatic ones), after chainlog's own rules. For one summary only: right-click a session →
+**Summarize with instructions…**, or `chainlog summarize ID --with "write it in Bangla"`.
+
 ## Carry what you learned into a new session (contexts)
 
 You worked on one feature (say cloud backup) across 20 sessions. A **context** merges what those sessions taught you into

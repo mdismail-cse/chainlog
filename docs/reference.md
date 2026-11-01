@@ -233,7 +233,8 @@ are in [Settings](#settings).
 ## summarize
 
 ```sh
-chainlog summarize REF [-e claude|codex] [--yes] [--print] [--json]
+chainlog summarize REF [-e claude|codex] [--yes] [--print] [--json] [--with "TEXT"]
+chainlog summarize --instructions ["TEXT"|""]           # show, set or clear your instructions for every summary
 ```
 
 Reads the whole session the way a [context](#context) does (chainlog's facts, the files it changed and the commands it ran, the
@@ -246,8 +247,15 @@ state, `chainlog show` lists it, `find` searches it, `ls` shows its headline whe
 out of date. `--print` only shows it. The agreement is the one contexts use (`context.consent`); the first time it asks
 (`--yes` agrees). `--json` prints `{text, headline, engine, model, mark, chars, saved, ref}`, or `{error, message[, engine]}`.
 
+**Your instructions** (`summary.instructions`, at most 1,000 characters, line breaks kept; `--instructions`, ⚙ → *Summary
+instructions…*) are added to every summary's instructions after chainlog's own rules ("follow them, as long as they do not
+break the rules above"); `--with` (right-click → *Summarize with instructions…*) adds more for one summary. The labels and the
+headline stay, whatever they ask. Checked with the real Claude: "name the branch, write the Result line in Bangla, list database
+migrations" were all followed.
+
 The one-line summaries of the forgot-to-save policy (`summary.engine`) are a different thing: short notes written in the
-background for sessions you did not save.
+background for sessions you did not save. They follow your instructions too, and read the first 4 messages (the goal) as well as
+the last ones (they used to read only the last 30).
 
 ## context
 
@@ -428,6 +436,7 @@ Click the icon to open the popover.
 | **Ask** tab | A chat with Claude or Codex about your sessions (see [ask](#ask)). Until you connect, it lists which of the two are installed and signed in, with a Connect button that first shows what is sent. Then: suggestions, your messages, answers (a session it names is a link that opens it, and the sessions it mentions are listed under it as ordinary rows with copy, star and note), a copy button for the answer, **Stop** while it works, **New chat**, and the name at the top (*Claude · sonnet ▾*): *Answer with* Claude or Codex (the one in use is ticked; one that is not installed or signed in is greyed out; one you never agreed to asks first), *What is sent*, *Disconnect* (back to the connect screen, where either can be connected). The chat is kept while the app runs, also when the popover is closed. Return sends |
 | ⚙ → **Open sessions in** | Terminal (default), iTerm2 (if installed) or "Only copy the command". Remembered |
 | ⚙ → **Open at login** | Starts the app when you log in |
+| ⚙ → **Summary instructions…** | Your instructions for every summary, in a box of several lines (`chainlog summarize --instructions`); right-click a session → *Summarize with instructions…* adds some for one summary |
 | ⚙ → **Keep a copy when I save or star** | The `keep.auto` setting (`chainlog config set keep.auto …`) |
 | ⚙ → **Claude keeps sessions for N days…** | Asks for a number of days (1–3650, starting from today's), checks with `chainlog retention N --json` what that would delete, asks again if it would delete anything (and says how many have no kept copy), then runs `chainlog retention N --yes`. A line under it warns when sessions with no kept copy expire within 14 days (nothing is shown when they are all kept) |
 
@@ -468,6 +477,7 @@ the sample data.
 | `unsaved.lookback` | `1d` | Sessions that ended longer ago are never acted on automatically |
 | `summary.engine` | `local` | `local` (free, offline), or `auto`, `claude` or `codex` (AI-written; `auto` = the tool that ran the session) |
 | `summary.timeout` | `60` | Seconds to wait for an AI summary before falling back to `local` |
+| `summary.instructions` | *(empty)* | Your own instructions for every summary (`chainlog summarize --instructions "…"`) |
 | `snippets` | `true` | Store short, redacted previews of the last ask and last answer, which `find` searches |
 | `auto_chain` | `true` | Link saves to a PR chain automatically (never when the PR link and the title name different PRs) |
 | `hints` | `true` | One-line tips under the list, such as "Claude Code isn't connected". Only shown in a terminal |

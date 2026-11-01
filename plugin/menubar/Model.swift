@@ -128,6 +128,8 @@ final class AppModel: ObservableObject {
         guard let exe = CLI.locate() else { return nil }
         return CLI.run(exe, args, timeout: 320).out
     }
+    /// A question with a box of several lines (title, detail, starting text); nil = cancelled. Tests replace it.
+    var askLongText: (String, String, String) -> String? = { Alerts.askLong($0, $1, initial: $2) }
     /// Asked before a whole session is first sent to a tool (title, what is sent). Tests replace it.
     var summaryConsent: (String, String) -> Bool = { Alerts.confirm($0, $1, ok: "Agree and summarize") }
     /// Asked before shortening how long Claude keeps sessions. Tests replace it.
@@ -315,20 +317,41 @@ final class AppModel: ObservableObject {
     private struct SummaryReply: Decodable { let error: String?; let message: String?; let engine: String?; let headline: String? }
 
     /// Summarize the whole session with Claude or Codex: one request; the summary is saved with it and opens under the row.
-    func summarize(_ row: Row, agreed: Bool = false) {
+    func summarize(_ row: Row, agreed: Bool = false, extra: String? = nil) {
         guard !summarizing.contains(row.ref) else { return }
         summarizing.insert(row.ref)
-        say("Summarizing \(clip(row.title, 30))… (1 request)")
-        let args = ["summarize", row.ref, "--json"] + (agreed ? ["--yes"] : [])
+        let mine = !(data?.summary_instructions ?? "").isEmpty || !(extra ?? "").isEmpty
+        say("Summarizing \(clip(row.title, 30))… (1 request\(mine ? ", with your instructions" : ""))")
+        // `--with=TEXT` in one argument: instructions that start with a dash stay text
+        let args = ["summarize", row.ref, "--json"] + (agreed ? ["--yes"] : []) + ((extra ?? "").isEmpty ? [] : ["--with=" + extra!])
         let run = summarizer
         let done: @Sendable (Data?) -> Void = { out in
-            DispatchQueue.main.async { MainActor.assumeIsolated { self.summarized(row, out) } }
+            DispatchQueue.main.async { MainActor.assumeIsolated { self.summarized(row, out, extra: extra) } }
         }
-        if inline { summarized(row, run(args)); return }
+        if inline { summarized(row, run(args), extra: extra); return }
         DispatchQueue.global(qos: .userInitiated).async { done(run(args)) }
     }
 
-    private func summarized(_ row: Row, _ out: Data?) {
+    /// One summary with instructions of its own (added after yours).
+    func summarizeWithInstructions(_ row: Row) {
+        guard let text = askLongText("Summarize with instructions", "For this summary only, added after your own instructions. For example: list the database changes; write it in Bangla.", ""),
+              !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        summarize(row, extra: text.trimmingCharacters(in: .whitespacesAndNewlines))
+    }
+
+    /// Your instructions for every summary (`chainlog summarize --instructions`).
+    func editSummaryInstructions() {
+        let now = data?.summary_instructions ?? ""
+        guard let text = askLongText("Instructions for every summary",
+                                     "Every summary follows these, the ones you ask for and the automatic ones. For example: always name the PR and the test site; list database migrations. Leave it empty for none.",
+                                     now) else { return }
+        let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if t == now { return }
+        perform(["summarize", "--instructions", t], doing: "Saving…", done: t.isEmpty ? "No summary instructions" : "Summaries will follow your instructions",
+                failed: "Could not save them")
+    }
+
+    private func summarized(_ row: Row, _ out: Data?, extra: String? = nil) {
         summarizing.remove(row.ref)
         let line = out.flatMap { String(data: $0, encoding: .utf8) }?.split(separator: "\n").last { $0.hasPrefix("{") }
         guard let l = line, let r = try? JSONDecoder().decode(SummaryReply.self, from: Data(l.utf8)) else {
@@ -336,7 +359,7 @@ final class AppModel: ObservableObject {
         }
         if r.error == "no_consent" {
             let who = AskEngine(rawValue: r.engine ?? "")?.label ?? "the AI"
-            if summaryConsent("Send this session to \(who)?", r.message ?? "") { summarize(row, agreed: true) } else { say("Nothing was sent") }
+            if summaryConsent("Send this session to \(who)?", r.message ?? "") { summarize(row, agreed: true, extra: extra) } else { say("Nothing was sent") }
             return
         }
         if let e = r.error { say("Could not summarize: " + clip(r.message ?? e, 90)); return }

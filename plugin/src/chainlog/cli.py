@@ -32,6 +32,9 @@ STATUSES = ("wip", "pass", "fail", "blocked")
 UNDOABLE = ("save", "note", "status", "tag", "star", "unstar", "chain.link", "chain.unlink", "forget", "summary")
 
 
+_SHOW = object()  # `--instructions` given with no text
+
+
 class Exit(Exception):
     def __init__(self, code, message=None):
         self.code = code
@@ -1560,6 +1563,26 @@ def cmd_summarize(rt, args):
     from chainlog import summarize as sum_mod
     cfg = config_mod.load(rt)
     st = ui.Style(rt.color())
+    if args.instructions is not None:  # show, set or clear your standing instructions
+        if args.instructions is _SHOW:
+            text = (cfg.get("summary") or {}).get("instructions") or ""
+            if args.json:
+                _p(json.dumps({"instructions": text}))
+            else:
+                _p(text or st.dim("(none: every summary follows only chainlog's own rules)"))
+                _p(st.dim("change: chainlog summarize --instructions \"…\"   ·   none: --instructions \"\""))
+            return 0
+        try:
+            cfg = config_mod.set_value(cfg, "summary.instructions", args.instructions)
+        except ValueError as e:
+            raise Exit(2, str(e))
+        config_mod.save(rt, cfg)
+        text = cfg["summary"]["instructions"]
+        _p("Every summary will follow: %s" % text if text else "No instructions: summaries follow only chainlog's own rules.")
+        if not args.ref:
+            return 0
+    if not args.ref:
+        raise Exit(2, "usage: chainlog summarize REF [--with \"…\"]   (or: chainlog summarize --instructions [\"…\"])")
     index = load(rt, cfg)
     s = one(index, args.ref, as_json=args.json)
 
@@ -1590,9 +1613,11 @@ def cmd_summarize(rt, args):
     if rt.isatty() and not args.json:
         sys.stderr.write(st.dim("Reading the whole session with %s (1 request)…\n" % ctx_mod.LABEL[engine]))
     try:
-        res = sum_mod.full(rt, cfg, s, engine=engine)
+        res = sum_mod.full(rt, cfg, s, engine=engine, extra=args.with_)
     except ctx_mod.AskError as e:
         return fail(e.code, e.message)
+    except ValueError as e:  # --with too long
+        return fail("bad_request", str(e), 2)
     except KeyboardInterrupt:
         raise Exit(130, "stopped. Nothing was saved.")
     if not args.print:
@@ -1872,7 +1897,10 @@ def build_parser():
         c.add_argument("-y", "--yes", action="store_true", help="agree / confirm without asking")
     sub.add_parser("_context")
     sz = sub.add_parser("summarize", help="summarize a whole session with Claude or Codex (saved with it)", epilog=REF_HELP)
-    sz.add_argument("ref", metavar="REF")
+    sz.add_argument("ref", metavar="REF", nargs="?")
+    sz.add_argument("--with", dest="with_", metavar="TEXT", help="instructions for this summary only, after your own")
+    sz.add_argument("--instructions", nargs="?", const=_SHOW, metavar="TEXT",
+                    help="your instructions for every summary: no TEXT shows them, \"\" takes them away")
     sz.add_argument("-e", "--engine", choices=list(config_mod.ASK_ENGINES), help="claude or codex")
     sz.add_argument("-y", "--yes", action="store_true", help="agree to send the session without asking")
     sz.add_argument("--print", action="store_true", help="only show it; do not save it")
