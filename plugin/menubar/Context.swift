@@ -254,6 +254,7 @@ final class ContextModel: ObservableObject {
     @Published private(set) var pickResults: [Row]?
     @Published private(set) var pickSearching = false
     @Published var questions: [String] = []
+    @Published var showQuestions = false  // the ten fields are folded until someone wants to change them (they read as a form)
     @Published var focus = ""                           // read each session only for what concerns this
     @Published var saveAsDefault = false
     @Published private(set) var target: ContextInfo?   // the context being added to; nil while making a new one
@@ -430,10 +431,11 @@ final class ContextModel: ObservableObject {
         pickSearching = false
         saveAsDefault = false
         failure = ""
+        showQuestions = false
     }
 
-    /// Change the questions of a context that exists: the builder, with nothing to add yet.
-    func beginEditQuestions(_ c: ContextInfo) { beginAdd(to: c) }
+    /// Change the questions of a context that exists: the builder, with nothing to add yet, and the questions unfolded.
+    func beginEditQuestions(_ c: ContextInfo) { beginAdd(to: c); showQuestions = true }
 
     func closeBuilder() {
         pickTask?.cancel()

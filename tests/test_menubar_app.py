@@ -539,6 +539,10 @@ esac
         self.assertTrue(all("<session id=" in p for p in prompts))
         listed = self.dump("--tab", "chains", "--open-contexts")
         self.assertIn("contexts: 1", listed)
+        self.assertIn("    in short: zebra fixed", listed)  # what the notes say, on the row
+        builder = self.dump("--tab", "chains", "--context-builder")
+        self.assertIn("questions: 10 · start from: General (chainlog's ten) · hidden", builder)  # folded until wanted
+        self.assertIn("· shown", self.dump("--tab", "chains", "--context-builder", "--show-questions"))
         self.assertIn("Zebra work · 4 sessions · built", listed)
         self.assertIn("→ Start in Claude · Copy · Open (in ", listed)
         text = (self.data / "contexts" / "zebra-work" / "notes" / "CONTEXT.md").read_text()

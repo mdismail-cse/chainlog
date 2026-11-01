@@ -73,6 +73,12 @@ struct ContextRow: View {
             if c.built {
                 if !c.gist.isEmpty {
                     Text(c.gist).font(.system(size: 12)).foregroundColor(.primary.opacity(0.85)).fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
+                } else {
+                    Text("No gist came back; the notes are in CONTEXT.md.").font(.system(size: 11.5)).foregroundColor(.secondary)
+                }
+                InShortLines(c: c, cx: cx)  // the AI-written facts: the row used to show only the 25-word gist
+                if let f = c.focus, !f.isEmpty {
+                    Text("Only about: " + clip(f, 90)).font(.system(size: 11)).foregroundColor(.secondary)
                 }
                 Text([c.period, c.engine.flatMap { AskEngine(rawValue: $0)?.label }.map { "built with \($0)" }, c.chain.map { "follows \(clip($0, 24))" }]
                     .compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · "))
@@ -112,6 +118,34 @@ struct ContextRow: View {
             }
         }
         .padding(.leading, 38).padding(.trailing, 14).padding(.bottom, 8)
+    }
+}
+
+/// The briefing's "In short" bullets (Now, Decided, Gotchas, Open, Next) and the next step, on the context's row and on
+/// the done screen: what the notes say, without opening the file.
+struct InShortLines: View {
+    let c: ContextInfo
+    @ObservedObject var cx: ContextModel
+    var body: some View {
+        let bullets = c.in_short ?? []
+        ForEach(Array(bullets.prefix(4).enumerated()), id: \.offset) { _, b in
+            HStack(alignment: .top, spacing: 4) {
+                Text("•")
+                Text(b).lineLimit(2).fixedSize(horizontal: false, vertical: true)
+            }
+            .font(.system(size: 11.5)).foregroundColor(.primary.opacity(0.8)).textSelection(.enabled)
+        }
+        if bullets.count > 4 {
+            Button("All \(bullets.count) in the notes…") { cx.openNotes(c) }
+                .buttonStyle(.plain).font(.system(size: 11.5)).foregroundColor(.accentColor)
+        }
+        if let n = c.next, !n.isEmpty, !bullets.contains(where: { $0.lowercased().hasPrefix("next:") }) {
+            HStack(alignment: .top, spacing: 4) {
+                Text("Next:").font(.system(size: 11.5, weight: .semibold))
+                Text(n).lineLimit(2).fixedSize(horizontal: false, vertical: true)
+            }
+            .font(.system(size: 11.5)).foregroundColor(.primary.opacity(0.8)).textSelection(.enabled)
+        }
     }
 }
 
@@ -359,25 +393,34 @@ struct ContextBuilder: View {
                 .help("Ready-made sets: a bug fix, a feature, PR review / QA, an investigation")
                 Spacer()
             }
-            Text("Each one is answered for every session, in up to 80 words. Fewer, sharper questions make shorter notes.")
-                .font(.system(size: 11)).foregroundColor(.secondary).fixedSize(horizontal: false, vertical: true)
             if cx.questionsChanged, !cx.focusChanged, let t = cx.target {
                 Text("Changed: all \(t.sessions + cx.adding.count) sessions are read again with these.").font(.system(size: 11)).foregroundColor(.orange)
             }
-            ForEach(Array(cx.questions.enumerated()), id: \.offset) { i, q in
-                HStack(spacing: 6) {
-                    Text("\(i + 1).").font(.system(size: 11.5)).foregroundColor(.secondary).frame(width: 18, alignment: .trailing)
-                    TextField("A question", text: Binding(get: { q }, set: { cx.setQuestion(i, $0) }))
-                        .textFieldStyle(.roundedBorder).font(.system(size: 12))
-                    IconButton(symbol: "minus.circle", help: "Remove this question") { cx.removeQuestion(i) }
+            if cx.showQuestions || cx.questionsSource == "Edited" {
+                Text("Each one is answered for every session, in up to 80 words. Fewer, sharper questions make shorter notes.")
+                    .font(.system(size: 11)).foregroundColor(.secondary).fixedSize(horizontal: false, vertical: true)
+                ForEach(Array(cx.questions.enumerated()), id: \.offset) { i, q in
+                    HStack(spacing: 6) {
+                        Text("\(i + 1).").font(.system(size: 11.5)).foregroundColor(.secondary).frame(width: 18, alignment: .trailing)
+                        TextField("A question", text: Binding(get: { q }, set: { cx.setQuestion(i, $0) }))
+                            .textFieldStyle(.roundedBorder).font(.system(size: 12))
+                        IconButton(symbol: "minus.circle", help: "Remove this question") { cx.removeQuestion(i) }
+                    }
                 }
+                HStack(spacing: 12) {
+                    Button("Add a question") { cx.addQuestion() }.disabled(cx.questions.count >= 15)
+                    Spacer()
+                    Button("Hide") { cx.showQuestions = false }
+                }
+                .buttonStyle(.plain).font(.system(size: 11.5)).foregroundColor(.accentColor)
+                Toggle("Use these questions for new contexts too", isOn: $cx.saveAsDefault).font(.system(size: 11.5)).toggleStyle(.checkbox)
+            } else {
+                // folded: ten text fields between the sessions and Build read as a form to fill in
+                Text(clip(cx.cleanQuestions.prefix(3).joined(separator: " · "), 90))
+                    .font(.system(size: 11)).foregroundColor(.secondary).lineLimit(1)
+                Button("See or change the questions") { cx.showQuestions = true }
+                    .buttonStyle(.plain).font(.system(size: 11.5)).foregroundColor(.accentColor)
             }
-            HStack(spacing: 12) {
-                Button("Add a question") { cx.addQuestion() }.disabled(cx.questions.count >= 15)
-                Spacer()
-            }
-            .buttonStyle(.plain).font(.system(size: 11.5)).foregroundColor(.accentColor)
-            Toggle("Use these questions for new contexts too", isOn: $cx.saveAsDefault).font(.system(size: 11.5)).toggleStyle(.checkbox)
         }
     }
 
@@ -491,6 +534,7 @@ struct ContextDone: View {
                     .font(.system(size: 11.5)).foregroundColor(.secondary)
                 if !c.gist.isEmpty {
                     Text(c.gist).font(.system(size: 12.5)).fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
+                    InShortLines(c: c, cx: cx)
                 }
                 Text("A new session gets only a few lines that point to it, and reads the part it needs when its task calls for it.")
                     .font(.system(size: 11)).foregroundColor(.secondary).fixedSize(horizontal: false, vertical: true)

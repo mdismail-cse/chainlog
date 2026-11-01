@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Menu bar app, Contexts: the ten question fields in step 2 of the builder are folded behind "See or change the
+  questions" (they read as a form to fill in, between the sessions and Build; *Edit questions…* opens them unfolded).
+  An open context shows what its notes say: the "In short" bullets (Now, Decided, Gotchas, Open, Next), the next step,
+  and its focus ("Only about: …"), not only the 25-word gist; so does the done screen. A context whose build came back
+  without a gist says so instead of showing only the period.
 - Menu bar app, Chains: a chain's header shows what the work is (its newest round's title) over the key and the count, so
   thirty rows no longer read `shop#4321 · 3 rounds · 2d`; the rounds under an open chain stop repeating the key ("round 2 ·
   Codex · 4h"); a chain with more rounds than the 8 listed says "N older sessions in Terminal…"; and plain words: "Chains"

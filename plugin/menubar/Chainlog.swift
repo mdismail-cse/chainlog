@@ -362,6 +362,8 @@ func dumpContexts(_ m: AppModel) -> Bool {
             print("  \(c.name) · \(c.sessions) session\(c.sessions == 1 ? "" : "s") · \(state)\(c.needs_update ? " · \(c.pending.text) → Update" : "")")
             if cx.isOpen(c) {
                 if !c.gist.isEmpty { print("    gist: \(c.gist)") }
+                for b in (c.in_short ?? []).prefix(4) { print("    in short: \(clip(b, 80))") }
+                if let n = c.next, !n.isEmpty { print("    next: \(clip(n, 80))") }
                 if let f = c.focus, !f.isEmpty { print("    focus: \(f)") }
                 if c.built {
                     print("    → Start in \(c.tool.label) · Copy · Open (in \(cx.preferredEditor(for: c)?.name ?? "-")) · Add sessions… · Questions… · ⋯\(c.needs_update ? " · Update" : "")")
@@ -387,7 +389,7 @@ func dumpContexts(_ m: AppModel) -> Bool {
         print("  candidates: \(cx.candidates.count)")
         for r in cx.candidates.prefix(8) { print("    [\(cx.isMember(r) ? "in" : (cx.isSelected(r) ? "x" : " "))] \(clip(r.title, 50))") }
         print("  focus: \(cx.cleanFocus.isEmpty ? "none" : "\"\(cx.cleanFocus)\"")\(cx.focusChanged ? " (changed: every session is read again)" : "")")
-        print("  questions: \(cx.cleanQuestions.count) · start from: \(cx.questionsSource)\(cx.questionsChanged ? " (changed: every session is read again)" : "")")
+        print("  questions: \(cx.cleanQuestions.count) · start from: \(cx.questionsSource)\(cx.questionsChanged ? " (changed: every session is read again)" : "") · \(cx.showQuestions || cx.questionsSource == "Edited" ? "shown" : "hidden")")
         print("    1. \(cx.cleanQuestions.first ?? "-")")
         print("  footer: \(cx.blocker ?? cx.estimate)")
     case .building:
@@ -528,6 +530,7 @@ func headlessModel(_ args: [String]) -> AppModel? {
             if args.contains("--pick-strong") { m.contexts.pickSuggested(strongOnly: true) }
         }
         if args.contains("--context-words") { m.contexts.pickMode = .words }
+        if args.contains("--show-questions") { m.contexts.showQuestions = true }
     }
     return m
 }
