@@ -721,7 +721,45 @@ func selfTest(sample path: String?) -> Int {
               && cx.expanded["shop-refunds"] == true)
         cx.doneWithResult()
         check("  ... Done goes back to the list", cx.screen == .list && cx.result == nil)
-        // questions: ready-made sets, where they came from, editing those of a context that exists
+        // summarizing a session: asked once, saved, opened under its row
+    do {
+        let m = model()
+        m.inline = true
+        final class Runs: @unchecked Sendable { var args: [[String]] = []; var replies: [String] = [] }
+        let runs = Runs()
+        m.summarizer = { a in runs.args.append(a); return Data((runs.replies.isEmpty ? "" : runs.replies.removeFirst()).utf8) }
+        var asked: [String] = []
+        m.summaryConsent = { t, _ in asked.append(t); return false }
+        var copied: [String] = []
+        m.copier = { copied.append($0) }
+        let r = data.unsaved[0]
+        runs.replies = [#"{"error":"no_consent","message":"Summarizing a session sends its text to Claude…","engine":"claude"}"#]
+        m.summarize(r)
+        check("Summarize runs `chainlog summarize REF --json`", runs.args == [["summarize", r.ref, "--json"]])
+        check("  ... the first time it asks, and a no sends nothing", asked == ["Send this session to Claude?"] && m.toast == "Nothing was sent" && runs.args.count == 1)
+        m.summaryConsent = { t, _ in asked.append(t); return true }
+        runs.replies = [#"{"error":"no_consent","message":"…","engine":"claude"}"#, #"{"text":"HEADLINE: x","headline":"x","engine":"claude","saved":true}"#]
+        runs.args = []
+        m.summarize(r)
+        check("  ... a yes runs it again with the agreement", runs.args == [["summarize", r.ref, "--json"], ["summarize", r.ref, "--json", "--yes"]])
+        check("  ... and the summary opens under its row", m.showingSummary == r.ref && m.toast == "Summary saved" && m.summarizing.isEmpty)
+        runs.replies = [#"{"error":"failed","message":"Claude could not answer: rate limited"}"#]
+        m.summarize(r)
+        check("a failure says why", m.toast == "Could not summarize: Claude could not answer: rate limited")
+        runs.replies = ["not json"]
+        m.summarize(r)
+        check("an answer that is not chainlog's says so", m.toast == "Could not summarize: chainlog did not answer")
+        let withSummary = data.unsaved.first { $0.summary_full != nil }!
+        m.toggleSummary(withSummary)
+        check("Show the summary opens it, and again closes it", m.showingSummary == withSummary.ref)
+        m.toggleSummary(withSummary)
+        check("  ... closed", m.showingSummary == nil)
+        m.copySummary(withSummary)
+        check("Copy copies the whole summary", copied == [withSummary.summary_full!] && withSummary.summary_full!.hasPrefix("HEADLINE:"))
+        check("the preview's summary line is its headline", withSummary.summary == "Tracker CSV export added at /export.csv; month filter still to do")
+    }
+
+    // questions: ready-made sets, where they came from, editing those of a context that exists
         check("the five question sets come from chainlog", cx.presets.map(\.id) == ["general", "bugfix", "feature", "qa", "investigation"])
         cx.beginNew()
         check("a new context starts from your default (here chainlog's ten)", cx.questionsSource == "General (chainlog's ten)")

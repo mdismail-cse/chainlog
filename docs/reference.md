@@ -36,6 +36,7 @@ Everything chainlog can do, in detail. For a gentle introduction, start with the
 | `chainlog undo` | Revert your last save / note / status / tag / star / forget |
 | `chainlog review` | Go through unsaved sessions one by one |
 | `chainlog ask [QUESTION]` | Ask Claude or Codex about your sessions (connect once with `--connect`) |
+| `chainlog summarize REF` | Summarize a whole session with Claude or Codex (saved with it) |
 | `chainlog context [new\|update\|use\|ref\|show\|add\|remove\|rm\|questions]` | Merge what many sessions taught you into one context a new session reads when it needs it |
 | `chainlog config …` | Show or change settings |
 | `chainlog setup [PART…]` | Install integrations (asks first) |
@@ -229,6 +230,25 @@ and a link the AI writes is turned into plain text, so no link in an answer can 
 The settings `ask.model` (default `sonnet` for Claude; Codex uses its own default) and `ask.timeout` (seconds per request, default 90)
 are in [Settings](#settings).
 
+## summarize
+
+```sh
+chainlog summarize REF [-e claude|codex] [--yes] [--print] [--json]
+```
+
+Reads the whole session the way a [context](#context) does (chainlog's facts, the files it changed and the commands it ran, the
+conversation without tool output, the start and the end always kept, up to 100,000 characters, redacted) and asks for a summary
+in labelled lines: `HEADLINE:` (at most 15 words), `Goal:`, `Done:`, `Result:`, `Files & PRs:`, `Open:`, `Next:`, at most 180
+words. One request, run like [ask](#ask) (no tools, an empty folder), with `context.model` (Sonnet unless set). What comes back is
+cleaned (anything before the headline, links and secrets go). It is saved as a `summary` event: the session keeps its saved
+state, `chainlog show` lists it, `find` searches it, `ls` shows its headline when the session has no note of yours, and
+`chainlog undo` takes it back. It records how long the transcript was, so a session that went on afterwards shows its summary as
+out of date. `--print` only shows it. The agreement is the one contexts use (`context.consent`); the first time it asks
+(`--yes` agrees). `--json` prints `{text, headline, engine, model, mark, chars, saved, ref}`, or `{error, message[, engine]}`.
+
+The one-line summaries of the forgot-to-save policy (`summary.engine`) are a different thing: short notes written in the
+background for sessions you did not save.
+
 ## context
 
 ```sh
@@ -402,6 +422,7 @@ Click the icon to open the popover.
 | Right-click → Keep a copy / Stop keeping the copy | `chainlog keep` / `unkeep`. A kept session says "kept" on its second line; if Claude deleted the original, clicking it still opens it from the copy. The app also refreshes kept copies at launch and every 20 minutes |
 | Right-click → Delete… | `chainlog delete` after a confirmation: from Claude and chainlog, only from Claude, or only from chainlog (Codex sessions: chainlog only). A running session is refused |
 | Right-click → Open in VS Code | For a Claude session started in the VS Code extension (its row says "VS Code"): opens its folder in VS Code, then the session in the extension's own panel, through the extension's `vscode://anthropic.claude-code/open?session=ID` link. The terminal command in a plain click works for these sessions too (they share Claude's session store), this is for staying in the editor |
+| Hover: summary button, or right-click → Summarize the session | `chainlog summarize REF --json` (see [summarize](#summarize)); the first time it asks before sending. While it works the button spins; the summary then opens under the row: the headline, each labelled line, a warning when the session went on after it, **Copy**, **Summarize again**, **Close**. A session that has one shows the summary button instead (right-click: *Show the summary*, *Summarize again*) |
 | Hover: ☆ / ★ | Star or unstar. Shown at once; if `chainlog` refuses, it flips back and says why |
 | Hover: pencil | Save the session with a note and a result: `chainlog save --id REF [-s STATUS] [--chain=NAME] -- NOTE`. The "Add to a chain" line takes any name (a PR number works too) or one picked from the chains that exist; a chain alone is enough to save. A note or chain name that starts with a dash stays text. What you type is kept if the popover closes, and given back if the save fails |
 | **Ask** tab | A chat with Claude or Codex about your sessions (see [ask](#ask)). Until you connect, it lists which of the two are installed and signed in, with a Connect button that first shows what is sent. Then: suggestions, your messages, answers (a session it names is a link that opens it, and the sessions it mentions are listed under it as ordinary rows with copy, star and note), a copy button for the answer, **Stop** while it works, **New chat**, and the name at the top (*Claude · sonnet ▾*): *Answer with* Claude or Codex (the one in use is ticked; one that is not installed or signed in is greyed out; one you never agreed to asks first), *What is sent*, *Disconnect* (back to the connect screen, where either can be connected). The chat is kept while the app runs, also when the popover is closed. Return sends |

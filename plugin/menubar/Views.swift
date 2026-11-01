@@ -357,6 +357,14 @@ struct SessionRow: View {
                             IconButton(symbol: "link", help: "Copy the VS Code link to this session") { model.copyLink(row) }
                         }
                         IconButton(symbol: "square.and.pencil", help: "Save with a note…") { model.beginSave(row) }
+                        if model.summarizing.contains(row.ref) {
+                            ProgressView().controlSize(.small).scaleEffect(0.55).frame(width: 22, height: 22).help("Summarizing…")
+                        } else if row.summary_full != nil {
+                            IconButton(symbol: "text.alignleft", tint: model.showingSummary == row.ref ? .accentColor : .secondary,
+                                       help: "Show its summary") { model.toggleSummary(row) }
+                        } else {
+                            IconButton(symbol: "text.badge.star", help: "Summarize the whole session (AI, 1 request)") { model.summarize(row) }
+                        }
                     }
                     IconButton(symbol: row.starred ? "star.fill" : "star", tint: row.starred ? .yellow : .secondary,
                                help: row.starred ? "Remove from Starred" : "Add to Starred") { model.toggleStar(row) }
@@ -380,6 +388,12 @@ struct SessionRow: View {
                 Divider()
                 Button(row.starred ? "Remove from Starred" : "Add to Starred") { model.toggleStar(row) }
                 Button("Save with a note…") { model.beginSave(row) }
+                if row.summary_full != nil {
+                    Button(model.showingSummary == row.ref ? "Hide the summary" : "Show the summary") { model.toggleSummary(row) }
+                    Button("Summarize again") { model.summarize(row) }.disabled(model.summarizing.contains(row.ref))
+                } else {
+                    Button("Summarize the session") { model.summarize(row) }.disabled(model.summarizing.contains(row.ref))
+                }
                 if model.contexts.supported {
                     Menu("Add to a context") {
                         ForEach(model.contexts.contexts) { c in Button(c.name) { model.contexts.add(row, to: c) } }
@@ -400,6 +414,7 @@ struct SessionRow: View {
                 }
             }
             if model.editing == row.ref { NoteEditor(model: model, row: row) }
+            if model.showingSummary == row.ref, row.summary_full != nil { SummaryPanel(model: model, row: row) }
         }
         .padding(.horizontal, 4)
     }
@@ -469,6 +484,51 @@ struct IconButton: View {
             Image(systemName: symbol).font(.system(size: 12.5)).foregroundColor(tint).frame(width: 22, height: 22).contentShape(Rectangle())
         }
         .buttonStyle(.plain).help(help)
+    }
+}
+
+/// A session's summary, open under its row: each labelled line, whether the session went on since, and what to do with it.
+struct SummaryPanel: View {
+    @ObservedObject var model: AppModel
+    let row: Row
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            ForEach(Array((row.summary_full ?? "").split(separator: "\n").enumerated()), id: \.offset) { _, line in
+                SummaryLine(line: String(line))
+            }
+            if row.summary_stale == true {
+                Text("The session went on after this summary.").font(.system(size: 11)).foregroundColor(.orange)
+            }
+            HStack(spacing: 14) {
+                Button("Copy") { model.copySummary(row) }
+                Button(row.summary_stale == true ? "Summarize again (it went on)" : "Summarize again") { model.summarize(row) }
+                    .disabled(model.summarizing.contains(row.ref))
+                Spacer()
+                Button("Close") { model.toggleSummary(row) }
+            }
+            .buttonStyle(.plain).font(.system(size: 11.5)).foregroundColor(.accentColor).padding(.top, 2)
+        }
+        .padding(.horizontal, 14).padding(.vertical, 8)
+        .background(RoundedRectangle(cornerRadius: 7).fill(Color.primary.opacity(0.04)))
+        .padding(.leading, 26).padding(.trailing, 6).padding(.bottom, 4)
+        .textSelection(.enabled)
+    }
+}
+
+/// "Goal: …" with the label in bold; the HEADLINE as the panel's title.
+struct SummaryLine: View {
+    let line: String
+    var body: some View {
+        if line.uppercased().hasPrefix("HEADLINE:") {
+            Text(line.dropFirst(9).trimmingCharacters(in: .whitespaces)).font(.system(size: 12.5, weight: .semibold)).fixedSize(horizontal: false, vertical: true)
+        } else if let colon = line.firstIndex(of: ":"), line.distance(from: line.startIndex, to: colon) <= 12, !line.hasPrefix("-") {
+            (Text(String(line[..<colon]) + ":").font(.system(size: 11.5, weight: .semibold))
+                + Text(line[line.index(after: colon)...]).font(.system(size: 11.5)))
+                .foregroundColor(.primary.opacity(0.85)).fixedSize(horizontal: false, vertical: true)
+        } else {
+            Text(line).font(.system(size: 11.5)).foregroundColor(.primary.opacity(0.85)).fixedSize(horizontal: false, vertical: true)
+        }
     }
 }
 

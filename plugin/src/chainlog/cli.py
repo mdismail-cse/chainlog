@@ -25,11 +25,11 @@ from chainlog.runtime import Runtime
 from chainlog.store.events import NOTE_MAX, new_event
 
 VISIBLE = ("save", "ls", "find", "show", "resume", "chain", "next", "note", "status", "tag", "star", "unstar",
-           "keep", "unkeep", "restore", "delete", "retention", "forget", "undo", "review", "config", "setup", "uninstall", "doctor", "scan", "ask", "context")
+           "keep", "unkeep", "restore", "delete", "retention", "forget", "undo", "review", "config", "setup", "uninstall", "doctor", "scan", "ask", "context", "summarize")
 ALIASES = {"list": "ls", "r": "resume", "chains": "chain"}
 HIDDEN = ("_sweep", "_nudge", "_menu", "_ask", "_context", "help")
 STATUSES = ("wip", "pass", "fail", "blocked")
-UNDOABLE = ("save", "note", "status", "tag", "star", "unstar", "chain.link", "chain.unlink", "forget")
+UNDOABLE = ("save", "note", "status", "tag", "star", "unstar", "chain.link", "chain.unlink", "forget", "summary")
 
 
 class Exit(Exception):
@@ -1554,6 +1554,58 @@ def cmd_context_stream(rt, args):
         return 0
 
 
+def cmd_summarize(rt, args):
+    """Summarize a whole session with Claude or Codex; the summary is saved with it (`--print`: only show it)."""
+    from chainlog import context as ctx_mod
+    from chainlog import summarize as sum_mod
+    cfg = config_mod.load(rt)
+    st = ui.Style(rt.color())
+    index = load(rt, cfg)
+    s = one(index, args.ref, as_json=args.json)
+
+    def fail(code, message, rc=1):
+        if args.json:
+            _p(json.dumps({"error": code, "message": message}, separators=(",", ":")))
+            return rc
+        raise Exit(rc, message)
+
+    try:
+        engine = ctx_mod._engine(rt, cfg, args.engine)[0]
+    except ctx_mod.AskError as e:
+        return fail(e.code, e.message)
+    if not ctx_mod.consented(cfg, engine):
+        if args.yes:
+            cfg = ctx_mod.agree(rt, cfg, engine)
+        elif args.json:
+            _p(json.dumps({"error": "no_consent", "message": sum_mod.disclosure(engine), "engine": engine}, separators=(",", ":")))
+            return 2
+        elif rt.isatty():
+            _p(sum_mod.disclosure(engine))
+            reply = _ask("Agree and summarize with %s? [y/N] " % ctx_mod.LABEL[engine])
+            if (reply or "").strip().lower() not in ("y", "yes"):
+                raise Exit(1, "cancelled. Nothing was sent.")
+            cfg = ctx_mod.agree(rt, cfg, engine)
+        else:
+            raise Exit(2, "summarizing asks for your agreement first; run it in a terminal, or add --yes to agree")
+    if rt.isatty() and not args.json:
+        sys.stderr.write(st.dim("Reading the whole session with %s (1 request)…\n" % ctx_mod.LABEL[engine]))
+    try:
+        res = sum_mod.full(rt, cfg, s, engine=engine)
+    except ctx_mod.AskError as e:
+        return fail(e.code, e.message)
+    except KeyboardInterrupt:
+        raise Exit(130, "stopped. Nothing was saved.")
+    if not args.print:
+        sum_mod.save_full(rt, s, res)
+    if args.json:
+        _p(json.dumps(dict(res, saved=not args.print, ref=s["ref"]), separators=(",", ":")))
+        return 0
+    _p("\n".join(ui.safe(l) for l in res["text"].splitlines()))
+    if not args.print:
+        _p(st.dim("saved with the session (chainlog show %s; the menu bar app's preview shows it too)" % s["short"]))
+    return 0
+
+
 def cmd_setup(rt, args):
     from chainlog import setup as setup_mod
     return setup_mod.run(rt, args, _p)
@@ -1819,6 +1871,12 @@ def build_parser():
     for c in (cx, c_new, c_upd, c_rm):
         c.add_argument("-y", "--yes", action="store_true", help="agree / confirm without asking")
     sub.add_parser("_context")
+    sz = sub.add_parser("summarize", help="summarize a whole session with Claude or Codex (saved with it)", epilog=REF_HELP)
+    sz.add_argument("ref", metavar="REF")
+    sz.add_argument("-e", "--engine", choices=list(config_mod.ASK_ENGINES), help="claude or codex")
+    sz.add_argument("-y", "--yes", action="store_true", help="agree to send the session without asking")
+    sz.add_argument("--print", action="store_true", help="only show it; do not save it")
+    sz.add_argument("--json", action="store_true", help="machine-readable output")
     sub.add_parser("help")
     # hidden commands must not show in `chainlog --help`
     if hasattr(sub, "_choices_actions"):  # argparse internals; if they ever change, the hidden commands just show in --help
@@ -1833,7 +1891,7 @@ DISPATCH = {
     "delete": cmd_delete, "retention": cmd_retention, "forget": cmd_forget, "undo": cmd_undo, "review": cmd_review, "config": cmd_config,
     "setup": cmd_setup, "uninstall": cmd_uninstall, "doctor": cmd_doctor, "scan": cmd_scan,
     "_sweep": cmd_sweep, "_nudge": cmd_nudge, "_menu": cmd_menu, "ask": cmd_ask, "_ask": cmd_ask_stream,
-    "context": cmd_context, "_context": cmd_context_stream,
+    "context": cmd_context, "_context": cmd_context_stream, "summarize": cmd_summarize,
 }
 
 

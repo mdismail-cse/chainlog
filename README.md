@@ -281,6 +281,15 @@ signed in to. There are no API keys and no extra account. Before it connects it 
 `chainlog ask --disconnect` takes your agreement back. Until you connect, nothing is ever sent.
 To carry what many sessions taught you into a new one, see [contexts](#carry-what-you-learned-into-a-new-session-contexts).
 
+## Summarize a session
+
+Hover a session in the menu bar app and click the summary button (or right-click → **Summarize the session**), or type
+`chainlog summarize ID`. Claude (or Codex) reads the **whole** session (its start, where the goal usually is, and its end,
+where the result is; long messages trimmed; the files it changed and the commands it ran; your notes) and writes a few
+labelled lines: a headline, **Goal**, **Done**, **Result**, **Files & PRs**, **Open**, **Next**. One request. The summary is
+kept with the session (it does not save it): the preview and `chainlog show` show it, search finds it, and it says so when
+the session went on after it. The first time it asks before sending; that agreement also covers contexts.
+
 ## Carry what you learned into a new session (contexts)
 
 You worked on one feature (say cloud backup) across 20 sessions. A **context** merges what those sessions taught you into
@@ -393,6 +402,7 @@ Read the titles and the "last work" lines. Press **Enter** for the first one, ty
 | Star a session I want to keep close | `chainlog star @N` (see them: `chainlog ls --starred`) |
 | See my sessions from the menu bar (Mac) | `chainlog setup menubar`, then click the icon |
 | Ask an AI about my sessions | `chainlog ask --connect claude` once, then `chainlog ask "…"` (or the **Ask** tab) |
+| Summarize a whole session | `chainlog summarize ID` (or hover it in the menu bar app) |
 | Start a new session that knows all my backup work | `chainlog context new "Cloud backup" --find backup`, then `chainlog context use "Cloud backup"` |
 | Handle sessions I forgot to save | `chainlog review` (or `chainlog review --auto` to save them all) |
 | Change what happens when I forget | `chainlog setup policy` |

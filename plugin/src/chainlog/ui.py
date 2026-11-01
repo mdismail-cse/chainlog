@@ -127,7 +127,8 @@ def headline(s):
     if notes:
         text = notes[-1]["text"]
     elif s.get("summary"):
-        text = s["summary"]["text"]
+        from chainlog.summarize import headline_of
+        text = headline_of(s["summary"]["text"])
     else:
         text = s["title"]["value"]
     text = safe(text)

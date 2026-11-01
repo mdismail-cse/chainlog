@@ -164,7 +164,7 @@ class MenuFind(StarHome):
         self.assertTrue(d["results"][0]["starred"])
         self.assertEqual(set(d["results"][0]), {"ref", "short", "harness", "via", "title", "saved", "status", "live",
                                                 "starred", "kept", "chain", "round", "at", "ago", "last_work", "first_ask", "last_ask",
-                                            "note", "summary", "pr", "branch", "lines", "took", "resume"})
+                                            "note", "summary", "summary_full", "summary_stale", "pr", "branch", "lines", "took", "resume"})
 
     def test_no_match_and_blank_queries_give_an_empty_list_not_an_error(self):
         for q in ("qqqqzzzz", "", "   "):

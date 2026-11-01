@@ -488,6 +488,8 @@ echo $$ > "$HOME/stub.pid"
 case "$*" in
   *"You merge"*) id=$(printf '%s' "$prompt" | sed -n 's/.*<session id="\\([0-9a-f]*\\)".*/\\1/p' | head -1)
     printf '{"is_error": false, "result": "GIST: The zebra widget work, merged.\\\\n## In short\\\\n- zebra fixed [[%s]]\\\\n## 1. Goal\\\\n- fact [[%s]]\\\\n## Timeline\\\\n- 2026-10-01 [[%s]]: done"}' "$id" "$id" "$id";;
+  *"You summarize ONE past coding session"*)
+    printf '{"is_error": false, "result": "HEADLINE: Zebra widget fixed\\\\nGoal: fix the zebra widget\\\\nDone: rewrote it\\\\nResult: works\\\\nFiles & PRs: zebra.py\\\\nOpen: nothing\\\\nNext: ship it"}';;
   *"pick, from their past coding sessions"*) ids=$(printf '%s' "$prompt" | grep -i zebra | grep ' | ' | cut -d' ' -f1)
     lines=""; for id in $ids; do lines="$lines$id | strong | the zebra widget work\\\\n"; done
     printf '{"is_error": false, "result": "%sNAME: Zebra widget"}' "$lines";;
@@ -598,6 +600,28 @@ esac
         self.assertEqual(row["took"], "60m")
         for key in ("last_ask", "summary", "pr", "lines"):
             self.assertIn(key, row)  # always there, null when unknown
+
+    def test_summarize_asks_first_then_saves_and_opens_the_summary(self):
+        self.context_stub()
+        short = IDS[3][:8]
+        rc, out, err = self.app("--summarize", short, "--refuse")
+        self.assertEqual(rc, 0, err)
+        self.assertIn("asked: Send this session to Claude? | Summarizing a session sends its text to Claude", out)
+        self.assertIn("toast: Nothing was sent", out)
+        self.assertEqual(self.prompts(), [])
+        rc, out, err = self.app("--summarize", short)
+        self.assertEqual(rc, 0, err)
+        self.assertIn("toast: Summary saved", out)
+        self.assertEqual(len(self.prompts()), 1)
+        self.assertIn("worked on item 3 with the zebra widget", self.prompts()[0])
+        line = next(l for l in out.splitlines() if l.endswith("[summary]"))
+        self.assertTrue(line.startswith("  [not saved] Shop PR 5000 review — "), line)  # a summary does not save the session
+        self.assertIn("    | HEADLINE: Zebra widget fixed", out)
+        self.assertIn("    | Next: ship it", out)
+        rows = json.loads(self.chainlog("_menu")[1])
+        row = next(r for r in rows["unsaved"] + rows["recent"] if r["ref"] == self.ref(3))
+        self.assertEqual(row["summary"], "Zebra widget fixed")
+        self.assertFalse(row["summary_stale"])
 
     def test_a_context_found_by_describing_it(self):
         self.context_stub()

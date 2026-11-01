@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Summarize a whole session: `chainlog summarize REF`, and a summary button on every session in the menu bar app. It reads
+  the start and the end of the session (where the goal and the result are), the files it changed and the commands it ran,
+  and writes a headline plus Goal, Done, Result, Files & PRs, Open and Next. Kept with the session without saving it, shown
+  under the row and in the preview, marked out of date when the session went on, `chainlog undo` takes it back. On a
+  made-up session whose last 30 messages were small renames, the old one-line summary only saw the renames; this one had
+  the goal, the 3.1 TB move, the fix, the PR and what is left.
 - Menu bar app, Sessions: the hover preview shows the whole arc, not only the end: where the session started, the last thing
   said, your latest note (else its summary), and its result, PR or branch, lines changed and length. The local summary
   also says where a session started.

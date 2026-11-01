@@ -157,6 +157,10 @@ def _apply(sessions, ev):
             s["snap"] = d["snap"]  # what the session looked like when saved (survives transcript loss)
         s["last_save_event"] = ev["id"]
         s["last_save_at"] = at
+    elif t == "summary":  # a whole-session summary you asked for: it does not save the session
+        if d.get("summary"):
+            s["summary"] = {"text": d["summary"], "engine": d.get("summary_engine"), "at": at, "mark": d.get("mark")}
+            s["notes"].append({"at": at, "text": d["summary"], "via": "ai", "kind": "summary", "event": ev["id"]})
     elif t == "note":
         s["saved"] = "user"
         s["notes"].append({"at": at, "text": d.get("text", ""), "via": ev.get("src"), "kind": "note",

@@ -97,6 +97,8 @@ final class AppModel: ObservableObject {
     @Published private(set) var searching = false
     @Published private(set) var searchFailed = false
     @Published var editing: String?          // ref of the row whose "save with a note" editor is open
+    @Published var showingSummary: String?   // ref of the row whose summary is open under it
+    @Published private(set) var summarizing: Set<String> = []  // refs being summarized now
     @Published var drafts: [String: Draft] = [:]  // what was typed there: survives the popover closing
     @Published var chainOpen: [String: Bool] = [:]  // which chains are expanded (the views come and go; this stays)
     @Published private(set) var toast: String?
@@ -121,6 +123,13 @@ final class AppModel: ObservableObject {
     var runner: @Sendable ([String]) -> (ok: Bool, message: String) = { Actions.run($0) }
     /// Asked before a deletion (nothing can bring the files back). Tests replace it.
     var destructiveConfirmer: (String, String) -> Bool = { Alerts.confirm($0, $1, ok: "Delete") }
+    /// Runs `chainlog summarize REF --json [--yes]` and returns what it printed. Tests replace it.
+    var summarizer: @Sendable ([String]) -> Data? = { args in
+        guard let exe = CLI.locate() else { return nil }
+        return CLI.run(exe, args, timeout: 320).out
+    }
+    /// Asked before a whole session is first sent to a tool (title, what is sent). Tests replace it.
+    var summaryConsent: (String, String) -> Bool = { Alerts.confirm($0, $1, ok: "Agree and summarize") }
     /// Asked before shortening how long Claude keeps sessions. Tests replace it.
     var shortenConfirmer: (String, String) -> Bool = { Alerts.confirm($0, $1, ok: "Shorten") }
     /// A question with a text box (title, detail, starting text); nil = cancelled. Tests replace it.
@@ -301,6 +310,49 @@ final class AppModel: ObservableObject {
     }
 
     /// Run a `chainlog` command off the main thread, then say how it went and refresh.
+    // MARK: summaries
+
+    private struct SummaryReply: Decodable { let error: String?; let message: String?; let engine: String?; let headline: String? }
+
+    /// Summarize the whole session with Claude or Codex: one request; the summary is saved with it and opens under the row.
+    func summarize(_ row: Row, agreed: Bool = false) {
+        guard !summarizing.contains(row.ref) else { return }
+        summarizing.insert(row.ref)
+        say("Summarizing \(clip(row.title, 30))… (1 request)")
+        let args = ["summarize", row.ref, "--json"] + (agreed ? ["--yes"] : [])
+        let run = summarizer
+        let done: @Sendable (Data?) -> Void = { out in
+            DispatchQueue.main.async { MainActor.assumeIsolated { self.summarized(row, out) } }
+        }
+        if inline { summarized(row, run(args)); return }
+        DispatchQueue.global(qos: .userInitiated).async { done(run(args)) }
+    }
+
+    private func summarized(_ row: Row, _ out: Data?) {
+        summarizing.remove(row.ref)
+        let line = out.flatMap { String(data: $0, encoding: .utf8) }?.split(separator: "\n").last { $0.hasPrefix("{") }
+        guard let l = line, let r = try? JSONDecoder().decode(SummaryReply.self, from: Data(l.utf8)) else {
+            say("Could not summarize: chainlog did not answer"); return
+        }
+        if r.error == "no_consent" {
+            let who = AskEngine(rawValue: r.engine ?? "")?.label ?? "the AI"
+            if summaryConsent("Send this session to \(who)?", r.message ?? "") { summarize(row, agreed: true) } else { say("Nothing was sent") }
+            return
+        }
+        if let e = r.error { say("Could not summarize: " + clip(r.message ?? e, 90)); return }
+        showingSummary = row.ref
+        say("Summary saved")
+        refresh()
+    }
+
+    func toggleSummary(_ row: Row) { showingSummary = showingSummary == row.ref ? nil : row.ref }
+
+    func copySummary(_ row: Row) {
+        guard let s = row.summary_full else { return }
+        copier(s)
+        say("Summary copied")
+    }
+
     /// One chainlog command from another part of the app (the contexts), with the usual toast and refresh.
     func act(_ args: [String], done: String, failed: String = "Could not do it") {
         perform(args, doing: "Working…", done: done, failed: failed)

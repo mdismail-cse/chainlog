@@ -90,7 +90,8 @@ first, at most 40; with `--every-word`, only sessions that contain every word, a
 
 - A row: `ref`, `short`, `harness`, `kept` (a copy is held), `via` (where it was started: `"VS Code"`, `"Desktop"`, or null for a plain terminal),
   `title` (one clean line), `saved` (`user|auto|none`), `status`, `live`, `starred`, `chain`, `round`, `at`, `ago`,
-  `last_work`, the preview's `first_ask` (null when it is the title), `last_ask`, `note` (your latest), `summary`, `pr`
+  `last_work`, the preview's `first_ask` (null when it is the title), `last_ask`, `note` (your latest), `summary` (its one
+  line), `summary_full` (the whole summary, lines), `summary_stale` (the session went on after it), `pr`
   (`"PR #4321 · repo"`), `branch` (not main/master), `lines` (`"+42/−7"`), `took` (`"45m"`, `"3h"`) (each always present,
   null when unknown), `resume {cwd, command, vscode, session_id, link, restores, blockers[], notes[]}`. `resume.restores` is true when Claude deleted the
   original but a kept copy exists: `command` then starts with `chainlog restore REF && …`, and `blockers` is empty.

@@ -329,7 +329,12 @@ func dumpModel(_ m: AppModel) {
     if sections.allSatisfy({ $0.rows.isEmpty }) { print("(empty: \(EmptyState(model: m).title) — \(EmptyState(model: m).detail))") }
     for s in sections {
         print(s.title)
-        for r in s.rows { print(line(r)) }
+        for r in s.rows {
+            print(line(r) + (r.summary_full != nil ? " [summary\(r.summary_stale == true ? ", out of date" : "")]" : "") + (m.summarizing.contains(r.ref) ? " (summarizing…)" : ""))
+            if m.showingSummary == r.ref, let full = r.summary_full {
+                for l in full.split(separator: "\n") { print("    | " + l) }
+            }
+        }
         if let n = s.reviewAll { print("  → Review all \(n) unsaved…") }
         if let note = s.note { print("  (\(note))") }
     }
@@ -492,6 +497,7 @@ func headlessModel(_ args: [String]) -> AppModel? {
     }
     if args.contains("--edit-first"), let r = m.visibleRows.first { m.beginSave(r) }
     if args.contains("--hover-first"), let r = m.visibleRows.first { m.hover.enter(r) }
+    if args.contains("--open-summary"), let r = m.visibleRows.first(where: { $0.summary_full != nil }) { m.showingSummary = r.ref; m.hover.enter(r) }
     // screenshots of the contexts: every one open, or the builder (from the first chain, or the newest sessions)
     if args.contains("--open-contexts") { for c in m.contexts.contexts { m.contexts.expanded[c.slug] = true } }
     if args.contains("--context-builder") {
@@ -622,6 +628,19 @@ struct ChainlogMain {
         }
         if args.contains("--context") {
             exit(runContextFlow(args))
+        }
+        if let i = args.firstIndex(of: "--summarize"), i + 1 < args.count {
+            guard let m = headlessModel(args) else { FileHandle.standardError.write(Data("could not read menu data\n".utf8)); exit(1) }
+            m.inline = true
+            var asked = ""
+            m.summaryConsent = { title, text in asked = title + " | " + text; return !args.contains("--refuse") }
+            guard let row = m.visibleRows.first(where: { $0.short == args[i + 1] }) else { print("no such row"); exit(2) }
+            m.summarize(row)
+            if !asked.isEmpty { print("asked: " + asked.replacingOccurrences(of: "\n", with: " ")) }
+            print("toast: " + (m.toast ?? "-"))
+            m.refreshNow()
+            dumpModel(m)
+            exit(0)
         }
         if let i = args.firstIndex(of: "--copy"), i + 1 < args.count {
             guard let m = headlessModel(args) else { FileHandle.standardError.write(Data("could not read menu data\n".utf8)); exit(1) }
