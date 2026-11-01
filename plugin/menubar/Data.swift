@@ -202,9 +202,14 @@ extension Row: Identifiable {
     var warning: String? { resume.notes.isEmpty ? nil : resume.notes.joined(separator: "\n") }
 
     /// "xcloud#8707 · round 2 · Codex · 1h": the facts about a row (the status is shown as a pill next to the title).
-    var detail: String {
+    var detail: String { detail(inChain: false) }
+
+    /// The same under an open chain, where the chain's name is the heading: "round 2 · Codex · 1h" (the key was repeated
+    /// on every round).
+    func detail(inChain: Bool) -> String {
         var parts: [String] = []
-        if let c = chain { parts.append(clip(c, 30) + (round.map { " · round \($0)" } ?? "")) }
+        if let c = chain, !inChain { parts.append(clip(c, 30) + (round.map { " · round \($0)" } ?? "")) }
+        else if inChain, let r = round { parts.append("round \(r)") }
         if harness != "claude" { parts.append(harness == "codex" ? "Codex" : harness) }
         if let v = via { parts.append(v) }
         if isKept { parts.append("copy kept") }
@@ -253,6 +258,10 @@ extension Row: Identifiable {
 extension ChainInfo: Identifiable {
     /// The name shown for a chain (chain names are free text, so a very long one is shortened).
     var label: String { clip(id, 34) }
+    /// The newest round's title, when it says more than the key ("shop#4321" alone told a newcomer nothing).
+    var titleShown: String? { title.isEmpty || title.lowercased() == id.lowercased() ? nil : title }
+    /// Rounds chainlog did not send (it lists the newest 8): said, so "12 sessions" over 8 rows is not a puzzle.
+    var older: Int { max(0, rounds - members.count) }
     /// The round "Continue the latest round" opens: the newest one, and only when it can be opened (an older round
     /// is not offered in its place: that would continue the wrong work).
     var continuable: Row? { members.last.flatMap { $0.canResume ? $0 : nil } }

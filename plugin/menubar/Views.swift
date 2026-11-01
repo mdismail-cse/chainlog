@@ -204,23 +204,28 @@ struct ChainBlock: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Button { withAnimation(.easeOut(duration: 0.12)) { model.toggle(chain: chain.id, defaultOpen: defaultOpen) } } label: {
-                HStack(spacing: 8) {
+                HStack(alignment: .top, spacing: 8) {
                     Image(systemName: open ? "chevron.down" : "chevron.right").font(.system(size: 10, weight: .semibold))
-                        .foregroundColor(.secondary).frame(width: 14)
-                    Text(chain.label).font(.system(size: 13, weight: .semibold))
-                    if let s = chain.status { StatusPill(text: statusWord(s), code: s) }
+                        .foregroundColor(.secondary).frame(width: 14).padding(.top, 3)
+                    VStack(alignment: .leading, spacing: 2) {
+                        // what the work is (the newest round's title), then the key and the count: the key alone said nothing
+                        HStack(spacing: 6) {
+                            Text(chain.titleShown ?? chain.label).font(.system(size: 13, weight: .semibold)).lineLimit(1)
+                            if let s = chain.status { StatusPill(text: statusWord(s), code: s) }
+                        }
+                        Text((chain.titleShown != nil ? "\(chain.label) · " : "") + "\(chain.rounds) session\(chain.rounds == 1 ? "" : "s") · \(chain.ago)")
+                            .font(.system(size: 11.5)).foregroundColor(.secondary).lineLimit(1)
+                    }
                     Spacer()
-                    Text("\(chain.rounds) round\(chain.rounds == 1 ? "" : "s") · \(chain.ago)")
-                        .font(.system(size: 11.5)).foregroundColor(.secondary)
                 }
-                .padding(.horizontal, 12).padding(.vertical, 8).contentShape(Rectangle())
+                .padding(.horizontal, 12).padding(.vertical, 7).contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             if open {
                 HStack(spacing: 14) {
                     if let latest = chain.continuable {
                         Button { model.open(latest) } label: {
-                            Label("Continue the latest round (r\(chain.rounds))", systemImage: "arrow.uturn.forward")
+                            Label("Continue the newest session (round \(chain.rounds))", systemImage: "arrow.uturn.forward")
                                 .font(.system(size: 12.5)).foregroundColor(.accentColor)
                         }
                         .buttonStyle(.plain)
@@ -234,6 +239,12 @@ struct ChainBlock: View {
                 }
                 .padding(.leading, 34).padding(.vertical, 4)
                 ForEach(chain.members.reversed()) { m in SessionRow(model: model, row: m, round: m.round).padding(.leading, 14) }
+                if chain.older > 0 {  // chainlog sends the newest 8 rounds; the rest are a command away
+                    Button { model.runChainlog(["chain", chain.id], name: "chain") } label: {
+                        Text("\(chain.older) older session\(chain.older == 1 ? "" : "s") in Terminal…").font(.system(size: 12)).foregroundColor(.accentColor)
+                    }
+                    .buttonStyle(.plain).padding(.leading, 34).padding(.vertical, 4)
+                }
             }
         }
     }
@@ -292,7 +303,7 @@ struct EmptyState: View {
         }
         switch model.tab {
         case .starred: return noSessionsAtAll ? "No sessions yet" : "Nothing starred yet"
-        case .chains: return "No PR chains yet"
+        case .chains: return "No chains yet"
         case .sessions, .ask: return "No sessions yet"
         }
     }
@@ -312,7 +323,7 @@ struct EmptyState: View {
             if noSessionsAtAll { return "Use Claude Code or Codex as usual and they show up here." }
             return "In Sessions, hover a session and click ★ (or ⋯ → Add to Starred). It stays listed here"
                 + ((model.data?.keep_auto ?? true) ? ", and chainlog keeps a copy that Claude's cleanup can't delete." : ".")
-        case .chains: return "Hover a session, click the pencil, and add it to a chain: any name you like. Sessions in one chain are listed together here."
+        case .chains: return "A chain is every session on one piece of work, in order. Sessions that link a PR join one by themselves; for anything else, hover a session, click the pencil and type a chain name. They are listed together here."
         case .sessions, .ask: return "Use Claude Code or Codex as usual and they show up here."
         }
     }
@@ -367,11 +378,12 @@ struct SessionRow: View {
                     }
                     // what happened (your note, else the summary, else the last reply), then the facts; the facts alone when nothing was said
                     HStack(spacing: 6) {
-                        Text(row.gist ?? row.detail).font(.system(size: 11.5))
+                        let meta = row.detail(inChain: round != nil)  // under an open chain the heading names the chain already
+                        Text(row.gist ?? meta).font(.system(size: 11.5))
                             .foregroundColor(row.note != nil ? .primary.opacity(0.8) : .secondary).lineLimit(1)
                         if row.gist != nil {
                             Spacer(minLength: 6)
-                            Text(row.detail).font(.system(size: 11)).foregroundColor(.secondary).lineLimit(1).fixedSize()
+                            Text(meta).font(.system(size: 11)).foregroundColor(.secondary).lineLimit(1).fixedSize()
                         }
                     }
                 }

@@ -205,7 +205,7 @@ class AppEndToEnd(Home):
         for i in (0, 3, 6):  # three rounds of PR 5000
             self.assertEqual(self.app("--act", "save", self.ref(i), "pass", "round %d" % i)[0], 0)
         d = self.dump("--tab", "chains")
-        self.assertIn("3 rounds", d)
+        self.assertIn("3 sessions", d)
         self.assertIn("enter opens: Shop PR 5000 review (r3)", d)
         self.assertEqual(d.splitlines()[-1].count("(r3)"), 1)
 
@@ -215,12 +215,12 @@ class AppEndToEnd(Home):
             self.assertEqual(self.app("--act", "save", self.ref(i), "-", "", "refund work")[:2], (0, "ok\n"))
         d = self.dump("--tab", "chains")
         self.assertIn("refund work", d)
-        self.assertIn("3 rounds", d)
+        self.assertIn("3 sessions", d)
         self.assertEqual(self.show(4)["chains"][0]["id"], "refund work")
         self.assertEqual([n for n in self.show(4)["notes"] if n.get("kind") == "note"], [], "no note was invented")
         # a fourth session joins the same chain by the same name, and a note and result can go with it
         self.assertEqual(self.app("--act", "save", self.ref(9), "fail", "still broken with coupons", "refund work")[0], 0)
-        self.assertIn("4 rounds", self.dump("--tab", "chains"))
+        self.assertIn("4 sessions", self.dump("--tab", "chains"))
         self.assertEqual(self.show(9)["status"], "fail")
 
     def test_a_chain_name_that_starts_with_a_dash_is_a_name(self):

@@ -167,7 +167,7 @@ final class AppModel: ObservableObject {
     var totalChains: Int { data.map { $0.counts.chains ?? $0.chains.count } ?? 0 }
     var moreChains: Int { max(0, totalChains - (data?.chains.count ?? 0)) }
     /// The heading over the chains: "PR chains · 3", or "newest 30 of 35" when chainlog sent only the newest ones.
-    var chainsHeader: String { moreChains > 0 && !isSearching ? "PR chains · newest \(chains.count) of \(totalChains)" : "PR chains · \(chains.count)" }
+    var chainsHeader: String { moreChains > 0 && !isSearching ? "Chains · newest \(chains.count) of \(totalChains)" : "Chains · \(chains.count)" }
     /// The link to the rest, when there is a rest. It names the real total, also while a search narrows the list.
     var chainsFooter: String? { moreChains > 0 ? "All \(totalChains) chains in Terminal…" : nil }
     var unsavedCount: Int { data?.counts.unsaved ?? 0 }

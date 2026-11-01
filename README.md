@@ -302,11 +302,11 @@ by every summary (also the automatic ones), after chainlog's own rules. For one 
 You worked on one feature (say cloud backup) across 20 sessions. A **context** merges what those sessions taught you into
 one small file, so a brand-new session can start from all of it.
 
-1. **Make it.** In the menu bar app: **Chains** tab → **New context**. In step 1, **Describe it (AI)**: write what you
+1. **Make it.** In the menu bar app: **Chains** tab → **New context**. In step 1, **Let the AI find them**: write what you
    are looking for ("PRs where large backup restores failed or timed out") and click **Find**. The AI you connected in the
    Ask tab reads the short summaries of your sessions (titles, notes, PR numbers; not whole conversations, 1 request) and
-   recommends the ones about it, grouped by PR, each marked *strong* or *maybe* with the reason. **Pick strong**, **Pick
-   all**, or tick the ones you want; it also suggests a name. Or use **Search words** (`backup`, then **Pick all**).
+   recommends the ones about it, grouped by PR, each marked *strong* or *maybe* with the reason. **Pick the good matches**, **Pick
+   all**, or tick the ones you want; it also suggests a name. Or use **Search by word** (`backup`, then **Pick all**).
    Then **Build**. In a terminal:
 
    ```sh

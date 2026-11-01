@@ -291,10 +291,10 @@ func dumpAsk(_ m: AppModel) {
 
 @MainActor
 func dumpModel(_ m: AppModel) {
-    func line(_ r: Row) -> String {
+    func line(_ r: Row, inChain: Bool = false) -> String {
         let mark = "[\(r.live ? "running" : (r.saved == "user" ? "saved" : (r.saved == "auto" ? "auto-saved" : "not saved")))]"
         let gist = r.gist.map { " — \(clip($0, 70))" } ?? ""
-        return "  \(mark) \(r.starred ? "★ " : "")\(r.canResume ? "" : "(can't reopen) ")\(r.canResume && r.warning != nil ? "(asks first) " : "")\(clip(r.title, 60))\(r.statusLabel.map { " <\($0)>" } ?? "")\(gist) — \(r.detail)"
+        return "  \(mark) \(r.starred ? "★ " : "")\(r.canResume ? "" : "(can't reopen) ")\(r.canResume && r.warning != nil ? "(asks first) " : "")\(clip(r.title, 60))\(r.statusLabel.map { " <\($0)>" } ?? "")\(gist) — \(r.detail(inChain: inChain))"
     }
     if m.tab == .ask { dumpAsk(m); return }
     let counts = Tab.allCases.map { t in "\(t.title)\(m.count(for: t).map { " \($0)" } ?? "")\(t == m.tab ? "*" : "")" }
@@ -323,9 +323,10 @@ func dumpModel(_ m: AppModel) {
         let chains = m.chains
         if chains.isEmpty { print("(empty: \(EmptyState(model: m).title) — \(EmptyState(model: m).detail))") } else { print(m.chainsHeader) }
         for c in chains {
-            print("\(c.label) · \(c.status ?? "no status") · \(c.rounds) round\(c.rounds == 1 ? "" : "s") · \(c.ago)")
-            if c.continuable != nil { print("  → Continue the latest round (r\(c.rounds))") }
-            for r in c.members.reversed() { print("  r\(r.round ?? 0)" + line(r)) }
+            print("\(c.label) · \(c.status ?? "no status") · \(c.rounds) session\(c.rounds == 1 ? "" : "s") · \(c.ago)" + (c.titleShown.map { " — \(clip($0, 60))" } ?? ""))
+            if c.continuable != nil { print("  → Continue the newest session (round \(c.rounds))") }
+            for r in c.members.reversed() { print("  r\(r.round ?? 0)" + line(r, inChain: true)) }
+            if c.older > 0 { print("  → \(c.older) older session\(c.older == 1 ? "" : "s") in Terminal…") }
         }
         if let footer = m.chainsFooter { print("→ \(footer)") }
         return

@@ -11,7 +11,7 @@ struct ContextsSection: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
-                Text(cx.contexts.isEmpty ? "CONTEXTS" : "CONTEXTS · \(cx.contexts.count)")
+                Text(cx.contexts.isEmpty ? "Contexts" : "Contexts · \(cx.contexts.count)")
                     .font(.system(size: 11, weight: .semibold)).foregroundColor(.secondary)
                 Spacer()
                 Button { cx.beginNew() } label: { Label("New context", systemImage: "plus").font(.system(size: 12)) }
@@ -43,7 +43,7 @@ struct ContextRow: View {
                     .foregroundColor(.secondary).frame(width: 14)
                 Image(systemName: "square.stack.3d.up.fill").font(.system(size: 11.5)).foregroundColor(.accentColor)
                 Text(c.name).font(.system(size: 13, weight: .semibold)).lineLimit(1)
-                if !c.built { StatusPill(text: "not built") } else if c.needs_update { StatusPill(text: c.pendingShort) }
+                if !c.built { StatusPill(text: "no notes yet") } else if c.needs_update { StatusPill(text: c.pendingShort) }
                 Spacer(minLength: 4)
                 if hovering && c.built && !open {
                     IconButton(symbol: "play.circle", help: "Start a new \(c.tool.label) session with this context") { cx.start(c) }
@@ -236,8 +236,8 @@ struct ContextBuilder: View {
                 if !cx.selected.isEmpty { Button("Clear") { cx.clearSelection() }.buttonStyle(.plain).font(.system(size: 11.5)).foregroundColor(.accentColor) }
             }
             Picker("", selection: $cx.pickMode) {
-                Text("Describe it (AI)").tag(ContextModel.PickMode.describe)
-                Text("Search words").tag(ContextModel.PickMode.words)
+                Text("Let the AI find them").tag(ContextModel.PickMode.describe)
+                Text("Search by word").tag(ContextModel.PickMode.words)
             }
             .pickerStyle(.segmented).labelsHidden()
             if cx.pickMode == .describe { describe } else { words }
@@ -272,7 +272,7 @@ struct ContextBuilder: View {
             if let s = cx.suggestion, !s.picks.isEmpty {
                 HStack(spacing: 12) {
                     let strong = s.picks.filter(\.strong).count
-                    if strong > 0 { Button("Pick strong (\(strong))") { cx.pickSuggested(strongOnly: true) } }
+                    if strong > 0 { Button("Pick the good matches (\(strong))") { cx.pickSuggested(strongOnly: true) } }
                     Button("Pick all (\(s.picks.count))") { cx.pickSuggested(strongOnly: false) }
                     Spacer()
                 }
@@ -439,7 +439,7 @@ struct PickRow: View {
             VStack(alignment: .leading, spacing: 1) {
                 HStack(spacing: 5) {
                     Text(row.title).font(.system(size: 12.5)).lineLimit(1)
-                    if let f = fit { StatusPill(text: f) }
+                    if let f = fit { StatusPill(text: f == "strong" ? "good match" : f, code: f) }
                 }
                 if let w = why, !w.isEmpty {
                     Text(w).font(.system(size: 10.5)).foregroundColor(.primary.opacity(0.7)).lineLimit(2)

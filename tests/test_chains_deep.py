@@ -615,11 +615,11 @@ class ChainsTabApp(unittest.TestCase):
         """{label: {"head": line, "continue": bool, "rounds": [(round, mark, title, detail)]}}, plus the header and footer."""
         blocks, current, header, footer = {}, None, None, None
         for line in out.splitlines():
-            if line.startswith("PR chains"):
+            if line.startswith("Chains"):
                 header = line
             elif line.startswith("→ "):
                 footer = line[2:]
-            elif line.startswith("  → Continue the latest round"):
+            elif line.startswith("  → Continue the newest session (round"):
                 current["continue"] = line.strip()
             elif line.startswith("  r"):
                 m = re.match(r"^  r(\d+)  \[(.*?)\] (.*?) — (.*)$", line)
@@ -633,7 +633,7 @@ class ChainsTabApp(unittest.TestCase):
     def test_every_chain_is_drawn_newest_first_with_its_rounds_newest_first(self):
         out = self.dump(self.big)
         blocks, header, footer = self.parse(out)
-        self.assertEqual(header, "PR chains · 8")
+        self.assertEqual(header, "Chains · 8")
         self.assertIsNone(footer)
         self.assertEqual(list(blocks), CHAINS)
         self.assertIn("Chains 8*", out.splitlines()[0])
@@ -644,19 +644,19 @@ class ChainsTabApp(unittest.TestCase):
     def test_each_heading_says_the_verdict_and_the_number_of_rounds_in_the_right_grammar(self):
         blocks, _h, _f = self.parse(self.dump(self.big))
         heads = {k: v["head"] for k, v in blocks.items()}
-        expect = {"shop#4321": ("pass", "5 rounds"), "shop#4388": ("no status", "2 rounds"), "api#4321": ("no status", "1 round"),
-                  "release 3.2 regression": ("fail", "4 rounds"), "shop#9000": ("pass", "10 rounds"), "shop#5000": ("no status", "3 rounds"),
-                  "api#177": ("wip", "3 rounds"), "tracker#321": ("blocked", "2 rounds")}
+        expect = {"shop#4321": ("pass", "5 sessions"), "shop#4388": ("no status", "2 sessions"), "api#4321": ("no status", "1 session"),
+                  "release 3.2 regression": ("fail", "4 sessions"), "shop#9000": ("pass", "10 sessions"), "shop#5000": ("no status", "3 sessions"),
+                  "api#177": ("wip", "3 sessions"), "tracker#321": ("blocked", "2 sessions")}
         for label, (status, rounds) in expect.items():
-            self.assertRegex(heads[label], r"^%s · %s · %s · \d+[smhdwy]$" % (re.escape(label), status, rounds), label)
-        self.assertNotIn("1 rounds", "\n".join(heads.values()))
+            self.assertRegex(heads[label], r"^%s · %s · %s · \d+[smhdwy](?: — .*)?$" % (re.escape(label), status, rounds), label)
+        self.assertNotIn("1 sessions", "\n".join(heads.values()))
 
     def test_a_long_chain_shows_its_last_eight_rounds_under_the_real_count(self):
         blocks, _h, _f = self.parse(self.dump(self.big))
         rounds = blocks["shop#9000"]["rounds"]
         self.assertEqual([r[0] for r in rounds], list(range(10, 2, -1)))
         self.assertTrue(rounds[0][2].startswith("Checkout run 10 <Passed>"), rounds[0])  # the title and the result's pill
-        self.assertEqual(blocks["shop#9000"]["continue"], "→ Continue the latest round (r10)")
+        self.assertEqual(blocks["shop#9000"]["continue"], "→ Continue the newest session (round 10)")
 
     def test_continue_is_offered_only_when_the_newest_round_can_be_opened(self):
         blocks, _h, _f = self.parse(self.dump(self.big))
@@ -664,7 +664,7 @@ class ChainsTabApp(unittest.TestCase):
             if label == "api#177":
                 self.assertIsNone(b["continue"], "its newest round has no transcript and no copy")
             else:
-                self.assertEqual(b["continue"], "→ Continue the latest round (r%s)" % b["head"].split(" · ")[2].split()[0], label)
+                self.assertEqual(b["continue"], "→ Continue the newest session (round %s)" % b["head"].split(" · ")[2].split()[0], label)
 
     def test_a_round_that_cannot_be_opened_is_marked_and_one_that_is_restored_first_is_not(self):
         blocks, _h, _f = self.parse(self.dump(self.big))
@@ -677,15 +677,15 @@ class ChainsTabApp(unittest.TestCase):
     def test_each_round_says_which_tool_it_ran_in_and_which_chain_it_is_listed_under(self):
         blocks, _h, _f = self.parse(self.dump(self.big))
         r = {x[0]: x for x in blocks["shop#4321"]["rounds"]}
-        self.assertIn("shop#4321 · round 2 · Codex", r[2][3], r[2])
-        self.assertIn("shop#4321 · round 3 · VS Code", r[3][3], r[3])
-        self.assertIn("shop#4321 · round 1 · ", r[1][3], r[1])
+        self.assertTrue(r[2][3].endswith("— round 2 · Codex · 27d") or " — round 2 · Codex · " in r[2][3], r[2])  # the key is the heading, not repeated
+        self.assertIn("round 3 · VS Code", r[3][3], r[3])
+        self.assertIn("round 1 · ", r[1][3], r[1]); self.assertNotIn("shop#4321 · round", r[1][3])
         self.assertNotIn("Codex", r[1][3])
         self.assertEqual([x[1] for x in blocks["shop#4321"]["rounds"]], ["saved"] * 5)
         self.assertEqual([x[1] for x in blocks["shop#5000"]["rounds"]], ["not saved"] * 3)
         both = [blocks["shop#4388"]["rounds"][0], blocks["release 3.2 regression"]["rounds"][1]]  # the session in two chains
-        self.assertIn("shop#4388 · round 2", both[0][3], both[0])
-        self.assertIn("release 3.2 regression · round 3", both[1][3], both[1])
+        self.assertIn("round 2 · ", both[0][3], both[0])
+        self.assertIn("round 3 · ", both[1][3], both[1])
 
     def test_enter_opens_the_newest_round_of_the_newest_chain(self):
         out = self.dump(self.big)
@@ -701,10 +701,10 @@ class ChainsTabApp(unittest.TestCase):
             blocks, header, _f = self.parse(self.dump(self.big, "--query", " ".join(query)))
             return list(blocks), header
 
-        self.assertEqual(hits("4321"), (["api#4321", "shop#4321"], "PR chains · 2"))
+        self.assertEqual(hits("4321"), (["api#4321", "shop#4321"], "Chains · 2"))
         # "release" is the chain's name and also a word in the title of one round of shop#4388
-        self.assertEqual(hits("release"), (["release 3.2 regression", "shop#4388"], "PR chains · 2"))
-        self.assertEqual(hits("RELEASE", "Regression"), (["release 3.2 regression"], "PR chains · 1"))  # every word, any case
+        self.assertEqual(hits("release"), (["release 3.2 regression", "shop#4388"], "Chains · 2"))
+        self.assertEqual(hits("RELEASE", "Regression"), (["release 3.2 regression"], "Chains · 1"))  # every word, any case
         self.assertEqual(hits("polishing")[0], ["shop#4321"])     # a word from round 4's title: not the chain's own title (round 5's)
         self.assertEqual(hits("vscode")[0], ["shop#4321"])        # the round that ran in the VS Code extension
         self.assertEqual(hits("codex")[0], ["shop#4321"])
@@ -717,11 +717,11 @@ class ChainsTabApp(unittest.TestCase):
     def test_nothing_found_says_so_and_a_world_with_no_chains_explains_how_chains_start(self):
         out = self.dump(self.big, "--query", "zzzz-no-such-thing")
         self.assertIn("(empty: No chain matches “zzzz-no-such-thing”", out)
-        self.assertNotIn("PR chains", out)
+        self.assertNotIn("Chains ·", out)
 
     def test_with_more_chains_than_were_sent_it_says_newest_30_of_35_and_links_to_all_of_them(self):
         blocks, header, footer = self.parse(self.dump(self.lots))
-        self.assertEqual(header, "PR chains · newest 30 of 35")
+        self.assertEqual(header, "Chains · newest 30 of 35")
         self.assertEqual(footer, "All 35 chains in Terminal…")
         self.assertEqual(len(blocks), 30)
         self.assertEqual(list(blocks)[0], "shop#1000")
@@ -729,7 +729,7 @@ class ChainsTabApp(unittest.TestCase):
     def test_searching_with_more_chains_than_were_sent_still_names_the_real_total_and_explains_the_limit(self):
         blocks, header, footer = self.parse(self.dump(self.lots, "--query", "1001"))
         self.assertEqual(list(blocks), ["shop#1001"])
-        self.assertEqual(header, "PR chains · 1")
+        self.assertEqual(header, "Chains · 1")
         self.assertEqual(footer, "All 35 chains in Terminal…")  # not "All 6": the total, not matches + the ones not loaded
         out = self.dump(self.lots, "--query", "1034")  # the 35th: past the 30 that were sent
         self.assertIn("(empty: ", out)

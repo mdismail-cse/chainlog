@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Menu bar app, Chains: a chain's header shows what the work is (its newest round's title) over the key and the count, so
+  thirty rows no longer read `shop#4321 · 3 rounds · 2d`; the rounds under an open chain stop repeating the key ("round 2 ·
+  Codex · 4h"); a chain with more rounds than the 8 listed says "N older sessions in Terminal…"; and plain words: "Chains"
+  not "PR chains", "N sessions", "Continue the newest session (round N)", "Contexts" in sentence case, "no notes yet" instead
+  of "not built", "Let the AI find them" / "Search by word" instead of "Describe it (AI)" / "Search words", "Pick the good
+  matches" and a "good match" pill instead of "strong".
 - Menu bar app, Starred: the search box says it searches your starred sessions only, and a search with no hit says so and
   offers **Search all sessions** (a known title used to look gone); the empty tab explains what starring does (it stays
   listed, and a copy is kept) with **Go to Sessions**; the section title counts every starred session and says when only

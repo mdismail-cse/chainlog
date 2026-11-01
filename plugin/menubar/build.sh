@@ -87,7 +87,7 @@ case "${1:-build}" in
     printf '%s\n' "$out" | want "Shop PR 4388 coupon stacking — Two coupons stack when they should not — Desktop · 2h" "a session started in the desktop app has no tag" || exit 1
     printf '%s\n' "$out" | want "★ Tracker CSV export" "a starred session has no star" || exit 1
     dump --tab starred | want "Starred · 2" "the Starred tab does not list the 2 starred sessions" || exit 1
-    dump --tab chains | want "Continue the latest round" "the Chains tab has no continue line" || exit 1
+    dump --tab chains | want "Continue the newest session" "the Chains tab has no continue line" || exit 1
     dump --query refund --find-file "$found" | want "Results · 7" "searching does not show the search results" || exit 1
     dump --tab starred --query refund --find-file "$found" | want "Starred results · 2" "the Starred tab does not filter the search" || exit 1
     printf '{"schema":"chainlog.menu/1","query":"zzzz","results":[]}' > "$tmp/none.json"
