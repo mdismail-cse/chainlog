@@ -701,6 +701,7 @@ func selfTest(sample path: String?) -> Int {
         var asked = ""
         cx.consentConfirmer = { title, _ in asked = title; return false }
         cx.build()
+        check("  ... no focus was given, so none is sent", requests.first?.focus == nil)
         check("Build sends the name, the picked sessions in order, and the questions", requests.count == 1 && requests[0].isNew
               && requests[0].name == "Refunds" && requests[0].refs == [rows[1].ref, rows[2].ref] && requests[0].questions! == cx.cleanQuestions)
         check("  ... and shows the progress screen", cx.screen == .building)
@@ -736,6 +737,12 @@ func selfTest(sample path: String?) -> Int {
         let shop = cx.contexts[0]
         cx.beginEditQuestions(shop)
         check("Edit questions opens a context's own questions, nothing to add", cx.questionsSource == "This context's" && cx.adding.isEmpty && cx.blocker == "Pick sessions to add")
+        check("  ... with its focus", cx.cleanFocus == "refunds that fail with coupons" && !cx.focusChanged)
+        cx.focus = "  refunds only  "
+        check("a new focus reads every session again too", cx.focusChanged && cx.rereadAll && cx.blocker == nil
+              && cx.estimate == "Reads \(shop.sessions) sessions with Claude: about \(shop.sessions + 1) requests on your plan.")
+        cx.focus = "refunds that fail with coupons"
+        check("  ... the same focus is no change", !cx.rereadAll && cx.blocker == "Pick sessions to add")
         cx.applyPreset(cx.presets[1])
         check("  ... new ones read every session again, and the cost says so", cx.questionsChanged && cx.blocker == nil
               && cx.estimate == "Reads \(shop.sessions) sessions with Claude: about \(shop.sessions + 1) requests on your plan.", cx.estimate)
@@ -745,8 +752,8 @@ func selfTest(sample path: String?) -> Int {
         let saved = Saved()
         m.runner = { args in saved.ran.append(args); return (true, "") }
         cx.build()
-        check("  ... Update sends only the new questions (nothing added)", requests.count == 1 && !requests[0].isNew && requests[0].refs.isEmpty
-              && requests[0].questions == cx.presets[1].questions && requests[0].name == shop.slug)
+        check("  ... Update sends only the new questions (nothing added, the focus unchanged)", requests.count == 1 && !requests[0].isNew && requests[0].refs.isEmpty
+              && requests[0].questions == cx.presets[1].questions && requests[0].name == shop.slug && requests[0].focus == nil)
         check("  ... and \"use these for new contexts too\" saves them as your default", saved.ran.last == ["context", "questions", "--set"] + cx.presets[1].questions)
         cx.stop()
         // finding sessions by describing them: the AI recommends, grouped by chain or PR; you pick
@@ -772,6 +779,7 @@ func selfTest(sample path: String?) -> Int {
             ax.findByDescription()
             check("  ... Find asks once, with what you wrote", asked.texts == ["refund failures"])
             check("  ... the name comes from the AI when you gave none", ax.name == "Shop refunds")
+            check("  ... and what you described becomes the focus of the notes", ax.cleanFocus == "refund failures")
             check("  ... and says how far it looked and what it found", ax.suggestNote == "Claude looked at 7 of your 9 sessions: 2 strong, 2 maybe · 1 request", ax.suggestNote)
             let groups = ax.suggestion?.groups.map { "\($0.name):\($0.picks.count)" } ?? []
             check("  ... grouped: the chain with strong picks first, then the PR, sessions in neither last", groups == ["shop#4321:2", "PR #4388 · shop:1", ":1"], "\(groups)")
@@ -782,8 +790,9 @@ func selfTest(sample path: String?) -> Int {
             ax.pickSuggested(strongOnly: false)
             check("Pick all adds the rest, each once", ax.selected.count == 4)
             ax.name = "Mine"
+            ax.focus = "my own focus"
             ax.findByDescription()
-            check("a name you typed is kept", ax.name == "Mine")
+            check("a name and a focus you typed are kept", ax.name == "Mine" && ax.cleanFocus == "my own focus")
             ax.suggester = { _ in (nil, "Claude says you are not signed in") }
             ax.findByDescription()
             check("a failure is said in place, and the old list goes", ax.suggestion == nil && ax.suggestNote == "Claude says you are not signed in")

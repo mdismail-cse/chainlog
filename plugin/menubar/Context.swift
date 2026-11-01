@@ -24,12 +24,14 @@ struct ContextRequest: Equatable {
     var refs: [String] = []
     var questions: [String]? = nil
     var chain: String? = nil
+    var focus: String? = nil   // "" takes it away
     var agree = false
 
     var json: Data {
         var o: [String: Any] = ["name": name, "new": isNew, "refs": refs, "agree": agree]
         if let q = questions { o["questions"] = q }
         if let c = chain { o["chain"] = c }
+        if let f = focus { o["focus"] = f }
         return (try? JSONSerialization.data(withJSONObject: o)) ?? Data("{}".utf8)
     }
 }
@@ -222,6 +224,7 @@ final class ContextModel: ObservableObject {
     @Published private(set) var pickResults: [Row]?
     @Published private(set) var pickSearching = false
     @Published var questions: [String] = []
+    @Published var focus = ""                           // read each session only for what concerns this
     @Published var saveAsDefault = false
     @Published private(set) var target: ContextInfo?   // the context being added to; nil while making a new one
     @Published private(set) var chain: String?          // a new context that follows this chain
@@ -300,6 +303,10 @@ final class ContextModel: ObservableObject {
     /// What a build would add: on a new context, everything picked; on an existing one, what is not in it yet.
     var adding: [Row] { selected.filter { !alreadyIn.contains($0.ref) } }
     var questionsChanged: Bool { target.map { cleanQuestions != $0.questions } ?? false }
+    var cleanFocus: String { focus.trimmingCharacters(in: .whitespacesAndNewlines) }
+    var focusChanged: Bool { target.map { cleanFocus != ($0.focus ?? "") } ?? false }
+    /// New questions or a new focus: every session in the context is read again.
+    var rereadAll: Bool { questionsChanged || focusChanged }
 
     /// Why Build is not possible yet, or nil when it is.
     var blocker: String? {
@@ -310,13 +317,13 @@ final class ContextModel: ObservableObject {
             if selected.isEmpty { return "Pick the sessions to put in it" }
             return nil
         }
-        return adding.isEmpty && !questionsChanged ? "Pick sessions to add" : nil
+        return adding.isEmpty && !rereadAll ? "Pick sessions to add" : nil
     }
 
     /// "Reads 5 sessions with Claude: about 6 requests."
     var estimate: String {
         let n: Int
-        if let t = target { n = questionsChanged ? t.sessions + adding.count : adding.count } else { n = selected.count }
+        if let t = target { n = rereadAll ? t.sessions + adding.count : adding.count } else { n = selected.count }
         // (each answer is up to 80 words, so the notes grow with the questions too)
         return "Reads \(n) session\(n == 1 ? "" : "s") with \(engine.label): about \(n + 1) request\(n == 0 ? "" : "s") on your plan."
     }
@@ -348,6 +355,7 @@ final class ContextModel: ObservableObject {
         for r in rows + (chain?.members ?? []) where !picked.contains(where: { $0.ref == r.ref }) { picked.append(r) }
         selected = picked
         questions = defaultQuestions
+        focus = ""
         resetBuilder()
         app?.tab = .chains
         screen = .builder
@@ -360,6 +368,7 @@ final class ContextModel: ObservableObject {
         name = c.name
         selected = rows.filter { !c.members.contains($0.ref) }
         questions = c.questions
+        focus = c.focus ?? ""
         resetBuilder()
         app?.tab = .chains
         screen = .builder
@@ -461,6 +470,8 @@ final class ContextModel: ObservableObject {
             ? "\(who) found nothing about that in \(s.listed) of your \(s.total) sessions. Try other words."
             : "\(who) looked at \(s.listed) of your \(s.total) sessions: \(strong) strong, \(s.picks.count - strong) maybe · 1 request"
         if name.trimmingCharacters(in: .whitespaces).isEmpty && target == nil { name = s.name }
+        // what you described is what the notes should be about (you can change or clear it in step 2)
+        if cleanFocus.isEmpty && target == nil && !s.picks.isEmpty { focus = describeText.trimmingCharacters(in: .whitespacesAndNewlines) }
     }
 
     /// Screenshots and checks: show a recommendation without asking anyone.
@@ -486,10 +497,11 @@ final class ContextModel: ObservableObject {
         }
         let req: ContextRequest
         if let t = target {
-            req = ContextRequest(name: t.slug, isNew: false, refs: adding.map(\.ref), questions: qs == t.questions ? nil : qs)
+            req = ContextRequest(name: t.slug, isNew: false, refs: adding.map(\.ref), questions: qs == t.questions ? nil : qs,
+                                 focus: focusChanged ? cleanFocus : nil)
         } else {
             req = ContextRequest(name: name.trimmingCharacters(in: .whitespacesAndNewlines), isNew: true, refs: selected.map(\.ref),
-                                 questions: qs, chain: chain)
+                                 questions: qs, chain: chain, focus: cleanFocus.isEmpty ? nil : cleanFocus)
         }
         building = target?.name ?? req.name
         run(req)

@@ -596,6 +596,9 @@ esac
         self.assertIn("What I am looking for: the zebra widget", prompts[0])
         self.assertIn('<sessions listed="12" of="12">', prompts[0])
         self.assertNotIn("ASSISTANT:", prompts[0])  # short summaries only
+        self.assertTrue(prompts[1].startswith("Focus: the zebra widget"), prompts[1][:80])  # the description is the focus
+        meta = json.loads((self.data / "contexts" / "zebra-widget" / "context.json").read_text())
+        self.assertEqual(meta["focus"], "the zebra widget")
 
     def test_describing_without_ask_connected_sends_nothing(self):
         self.context_stub()
@@ -613,6 +616,16 @@ esac
         self.assertIn("1. What was the bug, and how did it show up", self.prompts()[-2])
         meta = json.loads((self.data / "contexts" / "zebra-work" / "context.json").read_text())
         self.assertEqual(len(meta["questions"]), 8)
+
+    def test_a_new_focus_reads_every_session_again(self):
+        self.context_stub()
+        self.make_context()
+        rc, out, err = self.app("--context", "questions", "--context-name", "Zebra work", "--context-focus", "zebra uploads", "--build")
+        self.assertEqual(rc, 0, err)
+        self.assertIn("context screen: done · Zebra work · 4 sessions · 5 requests", out)
+        self.assertTrue(self.prompts()[-2].startswith("Focus: zebra uploads"))
+        listed = self.dump("--tab", "chains", "--open-contexts")
+        self.assertIn("focus: zebra uploads", listed)
 
     def test_stopping_a_build_ends_the_ai_process_and_keeps_the_context(self):
         self.context_stub()

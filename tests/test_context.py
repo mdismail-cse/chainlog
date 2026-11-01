@@ -99,7 +99,7 @@ class ContextBase(AskBase):
     def short(self, s):
         return self.idx().sessions["claude:" + s]["short"]
 
-    def make(self, name="Cloud backup", refs=None, **kw):
+    def make(self, name="Cloud backup", refs=None, **kw):  # kw: chain, questions, focus
         refs = ["claude:" + s for s in (refs or self.backup)]
         return ctx.create(self.rt, self.cfg(), name, refs, **kw)
 
@@ -307,6 +307,57 @@ class Building(ContextBase):
         self.assertIn("<briefing group=\"3\">", last["input"])
         self.assertIn("briefings that each cover a group", last["argv"][last["argv"].index("--system-prompt") + 1])
         self.assertIn("[%s]" % ids[0], self.text())
+
+
+class Focus(ContextBase):
+    """A focus: each session is read only for what concerns it."""
+
+    def test_the_focus_reaches_the_reader_the_merge_the_notes_and_the_reference(self):
+        self.agree_context()
+        meta = self.make(focus="restores of large backups")
+        self.build(meta, answers(), answers(), answers(), briefing(self.ids()))
+        first, merge = self.fake.calls[0], self.fake.calls[-1]
+        self.assertTrue(first["input"].startswith("Focus: restores of large backups\n\nQuestions:"))
+        self.assertIn("If a Focus is given, answer only about the part of the session that concerns it",
+                      first["argv"][first["argv"].index("--system-prompt") + 1])
+        self.assertTrue(merge["input"].startswith("Focus: restores of large backups"))
+        self.assertIn("keep to it", merge["argv"][merge["argv"].index("--system-prompt") + 1])
+        self.assertIn("Focus: restores of large backups (other work in these sessions is left out)", self.text())
+        meta = ctx.get(self.rt, "Cloud backup")
+        self.assertIn("Focus: restores of large backups.", ctx.reference(self.rt, meta))
+        self.assertEqual(ctx.summary(self.rt, self.idx(), meta)["focus"], "restores of large backups")
+
+    def test_a_new_focus_reads_every_session_again_and_none_is_back_to_all(self):
+        self.built()
+        self.assertFalse(ctx.pending(self.idx(), ctx.get(self.rt, "Cloud backup"))["questions"])
+        self.use(*([answers()] * 3 + [briefing(self.ids())]))
+        code, _o, err = self.cli("context", "update", "Cloud backup", "--focus", "uploads")
+        self.assertEqual(code, 0, err)
+        self.assertEqual(len(self.fake.calls), 4)
+        self.assertTrue(self.fake.calls[0]["input"].startswith("Focus: uploads"))
+        self.use(*([answers()] * 3 + [briefing(self.ids())]))
+        self.cli("context", "update", "Cloud backup", "--focus", "")
+        self.assertEqual(len(self.fake.calls), 4)
+        self.assertTrue(self.fake.calls[0]["input"].startswith("Questions:"))
+        self.assertEqual(ctx.get(self.rt, "Cloud backup")["focus"], "")
+
+    def test_a_context_made_before_focus_existed_is_not_read_again(self):
+        meta = self.built()
+        del meta["focus"]
+        ctx.save(self.rt, meta)
+        p = ctx.pending(self.idx(), ctx.get(self.rt, "Cloud backup"))
+        self.assertFalse(p["questions"] or p["new"] or p["changed"])
+
+    def test_a_description_is_the_focus_unless_you_say_otherwise(self):
+        self.agree("claude")
+        self.agree_context()
+        s11 = self.short(sid(11))
+        self.use("%s | strong | uploads\nNAME: Uploads" % s11, answers(), briefing([s11]))
+        self.cli("context", "new", "Uploads", "--describe", "backup uploads", "--yes")
+        self.assertEqual(ctx.get(self.rt, "Uploads")["focus"], "backup uploads")
+        self.use("%s | strong | uploads\nNAME: Uploads" % s11, answers(), briefing([s11]))
+        self.cli("context", "new", "Uploads 2", "--describe", "backup uploads", "--focus", "", "--yes")
+        self.assertEqual(ctx.get(self.rt, "Uploads 2")["focus"], "")
 
 
 class Refusals(ContextBase):

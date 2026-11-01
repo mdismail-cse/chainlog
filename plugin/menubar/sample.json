@@ -387,6 +387,7 @@
         "Which facts are worth remembering (names, paths, settings, commands, error messages)?",
         "What should the next session do first?"
       ],
+      "focus": "refunds that fail with coupons",
       "engine": "claude",
       "pending": {
         "new": 1,
@@ -431,6 +432,7 @@
         "Which facts are worth remembering (names, paths, settings, commands, error messages)?",
         "What should the next session do first?"
       ],
+      "focus": "",
       "engine": null,
       "pending": {
         "new": 2,

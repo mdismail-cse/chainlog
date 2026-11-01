@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Contexts: a focus. `--focus "…"` (and the Focus field in step 2 of the builder; a description you searched with becomes the
+  focus): each session is read only for what concerns it, other work in it is left out, and the notes and the reference say
+  the focus. Changing it reads every session again. On made-up mixed-topic sessions with the real Claude: no unrelated facts
+  left, every relevant one kept, notes 17% shorter.
 - Contexts: find the sessions by describing the work. `chainlog context suggest "…"`, `context new NAME --describe "…"`, and
   *Describe it (AI)* in the app's builder: one request with Ask's short summaries (not whole conversations) to the tool
   connected in Ask; the recommended sessions come grouped by chain or PR, marked strong or maybe with the reason, and a

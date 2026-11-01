@@ -87,6 +87,7 @@ struct ContextInfo: Decodable {
     let gist: String           // one sentence: what the work is and where it stands
     let chain: String?         // the chain it follows (its new rounds join it)
     let questions: [String]
+    let focus: String?         // each session is read only for what concerns this (absent from an older chainlog)
     let engine: String?        // what built it
     let pending: ContextPending
     let needs_update: Bool     // built, and something new or changed is waiting

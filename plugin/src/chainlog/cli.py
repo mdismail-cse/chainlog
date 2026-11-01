@@ -1411,7 +1411,8 @@ def cmd_context(rt, args):
                     raise Exit(1, "cancelled. Pick sessions by id instead: chainlog context new NAME ID ID …")
         try:
             questions = args.question or (ctx_mod.preset_questions(args.preset) if args.preset else None)
-            meta = ctx_mod.create(rt, cfg, name, [s["ref"] for s in sessions], chain=args.chain, questions=questions)
+            focus = args.focus if args.focus is not None else (args.describe or None)  # a description is the focus too
+            meta = ctx_mod.create(rt, cfg, name, [s["ref"] for s in sessions], chain=args.chain, questions=questions, focus=focus)
         except ctx_mod.AskError as e:
             raise Exit(1, e.message)
         if args.no_build:
@@ -1428,6 +1429,9 @@ def cmd_context(rt, args):
                 meta["questions"] = ctx_mod.clean_questions(args.question or ctx_mod.preset_questions(args.preset))
             except ctx_mod.AskError as e:
                 raise Exit(2, e.message)
+            ctx_mod.save(rt, meta)
+        if args.focus is not None:  # a new focus (or none): every session is read again
+            meta["focus"] = ctx_mod.clean_focus(args.focus)
             ctx_mod.save(rt, meta)
         return _ctx_build(rt, cfg, args, ctx_mod, index, meta, st)
     if action == "add":
@@ -1484,6 +1488,8 @@ def cmd_context(rt, args):
         return 0
     _p("%s · %d session%s · %s" % (st.bold(meta["name"]), sm["sessions"], "" if sm["sessions"] == 1 else "s",
                                    ("built %s (%s)" % (sm["ago"], sm["period"])) if sm["built"] else "not built yet"))
+    if sm["focus"]:
+        _p("  focus: " + ui.safe(sm["focus"]))
     if sm["gist"]:
         _p("  " + ui.safe(sm["gist"]))
     if sm["pending"]["text"] and sm["built"]:
@@ -1518,13 +1524,16 @@ def cmd_context_stream(rt, args):
         refs = [r for r in request.get("refs") or [] if isinstance(r, str) and r in index.sessions]
         if request.get("new"):
             meta = ctx_mod.create(rt, cfg, request.get("name"), refs, chain=request.get("chain") or None,
-                                  questions=request.get("questions") or None)
+                                  questions=request.get("questions") or None, focus=request.get("focus") or None)
         else:
             meta = ctx_mod.get(rt, request.get("name"))
             if refs:
                 ctx_mod.add(rt, meta, refs)
             if request.get("questions"):
                 meta["questions"] = ctx_mod.clean_questions(request["questions"])
+                ctx_mod.save(rt, meta)
+            if "focus" in request and isinstance(request["focus"], str):  # "" takes the focus away
+                meta["focus"] = ctx_mod.clean_focus(request["focus"])
                 ctx_mod.save(rt, meta)
         engine = ctx_mod._engine(rt, cfg, request.get("engine") or None)[0]
         if not ctx_mod.consented(cfg, engine):
@@ -1766,6 +1775,8 @@ def build_parser():
     c_new.add_argument("--chain", metavar="KEY", help="also every round of this chain, and new rounds later")
     c_new.add_argument("--describe", metavar="TEXT", help="also the sessions the AI finds about this (1 request, short summaries)")
     c_new.add_argument("--pick", choices=["strong", "all"], default="strong", help="with --describe: which suggestions to take")
+    c_new.add_argument("--focus", metavar="TEXT", help="read each session only for what concerns TEXT (default with --describe: "
+                                                       "the description; --focus \"\" for none)")
     c_new.add_argument("-q", "--question", action="append", help="a question to ask each session (repeat; default: your ten)")
     c_new.add_argument("--preset", metavar="SET", help="start from a question set: general, bugfix, feature, qa, investigation")
     c_new.add_argument("--no-build", action="store_true", help="only save it; build later with update")
@@ -1773,6 +1784,7 @@ def build_parser():
     c_upd.add_argument("name")
     c_upd.add_argument("-q", "--question", action="append", help="new questions for it (repeat): every session is read again")
     c_upd.add_argument("--preset", metavar="SET", help="new questions from a set: general, bugfix, feature, qa, investigation")
+    c_upd.add_argument("--focus", metavar="TEXT", help="a new focus (\"\" for none): every session is read again")
     c_add = cxs.add_parser("add", help="add sessions (read on the next update)")
     c_add.add_argument("name")
     c_add.add_argument("refs", nargs="*", metavar="ID")

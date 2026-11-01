@@ -307,6 +307,10 @@ one small file, so a brand-new session can start from all of it.
    builder, or with `-q "…"`; "Use these for new contexts too" (or `chainlog context questions --set "…" "…"`) makes
    them your default. Fewer, sharper questions make shorter notes.
 
+   **Focus** (step 2, or `--focus "…"`): a session often covers more than one thing. With a focus, each session is read only
+   for what concerns it ("restores of large backups"), and the rest of its work is left out of the notes. When you find the
+   sessions by describing them, your description is the focus; change or clear it there.
+
 3. **Start a session with it.** **Start in Claude** (or Codex) in the app, or `chainlog context use "Cloud backup"`.
    The new session does not get the whole file. Its first message is a few lines (about 200 tokens) that say what the
    context is and where it is; the session **reads it only when your task needs it**, and only the part it needs.

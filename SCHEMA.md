@@ -103,7 +103,7 @@ first, at most 40; with `--every-word`, only sessions that contain every word, a
   `starred[]` holds all starred sessions (at most 50), newest activity first.
 - A chain: `id`, `rounds`, `status`, `title`, `ago`, `members[]` (rows, with `round`).
 - A context: `name`, `slug`, `sessions`, `built`, `built_at`, `ago`, `period`, `gist`, `chain` (the chain it follows, or null),
-  `questions[]`, `engine`, `pending {new, changed, questions, text}` (what Update would read), `needs_update`, `file`
+  `questions[]`, `focus` (`""` for none), `engine`, `pending {new, changed, questions, text}` (what Update would read), `needs_update`, `file`
   (`CONTEXT.md`), `dir` (the notes folder a session may read), `reference` (the lines that attach it; empty until built),
   `start {tool, folder}` (where `use` starts by default), `members[]` (session refs).
 
@@ -135,7 +135,8 @@ session_id, folder, at, task}`, `dates [first, last]`, `requests`), `cache/<ref>
 see the reference). `chainlog context ls|show|update|new --json` print contexts in the `_menu` shape.
 
 `chainlog _context` (hidden; the menu bar app) reads one JSON object on stdin, `{"name": "…", "new": true|false, "refs":
-[session refs], "questions": […] (optional), "chain": "…" (optional), "engine": "claude"|"codex" (optional), "agree": true|false}`.
+[session refs], "questions": […] (optional), "chain": "…" (optional), "focus": "…" (optional; "" takes it away), "engine": "claude"|"codex"
+(optional), "agree": true|false}`.
 `new` makes the context first (with `refs` and `questions`); otherwise `refs` are added and new `questions` replace the old ones.
 It prints one compact JSON object per line:
 

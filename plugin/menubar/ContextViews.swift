@@ -302,7 +302,16 @@ struct ContextBuilder: View {
 
     var questions: some View {
         VStack(alignment: .leading, spacing: 6) {
-            StepTitle(number: 2, title: "Questions for each session", note: "\(cx.cleanQuestions.count)") { EmptyView() }
+            StepTitle(number: 2, title: "What to note from each session", note: "\(cx.cleanQuestions.count) questions") { EmptyView() }
+            HStack(spacing: 6) {
+                Text("Focus").font(.system(size: 11.5)).foregroundColor(.secondary)
+                TextField("optional: only what concerns… e.g. restores of large backups", text: $cx.focus)
+                    .textFieldStyle(.roundedBorder).font(.system(size: 12))
+            }
+            .help("Each session is read only for what concerns this; other work in it is left out. Shorter, sharper notes.")
+            if cx.focusChanged, let t = cx.target {
+                Text("New focus: all \(t.sessions + cx.adding.count) sessions are read again.").font(.system(size: 11)).foregroundColor(.orange)
+            }
             HStack(spacing: 4) {
                 Text("Start from").font(.system(size: 11.5)).foregroundColor(.secondary)
                 Menu {
@@ -316,7 +325,7 @@ struct ContextBuilder: View {
             }
             Text("Each one is answered for every session, in up to 80 words. Fewer, sharper questions make shorter notes.")
                 .font(.system(size: 11)).foregroundColor(.secondary).fixedSize(horizontal: false, vertical: true)
-            if cx.questionsChanged, let t = cx.target {
+            if cx.questionsChanged, !cx.focusChanged, let t = cx.target {
                 Text("Changed: all \(t.sessions + cx.adding.count) sessions are read again with these.").font(.system(size: 11)).foregroundColor(.orange)
             }
             ForEach(Array(cx.questions.enumerated()), id: \.offset) { i, q in

@@ -343,6 +343,7 @@ func dumpContexts(_ m: AppModel) -> Bool {
             print("  \(c.name) · \(c.sessions) session\(c.sessions == 1 ? "" : "s") · \(state)\(c.needs_update ? " · \(c.pending.text) → Update" : "")")
             if cx.isOpen(c) {
                 if !c.gist.isEmpty { print("    gist: \(c.gist)") }
+                if let f = c.focus, !f.isEmpty { print("    focus: \(f)") }
                 if c.built { print("    → Start in \(c.tool.label) · Copy reference\(c.needs_update ? " · Update" : "")") } else { print("    → Build") }
             }
         }
@@ -364,6 +365,7 @@ func dumpContexts(_ m: AppModel) -> Bool {
         if !cx.pickQuery.isEmpty { print("  search: \"\(cx.pickQuery)\" → \(cx.pickResults?.count ?? 0) found") }
         print("  candidates: \(cx.candidates.count)")
         for r in cx.candidates.prefix(8) { print("    [\(cx.isMember(r) ? "in" : (cx.isSelected(r) ? "x" : " "))] \(clip(r.title, 50))") }
+        print("  focus: \(cx.cleanFocus.isEmpty ? "none" : "\"\(cx.cleanFocus)\"")\(cx.focusChanged ? " (changed: every session is read again)" : "")")
         print("  questions: \(cx.cleanQuestions.count) · start from: \(cx.questionsSource)\(cx.questionsChanged ? " (changed: every session is read again)" : "")")
         print("    1. \(cx.cleanQuestions.first ?? "-")")
         print("  footer: \(cx.blocker ?? cx.estimate)")
@@ -418,6 +420,7 @@ func runContextFlow(_ args: [String]) -> Int32 {
             if args.contains("--pick-all-suggested") { cx.pickSuggested(strongOnly: false) }
         }
         if let p = arg("--context-preset", in: args), let set = cx.presets.first(where: { $0.id == p }) { cx.applyPreset(set) }
+        if let f = arg("--context-focus", in: args) { cx.focus = f }
         if args.contains("--build") { cx.build(); wait() }
     case "add":
         guard let c = named(arg("--context-name", in: args) ?? "") else { print("no such context"); return 2 }
@@ -431,6 +434,7 @@ func runContextFlow(_ args: [String]) -> Int32 {
         guard let c = named(arg("--context-name", in: args) ?? "") else { print("no such context"); return 2 }
         cx.beginEditQuestions(c)
         if let p = arg("--context-preset", in: args), let set = cx.presets.first(where: { $0.id == p }) { cx.applyPreset(set) }
+        if let f = arg("--context-focus", in: args) { cx.focus = f }
         if args.contains("--build") { cx.build(); wait() }
     case "start", "start-task", "copy":
         guard let c = named(arg("--context-name", in: args) ?? "") else { print("no such context"); return 2 }
