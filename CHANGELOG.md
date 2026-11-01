@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Menu bar app, Ask: the connect screen has one big **Connect Claude** button (the tool that is ready; Return presses it)
+  with its state in words, and the other tool as a footnote ("Use Codex instead", or "Also works with Codex (not
+  installed)" with a *How to install…* button) instead of two equal cards, one of which carried an `npm install` command.
+  State is no longer colour only, and green means signed in, not "could not check". `chainlog ask --status` says "not
+  installed" / "installed but not signed in: open Terminal, run codex, sign in, then check again", with the install
+  command in its own `install` key.
 - Menu bar app, Ask: under each answer, "read 180 of 912 sessions" (or "read all 12 sessions") replaces the model's
   nickname, so a "no session mentions X" answer says how far back it looked; when only the newest were read, a line says
   to add a PR number or a word from the title to search further back. The model is in the header menu.

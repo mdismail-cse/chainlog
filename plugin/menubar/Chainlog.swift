@@ -266,8 +266,9 @@ func dumpAsk(_ m: AppModel) {
         if let s = chat.status {
             for e in AskEngine.allCases {
                 let st = s.engines[e.rawValue]
-                print("  \(e.label): \(st?.detail ?? "could not check") | Connect \(st?.usable == true ? "enabled" : "disabled")")
+                print("  \(e.label): \(st?.detail ?? "could not check")\(st?.install.map { " | install: \($0)" } ?? "") | Connect \(st?.usable == true ? "enabled" : "disabled")")
             }
+            if let p = ConnectView(chat: chat).primaryEngine { print("  primary: Connect \(p.label)") }  // the one big button
         } else { print("  (\(chat.checking ? "checking what is installed…" : "could not check what is installed"))") }
         return
     }

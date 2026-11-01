@@ -15,6 +15,7 @@ struct AskEngineStatus: Decodable {
     let installed: Bool
     let signed_in: Bool?
     let detail: String
+    let install: String?  // the install command when it is not installed (absent from an older chainlog)
     /// Installed, and not known to be signed out (an older tool that cannot say is given the benefit of the doubt).
     var usable: Bool { installed && signed_in != false }
 }

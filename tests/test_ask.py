@@ -645,6 +645,7 @@ class ConnectingAndStatus(AskBase):
         self.assertIn("sign in", st["engines"]["claude"]["detail"])
         self.assertFalse(st["engines"]["codex"]["installed"])
         self.assertIn("not installed", st["engines"]["codex"]["detail"])
+        self.assertEqual(st["engines"]["codex"]["install"], "npm install -g @openai/codex")  # the command on its own, for a button
 
     def test_how_each_tool_reports_being_signed_out(self):
         for auth, expect in (((0, '{"loggedIn": false}', ""), False), ((0, "garbage", ""), None), ((124, "", ""), None)):

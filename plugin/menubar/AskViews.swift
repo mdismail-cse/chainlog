@@ -80,13 +80,45 @@ struct ConnectView: View {
                 Text("Ask what you worked on, how a PR ended, or find a session by what happened in it. It uses the Claude or Codex you are already signed in to: no keys, no extra account.")
                     .font(.system(size: 12.5)).foregroundColor(.secondary).multilineTextAlignment(.center).padding(.horizontal, 22)
                 if let s = chat.status {
-                    ForEach(AskEngine.allCases) { e in EngineCard(chat: chat, engine: e, status: s.engines[e.rawValue]) }
+                    // one primary button for the tool that is ready; the other tool is a footnote, not an equal card
+                    if let primary = primaryEngine {
+                        let st = s.engines[primary.rawValue]
+                        if chat.connecting == primary {
+                            ProgressView().controlSize(.small).padding(.vertical, 6)
+                        } else {
+                            Button("Connect \(primary.label)") { chat.connect(primary) }
+                                .keyboardShortcut(.defaultAction).controlSize(.large).disabled(chat.connecting != nil)
+                        }
+                        HStack(spacing: 4) {
+                            Image(systemName: st?.signed_in == true ? "checkmark.circle" : "questionmark.circle")
+                                .foregroundColor(st?.signed_in == true ? .green : .secondary)
+                            Text(st?.detail ?? "").font(.system(size: 11.5)).foregroundColor(.secondary)
+                        }
+                        let other = primary.other
+                        let ost = s.engines[other.rawValue]
+                        if ost?.usable == true {
+                            Button("Use \(other.label) instead") { chat.connect(other) }
+                                .buttonStyle(.plain).font(.system(size: 12)).foregroundColor(.accentColor).disabled(chat.connecting != nil)
+                        } else if ost?.installed == true {
+                            Text("\(other.label): \(ost?.detail ?? "")").font(.system(size: 11)).foregroundColor(.secondary).multilineTextAlignment(.center).padding(.horizontal, 26)
+                        } else {
+                            HStack(spacing: 6) {
+                                Text("Also works with \(other.label) (not installed).").font(.system(size: 11)).foregroundColor(.secondary)
+                                if let cmd = ost?.install {
+                                    Button("How to install…") { Alerts.info("Install \(other.label)", "In Terminal, run:\n\n" + cmd) }
+                                        .buttonStyle(.plain).font(.system(size: 11)).foregroundColor(.accentColor)
+                                }
+                            }
+                        }
+                    } else {
+                        ForEach(AskEngine.allCases) { e in EngineCard(chat: chat, engine: e, status: s.engines[e.rawValue]) }
+                    }
                 } else if chat.checking {
                     ProgressView("Looking for Claude and Codex…").controlSize(.small).padding(.vertical, 18)
                 } else {
                     Text("Could not check what is installed.").font(.system(size: 12)).foregroundColor(.orange).padding(.top, 8)
                 }
-                Text("Connecting sends your questions, and the titles, notes and short excerpts of the sessions chainlog picks, to that tool. Secrets are redacted first, and it gets no files, shell or other tools. You see the details before anything is connected.")
+                Text("Nothing is sent until you connect. You see exactly what the tool gets first, and passwords and keys are blanked out.")
                     .font(.system(size: 11)).foregroundColor(.secondary.opacity(0.9)).multilineTextAlignment(.center).padding(.horizontal, 26)
                 Button("Check again") { chat.loadStatus() }.buttonStyle(.plain).font(.system(size: 12)).foregroundColor(.accentColor)
                     .disabled(chat.checking).padding(.bottom, 12)
@@ -94,6 +126,13 @@ struct ConnectView: View {
             .frame(maxWidth: .infinity)
         }
         .onAppear { if chat.status == nil { chat.loadStatus() } }
+    }
+
+    /// The tool the one big button connects: the one chosen before when it is usable, else the first usable one.
+    var primaryEngine: AskEngine? {
+        guard let s = chat.status else { return nil }
+        if let e = chat.engine, s.engines[e.rawValue]?.usable == true { return e }
+        return AskEngine.allCases.first { s.engines[$0.rawValue]?.usable == true }
     }
 }
 
@@ -122,7 +161,7 @@ struct EngineCard: View {
     }
 
     var detail: String { status?.detail ?? "could not check" }
-    var color: Color { status?.usable == true ? .green : (status?.installed == true ? .orange : .secondary) }
+    var color: Color { status?.signed_in == true ? .green : (status?.installed == true ? .orange : .secondary) }  // green only when known to be signed in
 }
 
 // MARK: - the chat

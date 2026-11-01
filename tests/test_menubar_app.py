@@ -366,7 +366,8 @@ printf '{"is_error": false, "result": "The zebra work is in [[%s]]. DB_PASSWORD=
         self.assertIn("ask: not connected", out)
         self.assertIn("Claude: signed in | Connect enabled", out)
         self.assertIn("Codex: not installed", out)
-        self.assertIn("Codex: not installed (npm install -g @openai/codex) | Connect disabled", out)
+        self.assertIn("Codex: not installed | install: npm install -g @openai/codex | Connect disabled", out)
+        self.assertIn("primary: Connect Claude", out)  # one big button for the tool that is ready
 
     def test_connect_shows_what_is_sent_first_and_a_no_changes_nothing(self):
         self.claude_stub()

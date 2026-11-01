@@ -131,12 +131,14 @@ def login_state(rt, engine, binary):
 
 def _engine_status(rt, engine):
     binary = find_binary(rt, engine)
-    if not binary:
-        return {"installed": False, "signed_in": None, "detail": "not installed (%s)" % INSTALL[engine]}
+    if not binary:  # the install command is its own key: a sentence for people, the command for a "How to install" button
+        return {"installed": False, "signed_in": None, "detail": "not installed", "install": INSTALL[engine]}
     ok, detail = login_state(rt, engine, binary)
     if ok is False:
-        detail = "not signed in: run `%s` once in a terminal and sign in" % engine
-    return {"installed": True, "signed_in": ok, "detail": detail}
+        detail = "installed but not signed in: open Terminal, run %s, sign in, then check again" % engine
+    elif ok is None:
+        detail = "installed; could not tell if it is signed in (Connect tries anyway)"
+    return {"installed": True, "signed_in": ok, "detail": detail, "install": None}
 
 
 def status(rt, cfg):
