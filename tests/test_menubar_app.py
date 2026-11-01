@@ -383,6 +383,8 @@ printf '{"is_error": false, "result": "The zebra work is in [[%s]]. DB_PASSWORD=
         again = self.dump("--tab", "ask")
         self.assertIn("ask: connected to Claude (sonnet)", again)
         self.assertIn("suggestion: What did I work on this week?", again)
+        self.assertIn("suggestion: What is still unfinished, and what is the next step?", again)
+        self.assertIn("suggestion: How did my latest pull request go?", again)  # no session here has a PR; with one it names it
 
     def test_once_connected_the_header_menu_offers_the_other_tool_and_disconnect(self):
         self.connect_claude()

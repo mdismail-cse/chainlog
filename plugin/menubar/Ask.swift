@@ -201,12 +201,18 @@ final class ChatModel: ObservableObject {
     private var limitTask: Task<Void, Never>?
     static let giveUpAfter: UInt64 = 600_000_000_000
 
-    static let suggestions = [
+    /// Starter questions in plain words (no "chain" or "note" a newcomer has not met), the last one about their own
+    /// newest PR when the list has one: proof that the chat knows their sessions.
+    static let defaultSuggestions = [
         "What did I work on this week?",
-        "Which sessions failed or are still in progress?",
-        "How did my newest PR chain end?",
-        "Which sessions have no note yet?",
+        "What is still unfinished, and what is the next step?",
+        "Which sessions failed, and what broke?",
     ]
+    var suggestions: [String] {
+        let rows = (app?.data?.unsaved ?? []) + (app?.data?.recent ?? [])
+        let pr = rows.first { $0.pr != nil }?.pr.map { String($0.split(separator: "·").first ?? "").trimmingCharacters(in: .whitespaces) }
+        return ChatModel.defaultSuggestions + [pr.map { "How did \($0) end?" } ?? "How did my latest pull request go?"]
+    }
 
     // MARK: what is shown
 

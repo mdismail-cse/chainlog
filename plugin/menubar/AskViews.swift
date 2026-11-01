@@ -169,8 +169,8 @@ struct Suggestions: View {
     @ObservedObject var chat: ChatModel
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Ask about what you worked on, or search with details").font(.system(size: 12)).foregroundColor(.secondary)
-            ForEach(ChatModel.suggestions, id: \.self) { s in
+            Text("Try one of these, or type your own question").font(.system(size: 12)).foregroundColor(.secondary)
+            ForEach(chat.suggestions, id: \.self) { s in
                 Button { chat.send(s) } label: {
                     Text(s).font(.system(size: 12.5)).foregroundColor(.primary)
                         .padding(.horizontal, 10).padding(.vertical, 7).frame(maxWidth: .infinity, alignment: .leading)

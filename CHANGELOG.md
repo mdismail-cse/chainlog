@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Menu bar app, Ask: the starter questions are in plain words ("What is still unfinished, and what is the next step?",
+  "Which sessions failed, and what broke?") and the last one names your own newest PR ("How did PR #4321 end?"), so the
+  first screen shows the chat knows your sessions; "How did my newest PR chain end?" and "Which sessions have no note
+  yet?" (jargon, and a list the Sessions tab shows already) are gone.
 - Menu bar app, Ask: a question that failed, timed out or was stopped gets a one-click **Try again** (**Ask again** after a
   stop) and goes back into the box, so the most common recovery no longer means retyping it; the failed attempt leaves
   the conversation. Error wording in plain words ("That took too long to answer, so it was stopped. Try again, or ask

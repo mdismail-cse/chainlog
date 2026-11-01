@@ -567,8 +567,8 @@ func selfTest(sample path: String?) -> Int {
         // a suggestion sends itself and leaves what you typed
         m.chat.clear(); m.chat.draft = "half typed"
         m.chat.starter = { req, onEvent, onDone in calls.requests.append(req); return { } }
-        m.chat.send(ChatModel.suggestions[0])
-        check("Ask: a suggestion is sent as it is and does not touch the box", calls.requests.last?.question == ChatModel.suggestions[0] && m.chat.draft == "half typed")
+        m.chat.send(m.chat.suggestions[0])
+        check("Ask: a suggestion is sent as it is and does not touch the box", calls.requests.last?.question == m.chat.suggestions[0] && m.chat.draft == "half typed")
 
         // connecting: the details are shown first, and only a yes connects
         m = chatModel(connected: false)
