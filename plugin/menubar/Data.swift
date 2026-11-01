@@ -33,7 +33,7 @@ struct Row: Decodable {
     let last_ask: String?    // what you asked last
     let note: String?        // your latest note
     let summary: String?     // its latest summary: one line
-    let summary_full: String?   // the whole of it (HEADLINE, Goal, Done, Result, Files & PRs, Open, Next)
+    let summary_full: String?   // the whole of it (HEADLINE, Goal, Done, Decisions, Gotchas, Result, Files & PRs, Open, Next)
     let summary_stale: Bool?    // the session went on after it was written
     let pr: String?          // "PR #4521 · shop"
     let branch: String?      // not main / master

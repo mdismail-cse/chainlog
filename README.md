@@ -286,7 +286,9 @@ To carry what many sessions taught you into a new one, see [contexts](#carry-wha
 Hover a session in the menu bar app and click the summary button (or right-click → **Summarize the session**), or type
 `chainlog summarize ID`. Claude (or Codex) reads the **whole** session (its start, where the goal usually is, and its end,
 where the result is; long messages trimmed; the files it changed and the commands it ran; your notes) and writes a few
-labelled lines: a headline, **Goal**, **Done**, **Result**, **Files & PRs**, **Open**, **Next**. One request. The summary is
+labelled lines: a headline, **Goal**, **Done**, **Decisions** (with the reason, and what was dropped), **Gotchas** (what
+broke and the fix), **Result**, **Files & PRs**, **Open**, **Next**. Process noise (commits, pushes, "ran the tests") and the
+title said again are left out, and a label with nothing to say is not shown. One request. The summary is
 kept with the session (it does not save it): the preview and `chainlog show` show it, search finds it, and it says so when
 the session went on after it. The first time it asks before sending; that agreement also covers contexts.
 

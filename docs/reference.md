@@ -239,8 +239,10 @@ chainlog summarize --instructions ["TEXT"|""]           # show, set or clear you
 
 Reads the whole session the way a [context](#context) does (chainlog's facts, the files it changed and the commands it ran, the
 conversation without tool output, the start and the end always kept, up to 100,000 characters, redacted) and asks for a summary
-in labelled lines: `HEADLINE:` (at most 15 words), `Goal:`, `Done:`, `Result:`, `Files & PRs:`, `Open:`, `Next:`, at most 180
-words. One request, run like [ask](#ask) (no tools, an empty folder), with `context.model` (Sonnet unless set). What comes back is
+in labelled lines: `HEADLINE:` (at most 15 words, the outcome, not the title again), `Goal:`, `Done:`, `Decisions:` (each with
+its reason and what was dropped), `Gotchas:` (what broke and the fix, environment facts), `Result:`, `Files & PRs:` (a PR or
+issue only when the session names it), `Open:`, `Next:`, at most 240 words. The prompt bans process noise (commits, pushes,
+PRs opened, "ran the tests"), and a label whose value is none / nothing / not stated is dropped (Result stays). One request, run like [ask](#ask) (no tools, an empty folder), with `context.model` (Sonnet unless set). What comes back is
 cleaned (anything before the headline, links and secrets go). It is saved as a `summary` event: the session keeps its saved
 state, `chainlog show` lists it, `find` searches it, `ls` shows its headline when the session has no note of yours, and
 `chainlog undo` takes it back. It records how long the transcript was, so a session that went on afterwards shows its summary as

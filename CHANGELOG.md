@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Summaries carry usable facts, not activity. The whole-session summary has two new lines, **Decisions** (each choice with
+  its reason, and what was tried and dropped) and **Gotchas** (what broke first and the fix: the exact error, the setting or
+  file at fault, environment facts, a command that only works one way); the prompt now bans process noise (commits, pushes,
+  PRs opened, "ran the tests" without the result, files only read), the title said again in the headline, and invented PR
+  numbers; a label with nothing to say ("Open: none") is dropped instead of shown. The automatic one-line summary gets the
+  same rules and now sees the session's title (it used to come back as the title restated), and its text is fenced and
+  escaped the way contexts' is, so a message in it cannot pose as instructions.
 - Contexts: **Open** on every built context in the Chains tab opens its notes in an editor (the one you picked last; its menu
   lists every editor installed, each session's notes and Show in Finder), and `chainlog context open NAME` opens them in your
   text editor. The only way was a right-click item that used the app your Mac opens `.md` files with, which can be a
