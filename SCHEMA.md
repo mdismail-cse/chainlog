@@ -147,6 +147,9 @@ It prints one compact JSON object per line:
 
 It exits 0 for both. SIGTERM stops it and the AI process (what was read is kept).
 
+`chainlog context suggest --json -- TEXT` prints `{"sessions": [row + {fit: "strong"|"maybe", why, group}], "name", "engine",
+"model", "listed", "total"}`: rows as in `_menu`, strong first; `group` is the chain, `"PR #N · repo"`, or `""`.
+
 ## Sources (read-only)
 
 | Harness | Files | Never listed / never opened |

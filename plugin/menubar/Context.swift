@@ -34,6 +34,49 @@ struct ContextRequest: Equatable {
     }
 }
 
+/// What `chainlog context suggest --json` recommends: the sessions (rows, as the lists show them) and, for each, how well it
+/// fits, why, and the chain or PR it is shown under. Read in two passes over the same JSON (a row plus three fields).
+struct SuggestResult {
+    struct Pick: Identifiable {
+        let row: Row
+        let fit: String     // strong | maybe
+        let why: String
+        let group: String   // a chain, "PR #4521 · repo", or "" (neither)
+        var id: String { row.ref }
+        var strong: Bool { fit == "strong" }
+    }
+    let picks: [Pick]
+    let name: String
+    let engine: String
+    let listed: Int
+    let total: Int
+
+    private struct All: Decodable { let sessions: [Row]; let name: String; let engine: String; let listed: Int; let total: Int }
+    private struct Fits: Decodable { struct F: Decodable { let fit: String; let why: String; let group: String }; let sessions: [F] }
+
+    init(picks: [Pick], name: String, engine: String, listed: Int, total: Int) {
+        self.picks = picks; self.name = name; self.engine = engine; self.listed = listed; self.total = total
+    }
+
+    init?(json: Data) {
+        guard let a = try? JSONDecoder().decode(All.self, from: json), let f = try? JSONDecoder().decode(Fits.self, from: json),
+              a.sessions.count == f.sessions.count else { return nil }
+        self.init(picks: zip(a.sessions, f.sessions).map { Pick(row: $0, fit: $1.fit, why: $1.why, group: $1.group) },
+                  name: a.name, engine: a.engine, listed: a.listed, total: a.total)
+    }
+
+    /// The picks by group, groups with strong picks first, "" (no chain or PR) last.
+    var groups: [(name: String, picks: [Pick])] {
+        var order: [String] = []
+        var by: [String: [Pick]] = [:]
+        for p in picks { if by[p.group] == nil { order.append(p.group) }; by[p.group, default: []].append(p) }
+        return order.map { ($0, by[$0]!) }.sorted { a, b in
+            if a.name.isEmpty != b.name.isEmpty { return !a.name.isEmpty }
+            return a.picks.filter(\.strong).count > b.picks.filter(\.strong).count
+        }
+    }
+}
+
 /// What `chainlog context use NAME --json` decided: the command that starts the session, and where.
 struct ContextLaunch: Decodable {
     let command: String
@@ -139,6 +182,19 @@ enum ContextRunner {
         return (nil, said.isEmpty ? "chainlog could not start it" : said)
     }
 
+    /// `chainlog context suggest --json -- DESCRIPTION`: the AI's recommendation, or what chainlog said instead.
+    static func suggest(_ text: String) -> (SuggestResult?, String) {
+        guard let exe = CLI.locate() else { return (nil, "chainlog was not found") }
+        let r = CLI.run(exe, ["context", "suggest", "--json", "--", text], timeout: 200, mergeStderr: true)
+        let out = r.out.flatMap { String(data: $0, encoding: .utf8) } ?? ""
+        if r.status == 0, let line = out.split(separator: "\n").last(where: { $0.hasPrefix("{") }), let s = SuggestResult(json: Data(line.utf8)) {
+            return (s, "")
+        }
+        if r.status == -2 { return (nil, "That took too long. Try again, or with fewer words.") }
+        let said = out.split(separator: "\n").filter { !$0.hasPrefix("{") }.map { $0.replacingOccurrences(of: "chainlog: ", with: "") }.joined(separator: " ")
+        return (nil, said.isEmpty ? "chainlog could not find sessions for that" : said)
+    }
+
     @MainActor
     static func pickFolder() -> String? {
         NSApp.activate(ignoringOtherApps: true)
@@ -179,6 +235,13 @@ final class ContextModel: ObservableObject {
     @Published private(set) var failure = ""
     @Published private(set) var building = ""           // the name of what is being built
     @Published var expanded: [String: Bool] = [:]       // which contexts are open in the list
+    // finding sessions by describing them (AI)
+    enum PickMode: String { case describe, words }
+    @Published var pickMode: PickMode = .words
+    @Published var describeText = ""
+    @Published private(set) var suggesting = false
+    @Published private(set) var suggestion: SuggestResult?
+    @Published private(set) var suggestNote = ""
     weak var app: AppModel?
 
     /// How a build is run. Tests replace it.
@@ -187,6 +250,8 @@ final class ContextModel: ObservableObject {
     var consentConfirmer: (String, String) -> Bool = { Alerts.confirm($0, $1, ok: "Agree and build") }
     /// How the session picker searches. Tests replace it.
     var finder: @Sendable (String) -> [Row]? = { CLI.find($0, everyWord: true) }  // "Pick all" must not take near misses
+    /// Asks the AI which sessions are about a description (`chainlog context suggest`). Tests replace it.
+    var suggester: @Sendable (String) -> (SuggestResult?, String) = { ContextRunner.suggest($0) }
     /// Plans a launch (`chainlog context use … --json`). Tests replace it.
     var launchPlanner: @Sendable ([String]) -> (ContextLaunch?, String) = { ContextRunner.launch($0) }
     /// Asks where a session should start. Tests replace it.
@@ -199,6 +264,7 @@ final class ContextModel: ObservableObject {
     private var lastRequest: ContextRequest?
     private var pickTask: Task<Void, Never>?
     private var gotFinal = false
+    private var suggestGeneration = 0
 
     // MARK: what is shown
 
@@ -301,6 +367,12 @@ final class ContextModel: ObservableObject {
 
     private func resetBuilder() {
         pickTask?.cancel()
+        pickMode = askConnected ? .describe : .words
+        describeText = ""
+        suggestGeneration += 1
+        suggesting = false
+        suggestion = nil
+        suggestNote = ""
         pickQuery = ""
         pickResults = nil
         pickSearching = false
@@ -313,6 +385,8 @@ final class ContextModel: ObservableObject {
 
     func closeBuilder() {
         pickTask?.cancel()
+        suggestGeneration += 1  // an answer that arrives later is not shown
+        suggesting = false
         screen = .list
     }
 
@@ -354,6 +428,52 @@ final class ContextModel: ObservableObject {
         pickResults = rows ?? []
         pickSearching = false
     }
+
+    // MARK: finding sessions by describing them
+
+    /// Finding sessions sends the same short summaries as Ask, to the tool connected there.
+    var askConnected: Bool { app?.data?.ask?.connected == true }
+
+    func findByDescription() {
+        let text = describeText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { app?.say("Describe what you are looking for first"); return }
+        guard askConnected else { suggestNote = "Connect Claude or Codex in the Ask tab first."; return }
+        suggestGeneration += 1
+        let gen = suggestGeneration
+        suggesting = true
+        suggestNote = ""
+        let ask = suggester
+        if inline { answered(gen, ask(text)); return }
+        DispatchQueue.global(qos: .userInitiated).async {
+            let r = ask(text)
+            DispatchQueue.main.async { MainActor.assumeIsolated { self.answered(gen, r) } }
+        }
+    }
+
+    private func answered(_ gen: Int, _ r: (SuggestResult?, String)) {
+        guard gen == suggestGeneration else { return }  // a newer search, or the builder was closed
+        suggesting = false
+        guard let s = r.0 else { suggestion = nil; suggestNote = r.1; return }
+        suggestion = s
+        let who = AskEngine(rawValue: s.engine)?.label ?? "The AI"
+        let strong = s.picks.filter(\.strong).count
+        suggestNote = s.picks.isEmpty
+            ? "\(who) found nothing about that in \(s.listed) of your \(s.total) sessions. Try other words."
+            : "\(who) looked at \(s.listed) of your \(s.total) sessions: \(strong) strong, \(s.picks.count - strong) maybe · 1 request"
+        if name.trimmingCharacters(in: .whitespaces).isEmpty && target == nil { name = s.name }
+    }
+
+    /// Screenshots and checks: show a recommendation without asking anyone.
+    func preload(suggestion s: SuggestResult, for text: String) {
+        pickMode = .describe
+        describeText = text
+        suggestGeneration += 1
+        answered(suggestGeneration, (s, ""))
+    }
+
+    /// Take the strong picks (or all of them, or one group).
+    func pickSuggested(strongOnly: Bool) { selectAll((suggestion?.picks ?? []).filter { !strongOnly || $0.strong }.map(\.row)) }
+    func pickGroup(_ picks: [SuggestResult.Pick]) { selectAll(picks.map(\.row)) }
 
     // MARK: building
 

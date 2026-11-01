@@ -351,6 +351,16 @@ func dumpContexts(_ m: AppModel) -> Bool {
         print("context screen: builder (\(cx.target.map { "add to " + $0.name } ?? "new"))")
         if cx.target == nil { print("  name: \"\(cx.name)\"") }
         print("  picked: \(cx.selected.count)\(cx.selected.isEmpty ? "" : " · " + cx.selected.map { clip($0.title, 30) }.joined(separator: " | "))")
+        print("  pick by: \(cx.pickMode == .describe ? "describing it (AI)" : "search words")")
+        if cx.pickMode == .describe {
+            if !cx.askConnected { print("  describe: connect Claude or Codex in the Ask tab first") }
+            if !cx.describeText.isEmpty { print("  described: \"\(cx.describeText)\"") }
+            if !cx.suggestNote.isEmpty { print("  note: \(cx.suggestNote)") }
+            for g in cx.suggestion?.groups ?? [] {
+                print("  group: \(g.name.isEmpty ? "Not in a chain or PR" : g.name)")
+                for p in g.picks { print("    [\(cx.isSelected(p.row) ? "x" : " ")] \(p.fit) \(clip(p.row.title, 40)) — \(p.why)") }
+            }
+        }
         if !cx.pickQuery.isEmpty { print("  search: \"\(cx.pickQuery)\" → \(cx.pickResults?.count ?? 0) found") }
         print("  candidates: \(cx.candidates.count)")
         for r in cx.candidates.prefix(8) { print("    [\(cx.isMember(r) ? "in" : (cx.isSelected(r) ? "x" : " "))] \(clip(r.title, 50))") }
@@ -361,7 +371,7 @@ func dumpContexts(_ m: AppModel) -> Bool {
         print("context screen: building \(cx.building) · \(cx.progressDone)/\(cx.progressTotal) · \(cx.progressText)")
     case .done:
         if let c = cx.result {
-            print("context screen: done · \(c.name) · \(c.sessions) sessions · \(cx.resultUpToDate ? "up to date" : "\(cx.resultRequests) requests")")
+            print("context screen: done · \(c.name) · \(c.sessions) session\(c.sessions == 1 ? "" : "s") · \(cx.resultUpToDate ? "up to date" : "\(cx.resultRequests) requests")")
             print("  gist: \(c.gist)")
         }
     case .failed:
@@ -400,6 +410,13 @@ func runContextFlow(_ args: [String]) -> Int32 {
         cx.beginNew(chain: args.contains("--from-first-chain") ? m.chains.first : nil)
         if let n = arg("--context-name", in: args) { cx.name = n }
         if let q = arg("--context-pick", in: args) { cx.pickQuery = q; if args.contains("--pick-all") { cx.selectAll(cx.pickResults ?? []) } }
+        if let d = arg("--context-describe", in: args) {
+            cx.pickMode = .describe
+            cx.describeText = d
+            cx.findByDescription()
+            if args.contains("--pick-strong") { cx.pickSuggested(strongOnly: true) }
+            if args.contains("--pick-all-suggested") { cx.pickSuggested(strongOnly: false) }
+        }
         if let p = arg("--context-preset", in: args), let set = cx.presets.first(where: { $0.id == p }) { cx.applyPreset(set) }
         if args.contains("--build") { cx.build(); wait() }
     case "add":
@@ -472,6 +489,11 @@ func headlessModel(_ args: [String]) -> AppModel? {
         m.contexts.beginNew(rows: args.contains("--from-first-chain") ? [] : Array(m.visibleRows.prefix(2)),
                             chain: args.contains("--from-first-chain") ? m.chains.first : nil)
         if let p = arg("--context-preset", in: args), let set = m.contexts.presets.first(where: { $0.id == p }) { m.contexts.applyPreset(set) }
+        if let f = arg("--context-suggestion-file", in: args), let raw = FileManager.default.contents(atPath: f), let s = SuggestResult(json: raw) {
+            m.contexts.preload(suggestion: s, for: arg("--context-describe-text", in: args) ?? "")
+            if args.contains("--pick-strong") { m.contexts.pickSuggested(strongOnly: true) }
+        }
+        if args.contains("--context-words") { m.contexts.pickMode = .words }
     }
     return m
 }

@@ -59,6 +59,9 @@ and only when you turn them on:
   plain text and secrets are redacted again; and the file and the lines that attach it say they are notes, not instructions, to
   be checked against the code. A new session is given access to the notes folder only (`--add-dir`), not to chainlog's other data.
 
+  *Finding* sessions for a context by describing them sends what Ask sends (the one-line summaries and your description), under
+  Ask's agreement, to the tool connected there; whole conversations are only sent when you build.
+
 All three run the AI with **no tools** (no files, shell, connectors, plugins, hooks or your own config), from an empty temporary folder,
 and leave no session behind. Notifications show only the title and short ID.
 

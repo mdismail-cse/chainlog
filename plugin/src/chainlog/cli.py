@@ -1281,6 +1281,29 @@ def _ctx_build(rt, cfg, args, ctx_mod, index, meta, st):
     return 0
 
 
+def _ctx_print_suggestions(st, res, now):
+    """The recommended sessions, grouped by chain or PR, strong ones first."""
+    groups = {}
+    for r in res["sessions"]:
+        groups.setdefault(r["group"], []).append(r)
+    for g in sorted(groups, key=lambda g: (g == "", -sum(r["fit"] == "strong" for r in groups[g]))):
+        _p(st.bold(ui.safe(g) if g else "Not in a chain or PR"))
+        for r in groups[g]:
+            fit = st.green("strong") if r["fit"] == "strong" else st.yellow("maybe ")
+            _p("  %s  %s  %s  %s" % (fit, st.dim(r["short"]), ui.fit(ui.safe(r["title"]), 48), st.dim(ui.safe(r["why"]))))
+
+
+def _ctx_suggest(rt, cfg, args, ctx_mod, index, st, text):
+    progress = sys.stderr.write if rt.isatty() and not args.json else None
+    if progress:
+        progress(st.dim("Asking %s which sessions are about that (1 request, short summaries only)…\n" % (
+            ctx_mod.LABEL.get(args.engine or (cfg.get("ask") or {}).get("engine") or "", "the AI"))))
+    try:
+        return ctx_mod.suggest(rt, cfg, index, text, engine=args.engine)
+    except ctx_mod.AskError as e:
+        raise Exit(1, e.message)
+
+
 def cmd_context(rt, args):
     """Contexts: what many sessions taught you, in one file a new session reads when it needs it."""
     from chainlog import context as ctx_mod
@@ -1315,6 +1338,20 @@ def cmd_context(rt, args):
             _p(st.dim("Or start from a set: --preset %s" % "|".join(ctx_mod.PRESET_IDS)))
         return 0
     index = load(rt, cfg)
+    if action == "suggest":
+        res = _ctx_suggest(rt, cfg, args, ctx_mod, index, st, " ".join(args.words))
+        if args.json:
+            _p(json.dumps(res, separators=(",", ":")))
+            return 0
+        if not res["sessions"]:
+            _p("No session seems to be about that (%s looked through %d of your %d sessions). Try other words." % (
+                ctx_mod.LABEL[res["engine"]], res["listed"], res["total"]))
+            return 1
+        _ctx_print_suggestions(st, res, now)
+        strong = [r["short"] for r in res["sessions"] if r["fit"] == "strong"] or [r["short"] for r in res["sessions"]]
+        _p(st.dim("Make a context from the %s ones:" % ("strong" if any(r["fit"] == "strong" for r in res["sessions"]) else "suggested")))
+        _p("  chainlog context new %s %s" % (shlex.quote(res["name"] or "NAME"), " ".join(strong)))
+        return 0
     if action == "ls":
         every = ctx_mod.all_contexts(rt)
         if args.json:
@@ -1345,13 +1382,26 @@ def cmd_context(rt, args):
         except ctx_mod.AskError as e:
             raise Exit(2, e.message)
         sessions = _ctx_refs(index, args.refs, " ".join(args.find) if args.find else None)
+        if args.describe:
+            res = _ctx_suggest(rt, cfg, args, ctx_mod, index, st, args.describe)
+            if not res["sessions"]:
+                raise Exit(1, "no session seems to be about that; try other words, or give ids or --find WORDS")
+            if not args.json:
+                _ctx_print_suggestions(st, res, now)
+            wanted = [r for r in res["sessions"] if args.pick == "all" or r["fit"] == "strong"] or res["sessions"]
+            if rt.isatty() and not args.yes and not args.json:
+                reply = _ask("Use the %d %s? [Y/n] " % (len(wanted), "suggested sessions" if args.pick == "all" else "strong ones"))
+                if reply is None or reply.strip().lower().startswith("n"):
+                    raise Exit(1, "cancelled. Pick by id instead: chainlog context new NAME ID ID …")
+            sessions = _ctx_refs(index, [], None) + sessions + [index.sessions[r["ref"]] for r in wanted]
+            sessions = sorted({s["ref"]: s for s in sessions}.values(), key=lambda s: s["times"].get("started_at") or 0)
         if args.chain:
             sessions = _ctx_refs(index, [], None) + sessions
             sessions = sorted({s["ref"]: s for s in sessions + [index.sessions[m["ref"]] for m in index.chains[args.chain]["members"]
                                                                if m["ref"] in index.sessions]}.values(),
                               key=lambda s: s["times"].get("started_at") or 0)
         if not sessions:
-            raise Exit(1, "no sessions to put in it: give ids, --find WORDS or --chain KEY (chainlog find WORDS shows ids)")
+            raise Exit(1, "no sessions to put in it: give ids, --find WORDS, --describe TEXT or --chain KEY (chainlog find WORDS shows ids)")
         if not args.json:
             _p("%s · %d session%s:" % (st.bold(name), len(sessions), "" if len(sessions) == 1 else "s"))
             _ctx_list_sessions(st, sessions, now)
@@ -1714,6 +1764,8 @@ def build_parser():
     c_new.add_argument("refs", nargs="*", metavar="ID", help="sessions to put in it (ids from chainlog find / ls)")
     c_new.add_argument("--find", nargs="+", metavar="WORDS", help="also every session a search for these words finds")
     c_new.add_argument("--chain", metavar="KEY", help="also every round of this chain, and new rounds later")
+    c_new.add_argument("--describe", metavar="TEXT", help="also the sessions the AI finds about this (1 request, short summaries)")
+    c_new.add_argument("--pick", choices=["strong", "all"], default="strong", help="with --describe: which suggestions to take")
     c_new.add_argument("-q", "--question", action="append", help="a question to ask each session (repeat; default: your ten)")
     c_new.add_argument("--preset", metavar="SET", help="start from a question set: general, bugfix, feature, qa, investigation")
     c_new.add_argument("--no-build", action="store_true", help="only save it; build later with update")
@@ -1745,10 +1797,12 @@ def build_parser():
     c_q.add_argument("--set", nargs="+", metavar="QUESTION", help="save these as your default questions")
     c_q.add_argument("--reset", action="store_true", help="back to chainlog's ten")
     c_q.add_argument("--preset", metavar="SET", help="save a ready-made set as your default: general, bugfix, feature, qa, investigation")
+    c_sug = cxs.add_parser("suggest", help="describe the work: the AI recommends the sessions about it, grouped by PR")
+    c_sug.add_argument("words", nargs="+", metavar="DESCRIPTION")
     cxs.add_parser("ls", help="list contexts")
-    for c in (cx, c_new, c_upd, c_add, c_rem, c_use, c_ref, c_show, c_rm, c_q):
+    for c in (cx, c_new, c_upd, c_add, c_rem, c_use, c_ref, c_show, c_rm, c_q, c_sug):
         c.add_argument("--json", action="store_true", help=argparse.SUPPRESS if c is not cx else "machine-readable output")
-    for c in (cx, c_new, c_upd):
+    for c in (cx, c_new, c_upd, c_sug):
         c.add_argument("-e", "--engine", choices=list(config_mod.ASK_ENGINES), help="build with claude or codex")
     for c in (cx, c_new, c_upd, c_rm):
         c.add_argument("-y", "--yes", action="store_true", help="agree / confirm without asking")

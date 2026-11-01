@@ -749,6 +749,57 @@ func selfTest(sample path: String?) -> Int {
               && requests[0].questions == cx.presets[1].questions && requests[0].name == shop.slug)
         check("  ... and \"use these for new contexts too\" saves them as your default", saved.ran.last == ["context", "questions", "--set"] + cx.presets[1].questions)
         cx.stop()
+        // finding sessions by describing them: the AI recommends, grouped by chain or PR; you pick
+        do {
+            var d = data
+            d.ask = try! JSONDecoder().decode(AskConfig.self, from: Data(#"{"engine":"claude","connected":true}"#.utf8))
+            let am = AppModel(); am.data = d; am.inline = true
+            let ax = am.contexts; ax.inline = true
+            final class Asked: @unchecked Sendable { var texts: [String] = [] }
+            let asked = Asked()
+            let rs = Array(data.recent.prefix(4))
+            let answer = SuggestResult(picks: [
+                .init(row: rs[0], fit: "strong", why: "refund round 3", group: "shop#4321"),
+                .init(row: rs[1], fit: "maybe", why: "coupons", group: ""),
+                .init(row: rs[2], fit: "strong", why: "refund round 2", group: "shop#4321"),
+                .init(row: rs[3], fit: "maybe", why: "same PR", group: "PR #4388 · shop")], name: "Shop refunds", engine: "claude", listed: 7, total: 9)
+            ax.suggester = { t in asked.texts.append(t); return (answer, "") }
+            ax.beginNew()
+            check("Describe: with Ask connected, a new context starts there", ax.pickMode == .describe)
+            ax.findByDescription()
+            check("  ... nothing is asked before you describe something", asked.texts.isEmpty)
+            ax.describeText = "  refund failures  "
+            ax.findByDescription()
+            check("  ... Find asks once, with what you wrote", asked.texts == ["refund failures"])
+            check("  ... the name comes from the AI when you gave none", ax.name == "Shop refunds")
+            check("  ... and says how far it looked and what it found", ax.suggestNote == "Claude looked at 7 of your 9 sessions: 2 strong, 2 maybe · 1 request", ax.suggestNote)
+            let groups = ax.suggestion?.groups.map { "\($0.name):\($0.picks.count)" } ?? []
+            check("  ... grouped: the chain with strong picks first, then the PR, sessions in neither last", groups == ["shop#4321:2", "PR #4388 · shop:1", ":1"], "\(groups)")
+            ax.pickSuggested(strongOnly: true)
+            check("Pick strong picks the strong ones", ax.selected.map(\.ref) == [rs[0].ref, rs[2].ref])
+            ax.pickGroup(ax.suggestion!.groups[1].picks)
+            check("Pick on a group adds that group", ax.selected.count == 3)
+            ax.pickSuggested(strongOnly: false)
+            check("Pick all adds the rest, each once", ax.selected.count == 4)
+            ax.name = "Mine"
+            ax.findByDescription()
+            check("a name you typed is kept", ax.name == "Mine")
+            ax.suggester = { _ in (nil, "Claude says you are not signed in") }
+            ax.findByDescription()
+            check("a failure is said in place, and the old list goes", ax.suggestion == nil && ax.suggestNote == "Claude says you are not signed in")
+            ax.closeBuilder()
+            let lone = model()  // the sample is not connected to Ask
+            lone.contexts.inline = true
+            lone.contexts.suggester = { t in asked.texts.append(t); return (answer, "") }
+            lone.contexts.beginNew()
+            check("without Ask connected, it starts on Search words", lone.contexts.pickMode == .words)
+            lone.contexts.pickMode = .describe
+            lone.contexts.describeText = "refunds"
+            asked.texts = []
+            lone.contexts.findByDescription()
+            check("  ... and Describe sends nothing, it says where to connect", asked.texts.isEmpty && lone.contexts.suggestNote.contains("Ask tab"))
+        }
+
         // a yes at the very first question builds the context that was just made (not a second new one)
         requests = []
         cx.beginNew(); cx.name = "Billing"; cx.selectAll(rows)

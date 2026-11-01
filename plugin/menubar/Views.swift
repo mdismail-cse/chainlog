@@ -248,7 +248,7 @@ struct SectionHeader: View {
 struct StatusPill: View {
     let text: String
     var body: some View {
-        let color: Color = ["pass": .green, "fail": .red, "blocked": .red, "wip": .orange][text] ?? .secondary
+        let color: Color = ["pass": .green, "fail": .red, "blocked": .red, "wip": .orange, "strong": .accentColor][text] ?? .secondary
         Text(clip(text, 12)).font(.system(size: 10.5, weight: .semibold)).foregroundColor(color)
             .padding(.horizontal, 6).padding(.vertical, 1)
             .background(Capsule().fill(color.opacity(0.14)))

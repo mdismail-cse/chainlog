@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Contexts: find the sessions by describing the work. `chainlog context suggest "…"`, `context new NAME --describe "…"`, and
+  *Describe it (AI)* in the app's builder: one request with Ask's short summaries (not whole conversations) to the tool
+  connected in Ask; the recommended sessions come grouped by chain or PR, marked strong or maybe with the reason, and a
+  suggested name; Pick strong, Pick all, or per group.
 - Contexts: ready-made question sets (Bug fix, Feature, PR review / QA testing, Investigation, and chainlog's ten):
   `--preset` on `context new`, `context update` (new questions read every session again) and `context questions`. The app's
   builder is three steps (Sessions, Questions, Build) with the questions always in sight, *Start from* a set, and *Edit

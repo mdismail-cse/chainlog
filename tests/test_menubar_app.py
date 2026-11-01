@@ -488,6 +488,9 @@ echo $$ > "$HOME/stub.pid"
 case "$*" in
   *"You merge"*) id=$(printf '%s' "$prompt" | sed -n 's/.*<session id="\\([0-9a-f]*\\)".*/\\1/p' | head -1)
     printf '{"is_error": false, "result": "GIST: The zebra widget work, merged.\\\\n## In short\\\\n- zebra fixed [[%s]]\\\\n## 1. Goal\\\\n- fact [[%s]]\\\\n## Timeline\\\\n- 2026-10-01 [[%s]]: done"}' "$id" "$id" "$id";;
+  *"pick, from their past coding sessions"*) ids=$(printf '%s' "$prompt" | grep -i zebra | grep ' | ' | cut -d' ' -f1)
+    lines=""; for id in $ids; do lines="$lines$id | strong | the zebra widget work\\\\n"; done
+    printf '{"is_error": false, "result": "%sNAME: Zebra widget"}' "$lines";;
   *) printf '{"is_error": false, "result": "### 1\\\\nworked on the zebra widget\\\\n### 2\\\\nNot stated."}';;
 esac
 """
@@ -581,6 +584,25 @@ esac
         self.assertEqual(rc, 0, err)
         self.assertIn("context screen: done · Zebra work · 8 sessions · 5 requests", out)  # four new, one merge
         self.assertEqual(len(self.prompts()), 10)
+
+    def test_a_context_found_by_describing_it(self):
+        self.context_stub()
+        self.assertEqual(self.chainlog("ask", "--connect", "claude", "--yes")[0], 0)  # describing uses Ask's tool and agreement
+        rc, out, err = self.app("--context", "new", "--context-describe", "the zebra widget", "--pick-strong", "--build")
+        self.assertEqual(rc, 0, err)
+        self.assertIn("context screen: done · Zebra widget · 1 session · 2 requests", out)  # the name came from the AI
+        prompts = self.prompts()
+        self.assertEqual(len(prompts), 3)  # find, read the one session, merge
+        self.assertIn("What I am looking for: the zebra widget", prompts[0])
+        self.assertIn('<sessions listed="12" of="12">', prompts[0])
+        self.assertNotIn("ASSISTANT:", prompts[0])  # short summaries only
+
+    def test_describing_without_ask_connected_sends_nothing(self):
+        self.context_stub()
+        rc, out, err = self.app("--context", "new", "--context-describe", "the zebra widget", "--pick-strong")
+        self.assertEqual(rc, 0, err)
+        self.assertIn("describe: connect Claude or Codex in the Ask tab first", out)
+        self.assertEqual(self.prompts(), [])
 
     def test_new_questions_for_a_context_read_every_session_again(self):
         self.context_stub()

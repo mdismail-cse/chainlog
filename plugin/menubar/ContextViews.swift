@@ -199,32 +199,105 @@ struct ContextBuilder: View {
                       note: "\(cx.target == nil ? cx.selected.count : cx.adding.count) picked") {
                 if !cx.selected.isEmpty { Button("Clear") { cx.clearSelection() }.buttonStyle(.plain).font(.system(size: 11.5)).foregroundColor(.accentColor) }
             }
-            HStack(spacing: 6) {
-                Image(systemName: "magnifyingglass").foregroundColor(.secondary).font(.system(size: 11.5))
-                TextField("Find sessions, e.g. backup", text: $cx.pickQuery).textFieldStyle(.plain).font(.system(size: 12.5))
-                if cx.pickSearching { ProgressView().controlSize(.small).scaleEffect(0.6) }
-                if let r = cx.pickResults, !r.isEmpty {
-                    let left = r.filter { !cx.isSelected($0) && !cx.isMember($0) }.count
-                    Button("Pick all \(r.count)") { cx.selectAll(r) }.buttonStyle(.plain).font(.system(size: 11.5)).foregroundColor(.accentColor)
-                        .disabled(left == 0)
-                }
+            Picker("", selection: $cx.pickMode) {
+                Text("Describe it (AI)").tag(ContextModel.PickMode.describe)
+                Text("Search words").tag(ContextModel.PickMode.words)
             }
-            .padding(.horizontal, 8).padding(.vertical, 6)
-            .background(RoundedRectangle(cornerRadius: 6).fill(Color.primary.opacity(0.06)))
-            let rows = cx.candidates
-            // a box of its own, so the questions below stay in sight however many sessions there are
-            ScrollView {
-                VStack(spacing: 0) {
-                    if rows.isEmpty {
-                        Text(cx.pickQuery.isEmpty ? "No sessions yet" : (cx.pickSearching ? "Searching…" : "No session matches"))
-                            .font(.system(size: 11.5)).foregroundColor(.secondary).padding(.vertical, 6).frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    ForEach(rows) { r in PickRow(cx: cx, row: r) }
-                }
-            }
-            .frame(height: 150)
-            .background(RoundedRectangle(cornerRadius: 6).stroke(Color.primary.opacity(0.08)))
+            .pickerStyle(.segmented).labelsHidden()
+            if cx.pickMode == .describe { describe } else { words }
         }
+    }
+
+    /// Describe the work; the AI recommends the sessions about it, grouped by chain or PR.
+    @ViewBuilder var describe: some View {
+        if !cx.askConnected {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("The AI that reads your descriptions is the one you connect in the Ask tab. It is sent the same short summaries (titles, notes, PR numbers), not whole sessions.")
+                    .font(.system(size: 11.5)).foregroundColor(.secondary).fixedSize(horizontal: false, vertical: true)
+                Button("Connect in the Ask tab") { model.tab = .ask }.font(.system(size: 12))
+            }
+            .padding(.vertical, 4)
+        } else {
+            HStack(alignment: .top, spacing: 6) {
+                TextField("What are you looking for? e.g. PRs where large backup restores failed or timed out", text: $cx.describeText, axis: .vertical)
+                    .textFieldStyle(.roundedBorder).font(.system(size: 12.5)).lineLimit(1...3)
+                    .onSubmit { cx.findByDescription() }
+                Button(cx.suggesting ? "Finding…" : "Find") { cx.findByDescription() }
+                    .disabled(cx.suggesting || cx.describeText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+            if cx.suggesting {
+                HStack(spacing: 6) {
+                    ProgressView().controlSize(.small).scaleEffect(0.7)
+                    Text("Asking \(cx.engine.label) which sessions are about that (1 request, short summaries only)…").font(.system(size: 11)).foregroundColor(.secondary)
+                }
+            } else if !cx.suggestNote.isEmpty {
+                Text(cx.suggestNote).font(.system(size: 11)).foregroundColor(cx.suggestion == nil ? .orange : .secondary).fixedSize(horizontal: false, vertical: true)
+            }
+            if let s = cx.suggestion, !s.picks.isEmpty {
+                HStack(spacing: 12) {
+                    let strong = s.picks.filter(\.strong).count
+                    if strong > 0 { Button("Pick strong (\(strong))") { cx.pickSuggested(strongOnly: true) } }
+                    Button("Pick all (\(s.picks.count))") { cx.pickSuggested(strongOnly: false) }
+                    Spacer()
+                }
+                .buttonStyle(.plain).font(.system(size: 11.5)).foregroundColor(.accentColor)
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 2) {
+                        ForEach(s.groups, id: \.name) { g in
+                            HStack {
+                                Text(g.name.isEmpty ? "Not in a chain or PR" : g.name).font(.system(size: 11, weight: .semibold)).foregroundColor(.secondary)
+                                Spacer()
+                                Button("Pick \(g.picks.count)") { cx.pickGroup(g.picks) }.buttonStyle(.plain).font(.system(size: 11)).foregroundColor(.accentColor)
+                            }
+                            .padding(.horizontal, 6).padding(.top, 4)
+                            ForEach(g.picks) { p in PickRow(cx: cx, row: p.row, fit: p.fit, why: p.why) }
+                        }
+                    }
+                }
+                .frame(height: 170)
+                .background(RoundedRectangle(cornerRadius: 6).stroke(Color.primary.opacity(0.08)))
+            } else if !cx.selected.isEmpty {
+                pickedBox
+            }
+        }
+    }
+
+    /// The word search, and the newest sessions when nothing is typed.
+    @ViewBuilder var words: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "magnifyingglass").foregroundColor(.secondary).font(.system(size: 11.5))
+            TextField("Find sessions, e.g. backup", text: $cx.pickQuery).textFieldStyle(.plain).font(.system(size: 12.5))
+            if cx.pickSearching { ProgressView().controlSize(.small).scaleEffect(0.6) }
+            if let r = cx.pickResults, !r.isEmpty {
+                let left = r.filter { !cx.isSelected($0) && !cx.isMember($0) }.count
+                Button("Pick all \(r.count)") { cx.selectAll(r) }.buttonStyle(.plain).font(.system(size: 11.5)).foregroundColor(.accentColor)
+                    .disabled(left == 0)
+            }
+        }
+        .padding(.horizontal, 8).padding(.vertical, 6)
+        .background(RoundedRectangle(cornerRadius: 6).fill(Color.primary.opacity(0.06)))
+        let rows = cx.candidates
+        // a box of its own, so the questions below stay in sight however many sessions there are
+        ScrollView {
+            VStack(spacing: 0) {
+                if rows.isEmpty {
+                    Text(cx.pickQuery.isEmpty ? "No sessions yet" : (cx.pickSearching ? "Searching…" : "No session matches"))
+                        .font(.system(size: 11.5)).foregroundColor(.secondary).padding(.vertical, 6).frame(maxWidth: .infinity, alignment: .leading)
+                }
+                ForEach(rows) { r in PickRow(cx: cx, row: r) }
+            }
+        }
+        .frame(height: 150)
+        .background(RoundedRectangle(cornerRadius: 6).stroke(Color.primary.opacity(0.08)))
+    }
+
+    /// What you picked so far (shown in Describe mode before a search, or after switching from Search words).
+    var pickedBox: some View {
+        ScrollView {
+            VStack(spacing: 0) { ForEach(cx.selected) { r in PickRow(cx: cx, row: r) } }
+        }
+        .frame(height: 110)
+        .background(RoundedRectangle(cornerRadius: 6).stroke(Color.primary.opacity(0.08)))
     }
 
     var questions: some View {
@@ -309,6 +382,8 @@ struct StepNumber: View {
 struct PickRow: View {
     @ObservedObject var cx: ContextModel
     let row: Row
+    var fit: String? = nil   // the AI's verdict, when it recommended this one
+    var why: String? = nil
     @State private var hovering = false
 
     var body: some View {
@@ -317,7 +392,13 @@ struct PickRow: View {
         HStack(spacing: 8) {
             Image(systemName: on ? "checkmark.square.fill" : "square").foregroundColor(on ? (member ? .secondary : .accentColor) : .secondary)
             VStack(alignment: .leading, spacing: 1) {
-                Text(row.title).font(.system(size: 12.5)).lineLimit(1)
+                HStack(spacing: 5) {
+                    Text(row.title).font(.system(size: 12.5)).lineLimit(1)
+                    if let f = fit { StatusPill(text: f) }
+                }
+                if let w = why, !w.isEmpty {
+                    Text(w).font(.system(size: 10.5)).foregroundColor(.primary.opacity(0.7)).lineLimit(2)
+                }
                 Text(member ? "already in it · \(row.ago)" : row.detail).font(.system(size: 10.5)).foregroundColor(.secondary).lineLimit(1)
             }
             Spacer(minLength: 0)
