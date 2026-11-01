@@ -380,6 +380,12 @@ printf '{"is_error": false, "result": "The zebra work is in [[%s]]. DB_PASSWORD=
         self.assertIn("ask: connected to Claude (sonnet)", again)
         self.assertIn("suggestion: What did I work on this week?", again)
 
+    def test_once_connected_the_header_menu_offers_the_other_tool_and_disconnect(self):
+        self.connect_claude()
+        out = self.dump("--tab", "ask")
+        # Codex is not installed in this HOME: it is listed, but cannot be picked
+        self.assertIn("header menu: Answer with Claude ✓ | Codex (not installed) (off) · What is sent to Claude… · Disconnect…", out)
+
     def test_connecting_a_tool_that_is_missing_fails_with_the_reason_and_changes_nothing(self):
         self.isolate_tools()
         rc, out, _ = self.app("--ask-connect", "codex")

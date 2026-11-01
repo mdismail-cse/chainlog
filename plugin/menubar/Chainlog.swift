@@ -273,6 +273,8 @@ func dumpAsk(_ m: AppModel) {
     }
     let who = chat.engine?.label ?? "?"
     print("ask: connected to \(who)\(chat.status?.model.map { " (\($0))" } ?? "")")
+    print("  header menu: Answer with " + chat.engineChoices.map { $0.title + ($0.current ? " ✓" : ($0.enabled ? "" : " (off)")) }.joined(separator: " | ")
+          + " · What is sent to \(who)… · Disconnect…")
     if !chat.hasConversation { for s in ChatModel.suggestions { print("  suggestion: \(s)") } }
     for msg in chat.messages {
         switch msg.role {

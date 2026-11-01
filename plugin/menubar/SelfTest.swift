@@ -589,6 +589,27 @@ func selfTest(sample path: String?) -> Int {
         m.chat.loadStatus()
         m.chat.connect(.codex)
         check("Ask: switching to a tool you already agreed to does not ask again", calls.asked.isEmpty && calls.ran == [["ask", "--connect", "codex", "--yes"]], "\(calls.ran)")
+        // the header's "Answer with" menu: the tool in use is ticked; the other can be picked when it is installed
+        m = chatModel()
+        check("Ask header: before the status is read both tools are offered, the one in use ticked",
+              m.chat.engineChoices.map { "\($0.title) \($0.current) \($0.enabled)" } == ["Claude true false", "Codex false true"])
+        m.chat.loadStatus()  // Codex not installed
+        check("  ... a tool that is not installed says so and cannot be picked",
+              m.chat.engineChoices.map { "\($0.title) \($0.enabled)" } == ["Claude false", "Codex (not installed) false"])
+        m.chat.statusReader = { try? JSONDecoder().decode(AskStatus.self, from: Data(agreed.utf8)) }
+        m.chat.loadStatus()
+        calls.ran = []; calls.asked = []
+        m.chat.use(.claude)
+        check("  ... picking the tool in use does nothing", calls.ran.isEmpty)
+        m.chat.use(.codex)
+        check("  ... picking the other one switches to it (no question: you agreed before)", calls.ran == [["ask", "--connect", "codex", "--yes"]] && calls.asked.isEmpty, "\(calls.ran)")
+        m = chatModel()
+        calls.ran = []; calls.asked = []
+        m.chat.statusReader = { try? JSONDecoder().decode(AskStatus.self, from: Data(#"{"engine":"claude","consented":["claude"],"model":"sonnet","ready":true,"engines":{"claude":{"installed":true,"signed_in":true,"detail":"signed in"},"codex":{"installed":true,"signed_in":true,"detail":"signed in"}},"disclosure":{"claude":"c","codex":"Text is sent to Codex."}}"#.utf8)) }
+        m.chat.loadStatus()
+        m.chat.use(.codex)
+        check("  ... a tool you never agreed to asks first, with what is sent", calls.asked.map(\.0) == ["Connect Codex?"] && calls.asked.first?.1 == "Text is sent to Codex."
+              && calls.ran == [["ask", "--connect", "codex", "--yes"]], "\(calls.asked.map(\.0)) \(calls.ran)")
         m = chatModel()
         calls.ran = []; calls.asked = []
         m.chat.disconnectConfirmer = { t, d in calls.asked.append((t, d)); return false }

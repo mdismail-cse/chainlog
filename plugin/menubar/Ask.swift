@@ -308,6 +308,25 @@ final class ChatModel: ObservableObject {
         }
     }
 
+    /// The header's "Answer with" menu: each tool, whether it is the one in use, and whether it can be chosen (installed and
+    /// not signed out; while the status is still being read every tool can be chosen, and connecting says what is wrong).
+    struct EngineChoice { let engine: AskEngine; let title: String; let current: Bool; let enabled: Bool }
+    var engineChoices: [EngineChoice] {
+        AskEngine.allCases.map { e in
+            let st = status?.engines[e.rawValue]
+            let current = engine == e
+            let note: String
+            if current { note = "" } else if let st = st, !st.installed { note = " (not installed)" } else if st?.signed_in == false { note = " (not signed in)" } else { note = "" }
+            return EngineChoice(engine: e, title: e.label + note, current: current, enabled: !current && (st?.usable ?? true))
+        }
+    }
+
+    /// Answer with `e` from now on: the agreement is asked first if you never gave it for that tool. The chat is kept.
+    func use(_ e: AskEngine) {
+        guard e != engine else { return }
+        connect(e)
+    }
+
     /// What connecting means, from chainlog (one text for the terminal and the app).
     func disclosure(_ e: AskEngine) -> String { status?.disclosure[e.rawValue] ?? "Your questions and short excerpts of your sessions are sent to \(e.label). Secrets are redacted first." }
 

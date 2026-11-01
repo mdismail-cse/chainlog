@@ -11,25 +11,29 @@ struct AskHeader: View {
         HStack(spacing: 8) {
             Image(systemName: "sparkles").foregroundColor(.accentColor)
             if chat.connected, let e = chat.engine {
-                Text(e.label).font(.system(size: 14, weight: .semibold))
-                if let m = chat.status?.model, chat.status?.engine == e.rawValue {
-                    Text(m).font(.system(size: 11)).foregroundColor(.secondary)
+                // who answers, in plain sight: switch to the other tool, see what is sent, or disconnect
+                Menu {
+                    Section("Answer with") {
+                        ForEach(chat.engineChoices, id: \.engine) { c in
+                            Button { chat.use(c.engine) } label: {
+                                if c.current { Label(c.title, systemImage: "checkmark") } else { Text(c.title) }
+                            }
+                            .disabled(!c.enabled)
+                        }
+                    }
+                    Divider()
+                    Button("What is sent to \(e.label)…") { Alerts.info("What \(e.label) is sent", chat.disclosure(e)) }
+                    Button("Disconnect…") { chat.disconnect() }
+                } label: {
+                    // one text: a menu button on macOS keeps a single label
+                    Text(chat.status?.engine == e.rawValue ? chat.status?.model.map { "\(e.label) · \($0)" } ?? e.label : e.label)
+                        .font(.system(size: 14, weight: .semibold))
                 }
+                .menuStyle(.borderlessButton).menuIndicator(.visible).fixedSize()
+                .help("Switch to \(e.other.label), see what is sent, or disconnect")
                 Spacer()
                 IconButton(symbol: "square.and.pencil", help: "Start a new chat") { chat.clear() }
                     .disabled(!chat.hasConversation)
-                Menu {
-                    let other = e.other
-                    if chat.status?.engines[other.rawValue]?.usable == true {
-                        Button("Use \(other.label) instead") { chat.connect(other) }
-                    }
-                    Button("What is sent to \(e.label)…") { Alerts.info("What \(e.label) is sent", chat.disclosure(e)) }
-                    Divider()
-                    Button("Disconnect…") { chat.disconnect() }
-                } label: {
-                    Image(systemName: "ellipsis.circle").font(.system(size: 13))
-                }
-                .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
             } else {
                 Text("Ask Claude or Codex").font(.system(size: 14, weight: .semibold))
                 Spacer()
@@ -148,7 +152,10 @@ struct ChatView: View {
             Divider()
             Composer(chat: chat, focused: $focused, close: close)
         }
-        .onAppear { DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { focused = true } }
+        .onAppear {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { focused = true }
+            if chat.status == nil { chat.loadStatus() }  // the header's menu needs it to offer the other tool
+        }
     }
 
     func scrollToEnd(_ proxy: ScrollViewProxy, animated: Bool = true) {

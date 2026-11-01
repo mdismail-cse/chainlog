@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Menu bar app, Ask tab: the tool in use is a menu at the top (*Claude · sonnet ▾*) to switch to the other one, see what is
+  sent, or disconnect. It was hidden in a ⋯ button, and the other tool was only offered after a status check.
 - Contexts: merge what many sessions taught you into one small file a new session reads only when it needs it.
   `chainlog context new "Cloud backup" --find backup` (or ids, or `--chain KEY`) asks each session your questions (ten ready-made
   ones: the problem, root cause, fix, how it works, testing, risks, what is open, decisions, facts, what next), one request
