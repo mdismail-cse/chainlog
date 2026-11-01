@@ -45,13 +45,14 @@ enum Layout {
             var out: [RowSection] = []
             if !data.unsaved.isEmpty {
                 // "unsaved" only covers sessions that ended recently: say so, so 11 is not mistaken for "all my sessions"
-                let window = data.unsaved_window_hours.map { " · last \($0) h" } ?? ""
-                out.append(RowSection(id: "unsaved", title: "Unsaved · \(data.counts.unsaved)\(window)", rows: data.unsaved,
+                // ("Unsaved" read as "your work was lost"; a session without a note of yours is what it means)
+                let window = data.unsaved_window_hours.map { " · ended in the last \($0) h" } ?? ""
+                out.append(RowSection(id: "unsaved", title: "No note yet · \(data.counts.unsaved)\(window)", rows: data.unsaved,
                                       reviewAll: data.counts.unsaved > data.unsaved.count ? data.counts.unsaved : nil))
             }
             if !data.recent.isEmpty {
                 let missing = max(0, (data.counts.all ?? 0) - data.unsaved.count - data.recent.count)
-                out.append(RowSection(id: "recent", title: "Everything else · \(data.recent.count)", rows: data.recent,
+                out.append(RowSection(id: "recent", title: "\(data.unsaved.isEmpty ? "All sessions" : "Everything else") · \(data.recent.count)", rows: data.recent,
                                       note: missing > 0 ? "Showing the newest \(data.recent.count); \(missing) older ones are not listed. Search finds them." : nil))
             }
             return out

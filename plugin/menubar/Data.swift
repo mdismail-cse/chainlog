@@ -175,8 +175,12 @@ extension Row: Identifiable {
         return resume.cwd.hasPrefix(home) ? "~" + resume.cwd.dropFirst(home.count) : resume.cwd
     }
 
-    /// The result as shown in the pill (free text from `chainlog status`, so long ones are shortened).
-    var statusLabel: String? { status.map { clip($0, 12) } }
+    /// The result as shown in the pill: a word for the four codes, else the free text from `chainlog status`, shortened.
+    var statusLabel: String? { status.map { statusWord($0) } }
+
+    /// What happened, in one line: your note, else the summary's headline, else the last thing the assistant said.
+    /// Shown on the row itself; the hover preview has the rest.
+    var gist: String? { note ?? summary ?? last_work }
 
     /// Can this session be reopened? (Claude deletes old transcripts.)
     var canResume: Bool { resume.blockers.isEmpty }
@@ -187,15 +191,25 @@ extension Row: Identifiable {
     /// Codex session must be unarchived, the folder may be wrong). `chainlog resume` asks first; so does the app.
     var warning: String? { resume.notes.isEmpty ? nil : resume.notes.joined(separator: "\n") }
 
-    /// "xcloud#8707 r2 · codex · 1h": the second line of a row (the status is shown as a pill next to the title).
+    /// "xcloud#8707 · round 2 · Codex · 1h": the facts about a row (the status is shown as a pill next to the title).
     var detail: String {
         var parts: [String] = []
-        if let c = chain { parts.append(clip(c, 30) + (round.map { " r\($0)" } ?? "")) }
-        if harness != "claude" { parts.append(harness) }
+        if let c = chain { parts.append(clip(c, 30) + (round.map { " · round \($0)" } ?? "")) }
+        if harness != "claude" { parts.append(harness == "codex" ? "Codex" : harness) }
         if let v = via { parts.append(v) }
-        if isKept { parts.append("kept") }
+        if isKept { parts.append("copy kept") }
         parts.append(ago)
         return parts.joined(separator: " · ")
+    }
+
+    /// What the state dot means, for its tooltip.
+    var stateText: String {
+        if live { return "Running right now" }
+        switch saved {
+        case "user": return "Saved with your note"
+        case "auto": return "Saved automatically (no note from you yet)"
+        default: return "No note yet: hover and click the pencil to add one"
+        }
     }
 
     /// The preview's last line: result, PR or branch, size, length, and the folder.
@@ -240,3 +254,8 @@ func homeDirectory() -> String {
 }
 
 func clip(_ s: String, _ n: Int) -> String { s.count <= n ? s : String(s.prefix(n - 1)) + "…" }
+
+/// The four result codes as words ("wip" meant nothing to a newcomer); other results are shown as typed, shortened.
+func statusWord(_ code: String) -> String {
+    ["pass": "Passed", "fail": "Failed", "wip": "In progress", "blocked": "Blocked"][code] ?? clip(code, 12)
+}

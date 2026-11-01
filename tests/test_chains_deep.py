@@ -655,7 +655,7 @@ class ChainsTabApp(unittest.TestCase):
         blocks, _h, _f = self.parse(self.dump(self.big))
         rounds = blocks["shop#9000"]["rounds"]
         self.assertEqual([r[0] for r in rounds], list(range(10, 2, -1)))
-        self.assertEqual(rounds[0][2], "Checkout run 10 <pass>")  # the title and the result's pill
+        self.assertTrue(rounds[0][2].startswith("Checkout run 10 <Passed>"), rounds[0])  # the title and the result's pill
         self.assertEqual(blocks["shop#9000"]["continue"], "→ Continue the latest round (r10)")
 
     def test_continue_is_offered_only_when_the_newest_round_can_be_opened(self):
@@ -677,15 +677,15 @@ class ChainsTabApp(unittest.TestCase):
     def test_each_round_says_which_tool_it_ran_in_and_which_chain_it_is_listed_under(self):
         blocks, _h, _f = self.parse(self.dump(self.big))
         r = {x[0]: x for x in blocks["shop#4321"]["rounds"]}
-        self.assertTrue(r[2][3].startswith("shop#4321 r2 · codex"), r[2])
-        self.assertTrue(r[3][3].startswith("shop#4321 r3 · VS Code"), r[3])
-        self.assertTrue(r[1][3].startswith("shop#4321 r1 · "), r[1])
-        self.assertNotIn("codex", r[1][3])
+        self.assertIn("shop#4321 · round 2 · Codex", r[2][3], r[2])
+        self.assertIn("shop#4321 · round 3 · VS Code", r[3][3], r[3])
+        self.assertIn("shop#4321 · round 1 · ", r[1][3], r[1])
+        self.assertNotIn("Codex", r[1][3])
         self.assertEqual([x[1] for x in blocks["shop#4321"]["rounds"]], ["saved"] * 5)
         self.assertEqual([x[1] for x in blocks["shop#5000"]["rounds"]], ["not saved"] * 3)
         both = [blocks["shop#4388"]["rounds"][0], blocks["release 3.2 regression"]["rounds"][1]]  # the session in two chains
-        self.assertTrue(both[0][3].startswith("shop#4388 r2"), both[0])
-        self.assertTrue(both[1][3].startswith("release 3.2 regression r3"), both[1])
+        self.assertIn("shop#4388 · round 2", both[0][3], both[0])
+        self.assertIn("release 3.2 regression · round 3", both[1][3], both[1])
 
     def test_enter_opens_the_newest_round_of_the_newest_chain(self):
         out = self.dump(self.big)

@@ -153,7 +153,7 @@ struct SessionList: View {
                     }
                     if let n = section.reviewAll {
                         Button { model.reviewAll() } label: {
-                            Text("Review all \(n) unsaved…").font(.system(size: 12.5)).foregroundColor(.accentColor)
+                            Text("Add notes to all \(n) in Terminal…").font(.system(size: 12.5)).foregroundColor(.accentColor)
                         }
                         .buttonStyle(.plain).padding(.horizontal, 14).padding(.vertical, 6)
                     }
@@ -206,7 +206,7 @@ struct ChainBlock: View {
                     Image(systemName: open ? "chevron.down" : "chevron.right").font(.system(size: 10, weight: .semibold))
                         .foregroundColor(.secondary).frame(width: 14)
                     Text(chain.label).font(.system(size: 13, weight: .semibold))
-                    if let s = chain.status { StatusPill(text: s) }
+                    if let s = chain.status { StatusPill(text: statusWord(s), code: s) }
                     Spacer()
                     Text("\(chain.rounds) round\(chain.rounds == 1 ? "" : "s") · \(chain.ago)")
                         .font(.system(size: 11.5)).foregroundColor(.secondary)
@@ -247,8 +247,9 @@ struct SectionHeader: View {
 
 struct StatusPill: View {
     let text: String
+    var code: String? = nil  // the raw result the colour follows when `text` is its word ("Passed" for "pass")
     var body: some View {
-        let color: Color = ["pass": .green, "fail": .red, "blocked": .red, "wip": .orange, "strong": .accentColor][text] ?? .secondary
+        let color: Color = ["pass": .green, "fail": .red, "blocked": .red, "wip": .orange, "strong": .accentColor][code ?? text] ?? .secondary
         Text(clip(text, 12)).font(.system(size: 10.5, weight: .semibold)).foregroundColor(color)
             .padding(.horizontal, 6).padding(.vertical, 1)
             .background(Capsule().fill(color.opacity(0.14)))
@@ -338,13 +339,22 @@ struct SessionRow: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .center, spacing: 10) {
                 Image(systemName: icon.symbol).font(.system(size: 11.5)).foregroundColor(icon.color).frame(width: 16)
+                    .help(row.stateText)
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 6) {
-                        if let r = round { Text("r\(r)").font(.system(size: 11, weight: .semibold)).foregroundColor(.secondary) }
+                        if let r = round { Text("r\(r)").font(.system(size: 11, weight: .semibold)).foregroundColor(.secondary).help("Round \(r): the \(r)th session on this work") }
                         Text(row.title).font(.system(size: 13, weight: .medium)).lineLimit(1)
-                        if let s = row.statusLabel { StatusPill(text: s) }
+                        if let s = row.statusLabel { StatusPill(text: s, code: row.status) }
                     }
-                    Text(row.detail).font(.system(size: 11.5)).foregroundColor(.secondary).lineLimit(1)
+                    // what happened (your note, else the summary, else the last reply), then the facts; the facts alone when nothing was said
+                    HStack(spacing: 6) {
+                        Text(row.gist ?? row.detail).font(.system(size: 11.5))
+                            .foregroundColor(row.note != nil ? .primary.opacity(0.8) : .secondary).lineLimit(1)
+                        if row.gist != nil {
+                            Spacer(minLength: 6)
+                            Text(row.detail).font(.system(size: 11)).foregroundColor(.secondary).lineLimit(1).fixedSize()
+                        }
+                    }
                 }
                 Spacer(minLength: 4)
                 if hovering || row.starred || model.editing == row.ref {
@@ -363,7 +373,7 @@ struct SessionRow: View {
                             IconButton(symbol: "text.alignleft", tint: model.showingSummary == row.ref ? .accentColor : .secondary,
                                        help: "Show its summary") { model.toggleSummary(row) }
                         } else {
-                            IconButton(symbol: "text.badge.star", help: "Summarize the whole session (AI, 1 request)") { model.summarize(row) }
+                            IconButton(symbol: "text.badge.star", help: "Summarize this session with AI (1 request)") { model.summarize(row) }
                         }
                     }
                     IconButton(symbol: row.starred ? "star.fill" : "star", tint: row.starred ? .yellow : .secondary,
@@ -499,11 +509,11 @@ struct SummaryPanel: View {
                 SummaryLine(line: String(line))
             }
             if row.summary_stale == true {
-                Text("The session went on after this summary.").font(.system(size: 11)).foregroundColor(.orange)
+                Text("This session continued after the summary was written.").font(.system(size: 11)).foregroundColor(.orange)
             }
             HStack(spacing: 14) {
                 Button("Copy") { model.copySummary(row) }
-                Button(row.summary_stale == true ? "Summarize again (it went on)" : "Summarize again") { model.summarize(row) }
+                Button(row.summary_stale == true ? "Update the summary" : "Summarize again") { model.summarize(row) }
                     .disabled(model.summarizing.contains(row.ref))
                 Spacer()
                 Button("Close") { model.toggleSummary(row) }
@@ -524,7 +534,9 @@ struct SummaryLine: View {
         if line.uppercased().hasPrefix("HEADLINE:") {
             Text(line.dropFirst(9).trimmingCharacters(in: .whitespaces)).font(.system(size: 12.5, weight: .semibold)).fixedSize(horizontal: false, vertical: true)
         } else if let colon = line.firstIndex(of: ":"), line.distance(from: line.startIndex, to: colon) <= 12, !line.hasPrefix("-") {
-            (Text(String(line[..<colon]) + ":").font(.system(size: 11.5, weight: .semibold))
+            // the prompt's labels, in the reader's words ("Open:" sat two lines above the "Open" menu item)
+            let label = String(line[..<colon])
+            (Text((["Open": "Still to do", "Next": "Next step"][label] ?? label) + ":").font(.system(size: 11.5, weight: .semibold))
                 + Text(line[line.index(after: colon)...]).font(.system(size: 11.5)))
                 .foregroundColor(.primary.opacity(0.85)).fixedSize(horizontal: false, vertical: true)
         } else {
@@ -555,7 +567,7 @@ struct NoteEditor: View {
             HStack(spacing: 8) {
                 Picker("", selection: status) {
                     Text("No result").tag("")
-                    Text("Pass").tag("pass"); Text("Fail").tag("fail"); Text("Work in progress").tag("wip"); Text("Blocked").tag("blocked")
+                    Text("Passed").tag("pass"); Text("Failed").tag("fail"); Text("In progress").tag("wip"); Text("Blocked").tag("blocked")
                 }
                 .labelsHidden().frame(width: 150)
                 Spacer()

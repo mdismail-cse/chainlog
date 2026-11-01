@@ -130,12 +130,12 @@ class AppEndToEnd(Home):
         self.assertTrue(out.startswith("failed:") and "no session matches" in out, out)
 
     def test_save_with_a_note_and_a_result_then_search_finds_it(self):
-        before = next(l for l in self.dump().splitlines() if l.startswith("Unsaved"))
-        self.assertTrue(before.startswith("Unsaved · 12"), before)  # "... · last N h" follows
+        before = next(l for l in self.dump().splitlines() if l.startswith("No note yet"))
+        self.assertTrue(before.startswith("No note yet · 12"), before)  # "... · last N h" follows
         self.assertEqual(self.app("--act", "save", self.ref(0), "pass", "checkout works with saved cards")[0], 0)
         d = self.dump()
-        self.assertIn("Unsaved · 11", d)
-        self.assertIn("<pass>", d)
+        self.assertIn("No note yet · 11", d)
+        self.assertIn("<Passed>", d)
         self.assertIn("shop#5000", self.dump("--tab", "chains"))  # the PR in its title linked it into a chain
         self.assertIn("Results · 1", self.dump("--query", "checkout works"))  # the note is searchable
 

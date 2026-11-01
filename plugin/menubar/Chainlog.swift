@@ -293,7 +293,8 @@ func dumpAsk(_ m: AppModel) {
 func dumpModel(_ m: AppModel) {
     func line(_ r: Row) -> String {
         let mark = "[\(r.live ? "running" : (r.saved == "user" ? "saved" : (r.saved == "auto" ? "auto-saved" : "not saved")))]"
-        return "  \(mark) \(r.starred ? "★ " : "")\(r.canResume ? "" : "(can't reopen) ")\(r.canResume && r.warning != nil ? "(asks first) " : "")\(clip(r.title, 60))\(r.statusLabel.map { " <\($0)>" } ?? "") — \(r.detail)"
+        let gist = r.gist.map { " — \(clip($0, 70))" } ?? ""
+        return "  \(mark) \(r.starred ? "★ " : "")\(r.canResume ? "" : "(can't reopen) ")\(r.canResume && r.warning != nil ? "(asks first) " : "")\(clip(r.title, 60))\(r.statusLabel.map { " <\($0)>" } ?? "")\(gist) — \(r.detail)"
     }
     if m.tab == .ask { dumpAsk(m); return }
     let counts = Tab.allCases.map { t in "\(t.title)\(m.count(for: t).map { " \($0)" } ?? "")\(t == m.tab ? "*" : "")" }
@@ -336,7 +337,7 @@ func dumpModel(_ m: AppModel) {
                 for l in full.split(separator: "\n") { print("    | " + l) }
             }
         }
-        if let n = s.reviewAll { print("  → Review all \(n) unsaved…") }
+        if let n = s.reviewAll { print("  → Add notes to all \(n) in Terminal…") }
         if let note = s.note { print("  (\(note))") }
     }
 }

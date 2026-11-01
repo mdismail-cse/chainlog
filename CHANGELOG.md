@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Menu bar app, Sessions and Starred: every row now says what happened. Its second line is your note, else the summary's
+  headline, else the assistant's last reply (it used to be only `shop#4321 r3 · codex · kept · 4h`, so twenty rows were
+  twenty titles), with the facts at the right. Plain words throughout: "No note yet · N · ended in the last 24 h" instead
+  of "Unsaved", "All sessions" when that section is empty, "Add notes to all N in Terminal…", "round 3" / "Codex" /
+  "copy kept", result pills say Passed / Failed / In progress / Blocked, the state dot has a tooltip, the summary panel
+  says "Still to do" and "Next step" and offers "Update the summary" when the session went on.
 - Ask reads your summaries and stops taking the assistant's sign-off for the outcome. Each catalog line now carries
   `summary: "…"` (the whole-session summary's headline, marked when the session went on after it) and `note:` is your own
   words only (a summary used to leak in as a note, flattened and cut); the assistant's last message is sent only when there
