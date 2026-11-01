@@ -209,8 +209,12 @@ extension Row: Identifiable {
 
     /// Everything a search looks at in this row, lower-cased.
     var haystack: String {
-        [title, chain ?? "", status ?? "", harness, via ?? "", via == "VS Code" ? "vscode" : "", last_work ?? "", first_ask ?? "",
-         note ?? "", summary ?? "", pr ?? "", branch ?? ""].joined(separator: " ").lowercased()
+        // built in steps: one long literal of `?? ""` is more than Swift 5.9 can type-check in time
+        var parts: [String] = [title, harness]
+        let optional: [String?] = [chain, status, via, last_work, first_ask, note, summary, pr, branch]
+        parts += optional.compactMap { $0 }
+        if via == "VS Code" { parts.append("vscode") }
+        return parts.joined(separator: " ").lowercased()
     }
 
     /// Every word of `query` appears somewhere in the row (used while a real search is still loading).
