@@ -283,10 +283,11 @@ func dumpAsk(_ m: AppModel) {
             print("  \(who): \(AskText.plain(msg.text, sessions: msg.sessions).replacingOccurrences(of: "\n", with: "\n    "))")
             for r in msg.sessions { print("    → [\(r.short)] \(clip(r.title, 60)) — \(r.detail)") }
             if let meta = msg.meta { print("    (\(meta))") }
-        case .error: print("  ! \(msg.text)")
+        case .error: print("  ! \(msg.text)" + (ChatModel.retryable(msg.code) ? (msg.code == "stopped" ? " [Ask again]" : " [Try again]") : ""))
         }
     }
     if chat.thinking { print("  … \(chat.progress)") }
+    if !chat.draft.isEmpty { print("  box: \"\(chat.draft)\"") }  // a failed question is back in the box
 }
 
 @MainActor

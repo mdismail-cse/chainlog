@@ -232,8 +232,14 @@ struct MessageView: View {
             HStack(alignment: .top, spacing: 6) {
                 Image(systemName: message.code == "stopped" ? "stop.circle" : "exclamationmark.triangle")
                     .font(.system(size: 11.5)).foregroundColor(message.code == "stopped" ? .secondary : .orange)
-                Text(message.text).font(.system(size: 12)).foregroundColor(message.code == "stopped" ? .secondary : .orange)
-                    .fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(message.text).font(.system(size: 12)).foregroundColor(message.code == "stopped" ? .secondary : .orange)
+                        .fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
+                    if ChatModel.retryable(message.code) {  // the most common recovery is the one that needed retyping
+                        Button(message.code == "stopped" ? "Ask again" : "Try again") { chat.retry() }
+                            .buttonStyle(.plain).font(.system(size: 12)).foregroundColor(.accentColor).disabled(chat.thinking)
+                    }
+                }
             }
         }
     }

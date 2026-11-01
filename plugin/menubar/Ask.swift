@@ -160,6 +160,25 @@ final class ChatModel: ObservableObject {
     @Published private(set) var thinking = false
     @Published private(set) var progress = ""            // "Asking Claude…"
     @Published var draft = ""
+    /// What was asked last: put back in the box when the answer fails, and sent again by "Try again".
+    @Published private(set) var lastQuestion: String?
+
+    /// After a failure or a stop, the question is in the box again (it was emptied on send, so a retry meant retyping).
+    func restoreQuestion() { if draft.isEmpty, let q = lastQuestion { draft = q } }
+
+    /// Ask the last question again, as if for the first time: the failed attempt is taken out of the conversation.
+    func retry() {
+        guard let q = lastQuestion, !thinking else { return }
+        if messages.last?.role == .error { messages.removeLast() }
+        if messages.last?.role == .user, messages.last?.text == q { messages.removeLast() }
+        draft = ""
+        send(q)
+    }
+
+    /// Codes a retry can help with; the others send the tab back to the connect screen, or need a reinstall.
+    static func retryable(_ code: String?) -> Bool {
+        !["not_connected", "no_consent", "not_installed", "not_signed_in", "not_found"].contains(code ?? "")
+    }
     @Published private(set) var status: AskStatus?        // what the connect screen shows
     @Published private(set) var checking = false
     @Published private(set) var connecting: AskEngine?
@@ -209,6 +228,7 @@ final class ChatModel: ObservableObject {
         guard !question.isEmpty, !thinking else { return }
         guard connected else { app?.say("Connect Claude or Codex first"); return }
         if text == nil { draft = "" }
+        lastQuestion = question  // a failure puts it back in the box and offers "Try again"
         let history = historyPayload()
         messages.append(ChatMessage(role: .user, text: question))
         thinking = true
@@ -224,7 +244,7 @@ final class ChatModel: ObservableObject {
         })
         if cancel == nil {
             thinking = false
-            messages.append(ChatMessage(role: .error, text: "chainlog was not found, so there is nothing to ask.", code: "not_found"))
+            messages.append(ChatMessage(role: .error, text: "The chainlog command was not found, so nothing can be asked. Reinstall chainlog and try again.", code: "not_found"))
             return
         }
         limitTask?.cancel()
@@ -242,7 +262,8 @@ final class ChatModel: ObservableObject {
         cancel = nil
         generation += 1
         thinking = false
-        messages.append(ChatMessage(role: .error, text: "That took too long, so it was stopped. Try a narrower question.", code: "timeout"))
+        messages.append(ChatMessage(role: .error, text: "That took too long to answer, so it was stopped. Try again, or ask something narrower.", code: "timeout"))
+        restoreQuestion()
     }
 
     private func handle(_ e: AskEvent, _ gen: Int) {
@@ -259,6 +280,7 @@ final class ChatModel: ObservableObject {
         case "error":
             gotFinal = true
             messages.append(ChatMessage(role: .error, text: e.message ?? "Something went wrong.", code: e.code))
+            restoreQuestion()
             if ["not_connected", "no_consent", "not_installed", "not_signed_in"].contains(e.code ?? "") {
                 app?.refresh()  // the Ask tab goes back to the connect screen, which says what is missing
                 loadStatus()
@@ -274,7 +296,8 @@ final class ChatModel: ObservableObject {
         cancel = nil
         limitTask?.cancel()
         if !gotFinal {  // chainlog ended without an answer or an error: do not leave the chat waiting
-            messages.append(ChatMessage(role: .error, text: "chainlog stopped before it could answer (exit \(code)). Run `chainlog doctor` in a terminal.", code: "failed"))
+            messages.append(ChatMessage(role: .error, text: "chainlog stopped before it could answer (exit \(code)). Try again; if it keeps happening, open Terminal and run: chainlog doctor", code: "failed"))
+            restoreQuestion()
         }
     }
 
@@ -286,6 +309,7 @@ final class ChatModel: ObservableObject {
         thinking = false
         limitTask?.cancel()
         messages.append(ChatMessage(role: .error, text: "Stopped.", code: "stopped"))
+        restoreQuestion()
     }
 
     func clear() {

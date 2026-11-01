@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Menu bar app, Ask: a question that failed, timed out or was stopped gets a one-click **Try again** (**Ask again** after a
+  stop) and goes back into the box, so the most common recovery no longer means retyping it; the failed attempt leaves
+  the conversation. Error wording in plain words ("That took too long to answer, so it was stopped. Try again, or ask
+  something narrower.", "The chainlog command was not found, so nothing can be asked. Reinstall chainlog and try again.").
 - Menu bar app, Contexts: the ten question fields in step 2 of the builder are folded behind "See or change the
   questions" (they read as a form to fill in, between the sessions and Build; *Edit questions…* opens them unfolded).
   An open context shows what its notes say: the "In short" bullets (Now, Decided, Gotchas, Open, Next), the next step,

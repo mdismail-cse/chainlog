@@ -464,7 +464,8 @@ printf '{"is_error": false, "result": "The zebra work is in [[%s]]. DB_PASSWORD=
         (self.home / "stub-sleep").write_text("")
         rc, out, _ = self.app("--ask", "slow question", "--ask-stop-after", "5")
         self.assertEqual(rc, 0)
-        self.assertIn("! Stopped.", out)
+        self.assertIn("! Stopped. [Ask again]", out)  # one click asks it again
+        self.assertIn('  box: "slow question"', out)  # and the question is back in the box
         pidfile = self.home / "stub.pid"
         self.assertTrue(pidfile.exists(), "the AI stand-in had not started before Stop was pressed:\n" + out)
         pid = int(pidfile.read_text())
