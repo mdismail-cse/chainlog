@@ -306,7 +306,9 @@ func dumpModel(_ m: AppModel) {
     if let r = m.hover.row {
         print("preview: \(clip(r.title, 60)) — \(r.last_work.map { clip($0, 80) } ?? "nothing said yet") — \(r.folder)")
         if let f = r.first_ask { print("  started: \(clip(f, 80))") }
-        if let n = r.note { print("  note: \(clip(n, 80))") } else if let s = r.summary { print("  summary: \(clip(s, 80))") }
+        if let n = r.summary_next, r.summary_stale != true { print("  next: \(clip(n, 80))") }
+        if let n = r.note { print("  note: \(clip(n, 80))") }
+        if let s = r.summary { print("  \(r.summary_stale == true ? "old summary" : "summary"): \(clip(s, 80))") }
         print("  facts: \(r.previewFacts)")
         print("  actions: " + SessionMenuItems.titles(for: r, model: m).joined(separator: " | "))  // the ⋯ / right-click items
     }

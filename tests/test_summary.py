@@ -105,6 +105,9 @@ class Summary(ContextBase):
         self.assertEqual(row["summary"], "Upload retries added; restores over 2 GB still time out")
         self.assertEqual(row["summary_full"].splitlines()[1], "Goal: stop uploads failing on flaky networks")
         self.assertFalse(row["summary_stale"])
+        self.assertEqual(row["summary_next"], "ranged GETs in backup/restore.py")  # what the hover preview shows
+        self.assertEqual(sum_mod.line_of("HEADLINE: x\nOpen: none\nNext: not stated", "Next"), "")
+        self.assertEqual(sum_mod.line_of("HEADLINE: x\nOpen: EU orders", "Open"), "EU orders")
         path = next((self.home / ".claude" / "projects").rglob("%s.jsonl" % sid(13)))
         with open(path, "a") as f:
             f.write(json.dumps({"type": "user", "sessionId": sid(13), "timestamp": iso(NOW - 1 * H),

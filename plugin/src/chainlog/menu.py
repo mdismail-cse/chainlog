@@ -63,6 +63,8 @@ def _preview(s):
         "summary": ui.safe(clean(sum_mod.headline_of(summary), 240)) if summary else None,  # its one line
         "summary_full": "\n".join(ui.safe(l) for l in summary.splitlines())[:sum_mod.FULL_MAX] if full else None,
         "summary_stale": bool(summary) and sum_mod.stale(s),  # the session went on after it was written
+        # the line a reader acts on, for the hover preview: the next step, else what is still open
+        "summary_next": (ui.safe(clean(sum_mod.line_of(summary, "Next") or sum_mod.line_of(summary, "Open"), 160)) or None) if full else None,
         "pr": pr, "branch": ui.safe(branch) if branch and branch not in ("HEAD", "main", "master") else None,
         "lines": ("+%d/−%d" % (added, removed)) if added or removed else None,
         "took": _took(s),

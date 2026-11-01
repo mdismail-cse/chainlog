@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Menu bar app: the hover preview shows the summary's **Next** step (else what is still open) instead of the assistant's
+  raw last reply, which was usually a sign-off; without a summary the line says "Ended with". Your note and the summary
+  are both shown (the summary used to hide whenever a note existed), an old summary is labelled so where it is read and
+  its button turns orange, and the panel grew by one line. `_menu` rows carry `summary_next`.
 - Menu bar app: a ⋯ button on every hovered session and on every context opens the same menu as a right-click (Open in
   VS Code, Copy session id, Summarize with instructions…, Add to a context, Keep a copy, Delete…; for a context: Add
   sessions…, Edit questions…, Show in Finder, Delete…). Eight actions were reachable only by right-click, which the hints

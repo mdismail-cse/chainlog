@@ -207,6 +207,16 @@ def headline_of(text):
     return ""
 
 
+def line_of(text, label):
+    """The value of one labelled line of a summary ("Next: …"), "" when it is missing or says none / not stated."""
+    for line in (text or "").splitlines():
+        head, sep, value = line.strip().partition(":")
+        if sep and head.strip().lower() == label.lower():
+            value = value.strip()
+            return "" if value.lower() in EMPTY_VALUES else value
+    return ""
+
+
 def mark(s):
     """Changes when the session goes on (its transcript grows), not when chainlog writes about it."""
     try:

@@ -93,7 +93,8 @@ first, at most 40; with `--every-word`, only sessions that contain every word, a
   `last_work`, the preview's `first_ask` (null when it is the title), `last_ask`, `note` (your latest), `summary` (its one
   line: the headline of a whole-session summary, or an automatic AI one-liner; null for a local one, which only restates
   the facts here), `summary_full` (the whole summary, lines: only for a whole-session one, `chainlog summarize`),
-  `summary_stale` (the session went on after it), `pr`
+  `summary_stale` (the session went on after it), `summary_next` (its Next line, else Open: what a reader acts on; only
+  for a whole-session summary), `pr`
   (`"PR #4321 · repo"`), `branch` (not main/master), `lines` (`"+42/−7"`), `took` (`"45m"`, `"3h"`) (each always present,
   null when unknown), `resume {cwd, command, vscode, session_id, link, restores, blockers[], notes[]}`. `resume.restores` is true when Claude deleted the
   original but a kept copy exists: `command` then starts with `chainlog restore REF && …`, and `blockers` is empty.

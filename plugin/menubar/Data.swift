@@ -35,6 +35,7 @@ struct Row: Decodable {
     let summary: String?     // its latest summary: one line
     let summary_full: String?   // the whole of it (HEADLINE, Goal, Done, Decisions, Gotchas, Result, Files & PRs, Open, Next)
     let summary_stale: Bool?    // the session went on after it was written
+    let summary_next: String?   // its Next line (else Open): what a reader acts on, shown in the hover preview
     let pr: String?          // "PR #4521 · shop"
     let branch: String?      // not main / master
     let lines: String?       // "+42/−7"
