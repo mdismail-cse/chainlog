@@ -22,12 +22,12 @@ struct AskHeader: View {
                         }
                     }
                     Divider()
+                    if chat.status?.engine == e.rawValue, let m = chat.status?.model { Text("Model: \(m)") }
                     Button("What is sent to \(e.label)…") { Alerts.info("What \(e.label) is sent", chat.disclosure(e)) }
                     Button("Disconnect…") { chat.disconnect() }
                 } label: {
-                    // one text: a menu button on macOS keeps a single label
-                    Text(chat.status?.engine == e.rawValue ? chat.status?.model.map { "\(e.label) · \($0)" } ?? e.label : e.label)
-                        .font(.system(size: 14, weight: .semibold))
+                    // one text: a menu button on macOS keeps a single label (the model's nickname is in the menu, not here)
+                    Text(e.label).font(.system(size: 14, weight: .semibold))
                 }
                 .menuStyle(.borderlessButton).menuIndicator(.visible).fixedSize()
                 .help("Switch to \(e.other.label), see what is sent, or disconnect")
@@ -223,7 +223,13 @@ struct MessageView: View {
                     .background(RoundedRectangle(cornerRadius: 8).fill(Color.primary.opacity(0.04)))
                 }
                 HStack(spacing: 8) {
-                    if let meta = message.meta { Text(meta).font(.system(size: 10.5)).foregroundColor(.secondary.opacity(0.85)) }
+                    if let meta = message.meta {
+                        Text(meta).font(.system(size: 10.5)).foregroundColor(.secondary.opacity(0.85))
+                        if meta.contains(" of ") {  // "read 180 of 912 sessions": the older ones were not looked at
+                            Text("Only the newest sessions were read. Add a PR number or a word from the title to search further back.")
+                                .font(.system(size: 10.5)).foregroundColor(.secondary).fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
                     IconButton(symbol: "doc.on.doc", help: "Copy the answer") { chat.copy(message) }
                     Spacer()
                 }

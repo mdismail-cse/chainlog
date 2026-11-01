@@ -508,7 +508,7 @@ func selfTest(sample path: String?) -> Int {
         calls.onEvent[0](ev(answerJSON))
         calls.onDone[0](0)
         let reply = m.chat.messages.last
-        check("Ask: the answer arrives with the sessions it mentions and who answered", reply?.role == .assistant && reply?.sessions.map { $0.short } == [shown.short] && reply?.meta == "Claude · sonnet · 2 requests", reply?.meta ?? "-")
+        check("Ask: the answer arrives with the sessions it mentions and who answered", reply?.role == .assistant && reply?.sessions.map { $0.short } == [shown.short] && reply?.meta == "Claude · 2 requests", reply?.meta ?? "-")
         check("  ... and it is no longer thinking", !m.chat.thinking && m.chat.messages.count == 2)
 
         // the next question carries the conversation, without errors, and at most the last eight messages

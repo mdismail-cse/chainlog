@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Menu bar app, Ask: under each answer, "read 180 of 912 sessions" (or "read all 12 sessions") replaces the model's
+  nickname, so a "no session mentions X" answer says how far back it looked; when only the newest were read, a line says
+  to add a PR number or a word from the title to search further back. The model is in the header menu.
 - Menu bar app, Ask: the starter questions are in plain words ("What is still unfinished, and what is the next step?",
   "Which sessions failed, and what broke?") and the last one names your own newest PR ("How did PR #4321 end?"), so the
   first screen shows the chat knows your sessions; "How did my newest PR chain end?" and "Which sessions have no note

@@ -408,7 +408,7 @@ printf '{"is_error": false, "result": "The zebra work is in [[%s]]. DB_PASSWORD=
         self.assertIn("you: what happened in the zebra session?", out)
         self.assertIn("The zebra work is in Shop PR 5000 review (%s)." % IDS[3][:8], out)  # the id became the session's name
         self.assertIn("→ [%s] Shop PR 5000 review" % IDS[3][:8], out)
-        self.assertIn("(Claude · sonnet · 1 request)", out)
+        self.assertIn("(Claude · read all 12 sessions · 1 request)", out)  # how far back it looked, not the model
         self.assertNotIn("hunter2hunter2", out)  # a secret the AI repeats is hidden again
         self.assertIn("[REDACTED", out)
         self.assertNotIn("! ", out)
@@ -435,7 +435,7 @@ printf '{"is_error": false, "result": "The zebra work is in [[%s]]. DB_PASSWORD=
         self.assertEqual(rc, 0, err)
         for line in ("status: Asking Claude…", "status: Reading 1 session in detail…", "status: Asking Claude again…"):
             self.assertIn(line, out)
-        self.assertIn("(Claude · sonnet · 2 requests)", out)
+        self.assertIn("(Claude · read all 12 sessions · 2 requests)", out)
         self.assertIn('<detail id="%s">' % IDS[3][:8], (self.home / "prompts.txt").read_text())
 
     def test_two_questions_in_one_chat_carry_the_first_answer(self):

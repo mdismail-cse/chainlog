@@ -37,6 +37,8 @@ struct AskEvent: Decodable {
     let engine: String?
     let model: String?
     let calls: Int?
+    let listed: Int?   // sessions in the catalog the answer read (absent from an older chainlog)
+    let total: Int?    // sessions chainlog has: listed < total means older ones were not read
     let code: String?
     let message: String?
 }
@@ -281,7 +283,11 @@ final class ChatModel: ObservableObject {
             gotFinal = true
             let who = AskEngine(rawValue: e.engine ?? "")?.label ?? "AI"
             let calls = e.calls ?? 0
-            let meta = [who, e.model, calls > 0 ? "\(calls) request\(calls == 1 ? "" : "s")" : nil].compactMap { $0 }.joined(separator: " · ")
+            // how much of the history the answer read: what makes "no session mentions X" believable (the model's
+            // nickname, which sat here, has nothing to act on and now lives in the header menu)
+            var coverage: String?
+            if let l = e.listed, let t = e.total, t > 0 { coverage = l < t ? "read \(l) of \(t) sessions" : "read all \(t) sessions" }
+            let meta = [who, coverage, calls > 0 ? "\(calls) request\(calls == 1 ? "" : "s")" : nil].compactMap { $0 }.joined(separator: " · ")
             messages.append(ChatMessage(role: .assistant, text: e.answer ?? "", sessions: e.sessions ?? [], meta: meta))
         case "error":
             gotFinal = true
