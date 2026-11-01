@@ -413,7 +413,7 @@ printf '{"is_error": false, "result": "The zebra work is in [[%s]]. DB_PASSWORD=
         prompt = (self.home / "prompts.txt").read_text()
         args = (self.home / "last-args.txt").read_text().splitlines()
         self.assertIn("what happened in the zebra session?", prompt)
-        self.assertIn('did: "worked on item 3 with the zebra widget"', prompt)  # the catalog line of that session
+        self.assertIn('ended: "worked on item 3 with the zebra widget"', prompt)  # the catalog line of that session
         self.assertEqual(prompt.count("<sessions listed="), 1)
         self.assertNotIn(str(self.home), prompt)  # no folder of yours
         self.assertNotIn(str(self.proj), prompt)
