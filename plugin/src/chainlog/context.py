@@ -557,6 +557,10 @@ def _merge_system(words, partial=False):
         "Write for an AI coding assistant that reads this before it works: dense and factual, no filler.\n"
         "- Combine what the sessions say for each question and drop repeats.\n"
         "- When sessions disagree, the newer one wins: give the current fact, and say what changed and when if that matters.\n"
+        "- An open item, risk or next step from one session that a later session did, fixed or dropped is not open any more: "
+        "leave it out of Open and Next, or write 'done in [[id]]' if it matters.\n"
+        "- A session's own note: line and result= attribute are the owner's words: they outrank what the AI answered about "
+        "it.\n"
         "- After each fact, cite the sessions it comes from as [[id]], using only the ids given (e.g. [[a1b2c3d4]]).\n"
         "- Leave out 'Not stated.' answers. If nothing is known for a question, write: Nothing recorded.\n"
         "- Keep file paths, function names, settings, commands that were run, numbers and error messages exactly as the "
@@ -568,11 +572,19 @@ def _merge_system(words, partial=False):
         "- Keep the whole briefing under %d words.\n"
         "Reply in exactly this form:\n"
         "GIST: <one sentence of at most 25 words: what this work is and where it stands now>\n"
-        "## In short\n- <3 to 6 bullets: the most important things to know>\n"
+        "NEXT: <one line, at most 20 words: the first thing to do next, or: nothing open>\n"
+        "## In short\n"
+        "- Now: <where the work stands: done, failing, waiting on what> [[id]]\n"
+        "- Decided: <decisions in force and why, what was rejected; at most 3 bullets>\n"
+        "- Gotchas: <what broke or surprised and the fix or workaround; at most 3>\n"
+        "- Open: <what is unfinished, broken or blocked, and by what>\n"
+        "- Next: <the first thing the next session should do>\n"
+        "(write 'nothing' after a label with nothing to say; no other bullets here)\n"
         "## 1. <question 1, shortened to a few words>\n- <one fact per bullet, with the exact name, path, command or number "
         "it is about, then its [[id]]>\n"
         "## 2. <question 2, shortened>\n- …\n(one section per question, in order)\n"
-        "## Timeline\n- <YYYY-MM-DD> [[id]]: <what happened in that session, one line> (one line per session, oldest first)"
+        "## Timeline\n- <YYYY-MM-DD> [[id]] <result if given> <PR if given>: <what that session changed or found and how it "
+        "ended, not its title; skip sessions where nothing changed; at most 12 lines, oldest first>"
         % (what, words))
 
 
@@ -639,7 +651,8 @@ def _tidy_briefing(text, shorts):
 
 
 def split_briefing(reply):
-    """(gist, body) from the merge reply: the GIST line, and everything from the first "## " heading on."""
+    """(gist, body) from the merge reply: the GIST line, and everything from the first "## " heading on. When no GIST
+    line came back, the first "In short" bullet stands in (the row would otherwise show only the period)."""
     reply = (reply or "").strip()
     gist = ""
     m = re.search(r"(?im)^\s*GIST\s*:\s*(.+)$", reply)
@@ -649,7 +662,31 @@ def split_briefing(reply):
     body = reply[i:] if i >= 0 else reply
     if m and i < 0:
         body = reply.replace(m.group(0), "").strip()
+    if not gist:
+        m2 = re.search(r"(?im)^## in short\s*\n\s*-\s*(?:[A-Za-z]+:\s*)?(.+)$", body)
+        if m2:
+            gist = _REF.sub("", m2.group(1)).strip()
+    body = re.sub(r"(?im)^\s*NEXT\s*:.*$", "", body).strip()
     return gist, body
+
+
+def next_line(reply):
+    """The NEXT line of the merge reply: the first thing the next session should do, or ""."""
+    m = re.search(r"(?im)^\s*NEXT\s*:\s*(.+)$", reply or "")
+    return m.group(1).strip() if m else ""
+
+
+def in_short_of(body):
+    """The bullets of the briefing's "In short" section, at most 6, clean (the app shows them on the context's row)."""
+    out = []
+    inside = False
+    for l in body.splitlines():
+        if l.startswith("## "):
+            inside = l.lower().startswith("## in short")
+            continue
+        if inside and l.strip().startswith("- "):
+            out.append(clean(l.strip()[2:], 240))
+    return out[:6]
 
 
 # --- building -----------------------------------------------------------------------------------------------------------
@@ -748,13 +785,14 @@ def build(rt, cfg, index, meta, engine=None, progress=None):
         s = index.sessions.get(ref)
         sessions.append((s, ref, c))
     sessions.sort(key=lambda x: ((x[0]["times"].get("started_at") or x[0]["times"].get("last_activity_at") or 0) if x[0] else 0))
-    gist, body, merges = _merge(rt, engine, binary, model, timeout, meta["questions"], sessions, say, _focus(meta))
+    gist, nxt, body, merges = _merge(rt, engine, binary, model, timeout, meta["questions"], sessions, say, _focus(meta))
     requests += merges
     shorts = [(s["short"] if s else ref.split(":")[-1][:8]) for s, ref, _c in sessions]
     body = _tidy_briefing(body, shorts)
     gist = clean(_tidy_briefing(gist, []).replace("\n", " "), GIST_CHARS)
+    nxt = clean(_tidy_briefing(nxt, shorts).replace("\n", " "), GIST_CHARS)
     times = [t for s, _r, _c in sessions if s for t in (s["times"].get("started_at"), s["times"].get("last_activity_at")) if t]
-    meta.update({"gist": gist, "engine": engine, "model": model, "built_at": rt.now(),
+    meta.update({"gist": gist, "next": nxt, "in_short": in_short_of(body), "engine": engine, "model": model, "built_at": rt.now(),
                  "dates": [min(times) if times else None, max(times) if times else None],
                  "requests": int(meta.get("requests") or 0) + requests,
                  "built": {"members": {ref: (fingerprint(s) if s else (meta.get("built") or {}).get("members", {}).get(ref, "gone"))
@@ -766,28 +804,56 @@ def build(rt, cfg, index, meta, engine=None, progress=None):
     return {"meta": meta, "requests": requests, "read": read, "skipped": skipped, "up_to_date": False}
 
 
+def _attr(v):
+    return ask_mod._data(v).replace('"', "'")
+
+
 def _notes_block(meta, s, ref, c):
+    """One session's answers for the merge, with the facts the merge needs to write the gist and the timeline: the
+    owner's result, PRs, branch, folder, tool, and their latest note (none of which the answers carry). None when no
+    answer survives the 'Not stated.' filter: a session that said nothing has no place in the merge."""
     short = s["short"] if s else ref.split(":")[-1][:8]
     when = ask_mod._date((s["times"].get("started_at") or s["times"].get("last_activity_at")) if s else c.get("at"))
-    title = clean(ui.headline(s), 120) if s else "(no longer listed by chainlog)"
-    lines = ["<session id=\"%s\" date=\"%s\" title=\"%s\">" % (short, when, ask_mod._data(title).replace('"', "'"))]
+    title = clean(s["title"]["value"], 120) if s else "(no longer listed by chainlog)"
+    attrs = ['id="%s"' % short, 'date="%s"' % when, 'title="%s"' % _attr(title)]
+    if s:
+        attrs.append('tool="%s"' % ask_mod._tool(s))
+        if s.get("status"):
+            attrs.append('result="%s"' % _attr(clean(s["status"], 20)))
+        prs = ["#%s" % p["number"] + ((" %s" % clean(p.get("repo"), 60)) if p.get("repo") else "")
+               for p in s.get("prs") or [] if p.get("number")]
+        if prs:
+            attrs.append('prs="%s"' % _attr(", ".join(dict.fromkeys(prs))))
+        g = s.get("git") or {}
+        if g.get("branch") and g["branch"] not in ("HEAD", "main", "master"):
+            attrs.append('branch="%s"' % _attr(clean(g["branch"], 80)))
+        if s.get("cwd"):
+            attrs.append('folder="%s"' % _attr(clean("/".join(s["cwd"].rstrip("/").split("/")[-2:]), 80)))
+    lines = ["<session %s>" % " ".join(attrs)]
+    notes = [n for n in (s.get("notes") if s else None) or [] if n.get("kind") == "note" and n.get("text")]
+    if notes:
+        lines.append("note: %s" % ask_mod._data(clean(notes[-1]["text"], 300)))
+    answered = 0
     for k, q in enumerate(meta["questions"], 1):
         a = (c.get("answers") or {}).get(str(k)) or "Not stated."
         if a.strip() != "Not stated.":
             lines.append("%d. %s" % (k, ask_mod._data(a)))
+            answered += 1
+    if not answered and not notes:
+        return None
     lines.append("</session>")
     return "\n".join(lines)
 
 
 def _merge(rt, engine, binary, model, timeout, questions, sessions, say, focus=""):
-    """(gist, body, requests). Notes that do not fit one request are merged in groups first, then the groups."""
+    """(gist, next, body, requests). Notes that do not fit one request are merged in groups first, then the groups."""
     meta = {"questions": questions}
-    blocks = [_notes_block(meta, s, ref, c) for s, ref, c in sessions]
+    blocks = [b for b in (_notes_block(meta, s, ref, c) for s, ref, c in sessions) if b]
     words = min(2600, 300 + 110 * len(blocks))
     if sum(len(b) for b in blocks) <= MERGE_CHARS:
         reply = ask_mod._call(rt, engine, binary, model, timeout, _merge_system(words), _merge_prompt(questions, blocks, focus))
         gist, body = split_briefing(reply)
-        return gist, body, 1
+        return gist, next_line(reply), body, 1
     groups, cur, size = [], [], 0
     for b in blocks:
         if cur and size + len(b) > MERGE_CHARS:
@@ -806,7 +872,7 @@ def _merge(rt, engine, binary, model, timeout, questions, sessions, say, focus="
     say("Merging the %d groups…" % len(groups), len(groups), len(groups))
     reply = ask_mod._call(rt, engine, binary, model, timeout, _merge_system(words, partial=True), _merge_prompt(questions, partials, focus))
     gist, body = split_briefing(reply)
-    return gist, body, requests + 1
+    return gist, next_line(reply), body, requests + 1
 
 
 # --- the files a session reads ------------------------------------------------------------------------------------------
@@ -863,7 +929,8 @@ def _write_files(rt, meta, sessions, body):
            "[a1b2c3d4] marks the session a fact comes from; that session's own notes are in sessions.md next to this file "
            "(search for its id)."]
     top += (["Focus: %s (other work in these sessions is left out)" % _focus(meta)] if _focus(meta) else [])
-    top += (["Gist: %s" % meta["gist"]] if meta.get("gist") else []) + [""]
+    top += (["Gist: %s" % meta["gist"]] if meta.get("gist") else [])
+    top += (["Next: %s" % meta["next"]] if meta.get("next") else []) + [""]
     in_short = [s for s in secs if s[0].lower().startswith("## in short")]
     rest = [s for s in secs if s not in in_short]
     words = sum(len(" ".join(s).split()) for s in secs)
@@ -1017,6 +1084,7 @@ def reference(rt, meta):
     f = files(rt, meta)
     n = len((meta.get("built") or {}).get("members") or meta["members"])
     gist = (" In short: %s" % meta["gist"]) if meta.get("gist") else ""
+    gist += (" Next step noted: %s" % clean(meta["next"], 160)) if meta.get("next") else ""
     focus = (" Focus: %s." % clean(_focus(meta), 120).rstrip(".")) if _focus(meta) else ""
     return ("Context \"%s\" is attached: chainlog's notes from %d earlier session%s on this work (%s).%s%s\n"
             "File: %s (start with its \"In short\" and \"Contents\"; each session's own notes are in sessions.md next to it). "
@@ -1078,7 +1146,8 @@ def summary(rt, index, meta):
     tool, where = default_place(index, meta)
     return {"name": meta["name"], "slug": meta["slug"], "sessions": len(meta["members"]),
             "built": built, "built_at": meta.get("built_at"), "ago": ui.ago(meta["built_at"], rt.now()) if built else "",
-            "period": _period(meta) if built else "", "gist": meta.get("gist") or "", "chain": meta.get("chain"),
+            "period": _period(meta) if built else "", "gist": meta.get("gist") or "", "next": meta.get("next") or "",
+            "in_short": list(meta.get("in_short") or []), "chain": meta.get("chain"),
             "questions": meta["questions"], "engine": meta.get("engine"), "focus": _focus(meta),
             "pending": {"new": len(p["new"]), "changed": len(p["changed"]), "questions": p["questions"],
                         "text": describe_pending(p, built)},

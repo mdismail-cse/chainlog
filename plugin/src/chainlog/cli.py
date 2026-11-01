@@ -1279,6 +1279,8 @@ def _ctx_build(rt, cfg, args, ctx_mod, index, meta, st):
                                                res["requests"], "" if res["requests"] == 1 else "s"))
     if m.get("gist"):
         _p("  " + ui.safe(m["gist"]))
+    if m.get("next"):
+        _p("  Next: " + ui.safe(m["next"]))
     _p(st.dim("  file: %s" % ctx_mod.files(rt, m)["context"]))
     _p(st.dim("  start a session with it: chainlog context use %s" % shlex.quote(m["name"])))
     return 0
@@ -1509,6 +1511,8 @@ def cmd_context(rt, args):
         _p("  focus: " + ui.safe(sm["focus"]))
     if sm["gist"]:
         _p("  " + ui.safe(sm["gist"]))
+    if sm.get("next"):
+        _p("  Next: " + ui.safe(sm["next"]))
     if sm["pending"]["text"] and sm["built"]:
         _p(st.yellow("  %s: chainlog context update %s" % (sm["pending"]["text"], shlex.quote(meta["name"]))))
     _p(st.dim("  file: %s" % sm["file"]))

@@ -107,7 +107,8 @@ first, at most 40; with `--every-word`, only sessions that contain every word, a
   session), `chains[]` 30;
   `starred[]` holds all starred sessions (at most 50), newest activity first.
 - A chain: `id`, `rounds`, `status`, `title`, `ago`, `members[]` (rows, with `round`).
-- A context: `name`, `slug`, `sessions`, `built`, `built_at`, `ago`, `period`, `gist`, `chain` (the chain it follows, or null),
+- A context: `name`, `slug`, `sessions`, `built`, `built_at`, `ago`, `period`, `gist`, `next` (the first thing to do next, `""`
+  when none), `in_short[]` (the briefing's In short bullets: Now, Decided, Gotchas, Open, Next), `chain` (the chain it follows, or null),
   `questions[]`, `focus` (`""` for none), `engine`, `pending {new, changed, questions, text}` (what Update would read), `needs_update`, `file`
   (`CONTEXT.md`), `dir` (the notes folder a session may read), `reference` (the lines that attach it; empty until built),
   `start {tool, folder}` (where `use` starts by default), `members[]` (session refs).

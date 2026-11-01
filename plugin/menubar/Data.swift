@@ -96,6 +96,8 @@ struct ContextInfo: Decodable {
     let ago: String            // since it was built
     let period: String         // "2026-08-03 to 2026-10-28"
     let gist: String           // one sentence: what the work is and where it stands
+    let next: String?          // the first thing to do next (absent from an older chainlog)
+    let in_short: [String]?    // the "In short" bullets: Now, Decided, Gotchas, Open, Next (absent from an older chainlog)
     let chain: String?         // the chain it follows (its new rounds join it)
     let questions: [String]
     let focus: String?         // each session is read only for what concerns this (absent from an older chainlog)

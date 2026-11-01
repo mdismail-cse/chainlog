@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Contexts: the merge now gets each session's facts (your result, PRs, branch, folder, tool and your latest note, which only
+  the per-session reader used to see), so the timeline says what each session changed and how it ended instead of its
+  title, and a session that answered nothing is left out of the merge. "In short" has a fixed shape: Now, Decided, Gotchas,
+  Open, Next; the reply carries a NEXT line (the first thing to do next) that CONTEXT.md, the reference a new session gets,
+  `context show` and the app show; an open item a later session did is dropped from Open and Next; your note and result
+  on a session outrank what the AI answered. When no GIST line comes back, the first In short bullet stands in.
 - Contexts: the notes record facts, not activity. The per-session reader is told that "ran the tests", "committed", "pushed"
   and "opened a PR" on their own are not facts (a test run counts with its command and result, a PR by its number and what
   it contained), to prefer the exact thing over the verb ("retry limit 3 → 7 in backup/retry.py upload()", paths, settings,

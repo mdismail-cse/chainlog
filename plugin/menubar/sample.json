@@ -494,6 +494,8 @@
       "ago": "2d",
       "period": "2026-10-12 to 2026-10-17",
       "gist": "Refunds work for card and wallet payments; refunds with stacked coupons still fail with a 500 on tax rounding.",
+      "next": "Run pytest tests/test_refund.py -k coupon and fix the rounding in shop/tax.py round_total()",
+      "in_short": ["Now: card and wallet refunds pass; stacked-coupon refunds answer 500", "Decided: round per line, not per order, because the tax office wants line totals", "Gotchas: the 500 only shows with two coupons on one order", "Open: tax rounding on stacked coupons", "Next: fix round_total() in shop/tax.py, then re-run the coupon tests"],
       "chain": "shop#4321",
       "questions": [
         "What was the goal or the problem in this session?",
@@ -539,6 +541,8 @@
       "ago": "",
       "period": "",
       "gist": "",
+      "next": "",
+      "in_short": [],
       "chain": null,
       "questions": [
         "What was the goal or the problem in this session?",

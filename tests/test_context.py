@@ -30,7 +30,8 @@ def answers(n=10, tag="", cite=None):
 
 
 def briefing(ids, gist="Cloud backup uploads in 8 MB chunks; retries are fixed, restores over 2 GB still time out."):
-    lines = ["GIST: " + gist, "## In short", "- Retry limit is 7 [[%s]]" % ids[0], "- Restores over 2 GB time out [[%s]]" % ids[-1]]
+    lines = ["GIST: " + gist, "NEXT: ranged GETs in backup/restore.py [[%s]]" % ids[-1],
+             "## In short", "- Retry limit is 7 [[%s]]" % ids[0], "- Restores over 2 GB time out [[%s]]" % ids[-1]]
     for k in range(1, 11):
         lines += ["## %d. Question %d" % (k, k), "- fact %d [[%s]]" % (k, ids[k % len(ids)])]
     lines += ["## Timeline"] + ["- 2026-10-%02d [[%s]]: round %d" % (i + 1, x, i + 1) for i, x in enumerate(ids)]
@@ -266,6 +267,36 @@ class Building(ContextBase):
         self.assertIn("routine step", system)
         self.assertIn("[[id]]", system)
         self.assertIn("GIST:", system)
+        # the merge gets each session's facts (the per-session reader alone used to), the owner's note first
+        block12 = merge[merge.index('<session id="%s"' % self.short(sid(12))):]
+        block12 = block12[:block12.index("</session>")]
+        self.assertIn('result="pass"', block12)
+        self.assertIn("note: chunks 8 MB", block12)
+        self.assertNotIn(SECRET, block12)
+        block11 = merge[merge.index('<session id="%s"' % self.short(sid(11))):merge.index('<session id="%s"' % self.short(sid(12)))]
+        self.assertNotIn('result=', block11)
+        self.assertIn('tool="', block11)
+        for rule in ("- Now:", "- Next:", "NEXT:", "at most 12 lines", "outrank", "not open any more"):
+            self.assertIn(rule, system)
+        m = ctx.get(self.rt, meta["name"])
+        self.assertTrue(m["next"].startswith("ranged GETs in backup/restore.py"), m["next"])
+        self.assertTrue(m["in_short"][0].startswith("Retry limit is 7"), m["in_short"])
+        self.assertEqual(len(m["in_short"]), 2)
+        sm = ctx.summary(self.rt, load(self.rt, self.cfg()), m)
+        self.assertEqual(sm["next"], m["next"])
+        self.assertEqual(sm["in_short"], m["in_short"])
+        self.assertIn("Next: ranged GETs in backup/restore.py", self.text())
+        self.assertNotIn("NEXT:", self.text())  # the line is read out, not left in the body
+        self.assertIn("Next step noted: ranged GETs", ctx.reference(self.rt, m))
+
+    def test_a_missing_gist_falls_back_to_the_first_in_short_bullet(self):
+        gist, body = ctx.split_briefing("NEXT: fix it\n## In short\n- Now: Retry limit is 7 [[a1b2c3d4]]\n## 1. x\n- y")
+        self.assertEqual(gist, "Retry limit is 7")
+        self.assertEqual(ctx.next_line("NEXT: fix it\n## In short"), "fix it")
+        self.assertNotIn("NEXT:", body)
+        self.assertEqual(ctx.in_short_of(body), ["Now: Retry limit is 7 [[a1b2c3d4]]"])
+        notes = ctx._notes_block({"questions": ["q"]}, None, "claude:" + "f" * 32, {"answers": {"1": "Not stated."}})
+        self.assertIsNone(notes)  # a session that said nothing has no place in the merge
 
     def test_ids_links_and_secrets_are_cleaned_from_what_is_written(self):
         self.agree_context()
