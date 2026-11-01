@@ -49,6 +49,42 @@ class MenuData(Home):
         return menu_mod.build(load(self.rt, config_mod.load(self.rt)), **kw)
 
 
+class Preview(MenuData):
+    """The hover preview's fields: the start, the end, your note, the summary, and facts, without reading a transcript."""
+
+    def row(self, ref):
+        d = self.build()
+        return next(r for r in d["unsaved"] + d["recent"] if r["ref"] == ref)
+
+    def test_start_end_note_pr_size_and_length(self):
+        self.claude_session(ID[0], NOW - 3 * H, NOW - 1 * H, title="Shop PR 4321 refund", prompt="why does the refund fail?",
+                            work="tax rounding", pr=4321)
+        self.run_cli(["save", "--id", ID[0][:8], "first note"])
+        self.run_cli(["save", "--id", ID[0][:8], "the latest note"])
+        r = self.row("claude:" + ID[0])
+        self.assertEqual(r["first_ask"], "why does the refund fail?")
+        self.assertEqual(r["note"], "the latest note")
+        self.assertEqual(r["pr"], "PR #4321 · shop")
+        self.assertEqual(r["branch"], "fix/refund")
+        self.assertEqual(r["took"], "2h")
+        self.assertIsNone(r["lines"])
+        self.assertIsNone(r["summary"])
+
+    def test_the_start_is_left_out_when_it_is_the_title(self):
+        self.claude_session(ID[1], NOW - 3 * H, NOW - 2 * H, title=None, prompt="export the tracker as csv")
+        r = self.row("claude:" + ID[1])
+        self.assertEqual(r["title"], "export the tracker as csv")
+        self.assertIsNone(r["first_ask"])
+
+    def test_the_local_summary_says_where_it_started_too(self):
+        from chainlog import summarize
+        self.claude_session(ID[2], NOW - 3 * H, NOW - 2 * H, title="Refund work", prompt="test refunds with coupons", work="coupon gives 500")
+        s = load(self.rt, config_mod.load(self.rt)).sessions["claude:" + ID[2]]
+        text = summarize.local_summary(s)
+        self.assertIn('started: "test refunds with coupons"', text)
+        self.assertIn("coupon gives 500", text)
+
+
 class MenuJson(MenuData):
     def test_unsaved_recent_and_counts(self):
         for i in range(5):  # newest first: ID[4] ... ID[0]

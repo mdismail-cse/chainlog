@@ -28,6 +28,15 @@ struct Row: Decodable {
     let round: Int?
     let ago: String
     let last_work: String?
+    // the hover preview (all absent from an older chainlog)
+    let first_ask: String?   // what the session started with, when it is not the title already
+    let last_ask: String?    // what you asked last
+    let note: String?        // your latest note
+    let summary: String?     // its latest summary
+    let pr: String?          // "PR #4521 · shop"
+    let branch: String?      // not main / master
+    let lines: String?       // "+42/−7"
+    let took: String?        // "45m", "3h"
     let resume: ResumeInfo
 }
 
@@ -184,9 +193,21 @@ extension Row: Identifiable {
         return parts.joined(separator: " · ")
     }
 
+    /// The preview's last line: result, PR or branch, size, length, and the folder.
+    var previewFacts: String {
+        var parts: [String] = []
+        if let s = status { parts.append(s) }
+        if let p = pr { parts.append(p) } else if let b = branch { parts.append(b) }
+        if let l = lines { parts.append(l) }
+        if let t = took { parts.append(t) }
+        parts.append(folder)
+        return parts.joined(separator: " · ")
+    }
+
     /// Everything a search looks at in this row, lower-cased.
     var haystack: String {
-        [title, chain ?? "", status ?? "", harness, via ?? "", via == "VS Code" ? "vscode" : "", last_work ?? ""].joined(separator: " ").lowercased()
+        [title, chain ?? "", status ?? "", harness, via ?? "", via == "VS Code" ? "vscode" : "", last_work ?? "", first_ask ?? "",
+         note ?? "", summary ?? "", pr ?? "", branch ?? ""].joined(separator: " ").lowercased()
     }
 
     /// Every word of `query` appears somewhere in the row (used while a real search is still loading).

@@ -421,25 +421,41 @@ struct PreviewPanel: View {
     @ObservedObject var hover: HoverModel
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 3) {
+        VStack(alignment: .leading, spacing: 2) {
             if let r = hover.row {
-                Text(r.title).font(.system(size: 12.5, weight: .semibold)).lineLimit(2)
-                Text(r.last_work ?? "Nothing said in this session yet.")
-                    .font(.system(size: 12)).foregroundColor(.secondary).lineLimit(3)
+                Text(r.title).font(.system(size: 12.5, weight: .semibold)).lineLimit(1)
+                // the whole arc, not only the end: where it started, where it got to, and what you or its summary said
+                if let f = r.first_ask { PreviewLine(label: "Started", text: f) }
+                PreviewLine(label: "Last", text: r.last_work ?? "Nothing said in this session yet.", lines: r.first_ask == nil ? 2 : 1)
+                if let n = r.note { PreviewLine(label: "Note", text: n, emphasis: true) } else if let s = r.summary { PreviewLine(label: "Summary", text: s, emphasis: true, lines: 2) }
                 if let why = r.resume.blockers.first {
                     Text("Can't reopen: " + why).font(.system(size: 11)).foregroundColor(.orange).lineLimit(1)
                 } else if r.restores {
                     Text("Claude deleted the original · opens from your kept copy").font(.system(size: 11)).foregroundColor(.accentColor).lineLimit(1)
                 } else {
-                    Text(r.folder).font(.system(size: 11)).foregroundColor(.secondary.opacity(0.8)).lineLimit(1).truncationMode(.middle)
+                    Text(r.previewFacts).font(.system(size: 11)).foregroundColor(.secondary.opacity(0.85)).lineLimit(1).truncationMode(.middle)
                 }
             } else {
                 Text("Hover a session to preview it").font(.system(size: 12)).foregroundColor(.secondary)
                 Text("Click to reopen it · hover for Copy · right-click for more").font(.system(size: 11)).foregroundColor(.secondary.opacity(0.8))
             }
         }
-        .frame(maxWidth: .infinity, minHeight: 72, maxHeight: 72, alignment: .topLeading)
-        .padding(.horizontal, 14).padding(.vertical, 8)
+        .frame(maxWidth: .infinity, minHeight: 96, maxHeight: 96, alignment: .topLeading)
+        .padding(.horizontal, 14).padding(.vertical, 7)
+    }
+}
+
+/// "Started  what it began with" in the preview: a small label, then the text.
+struct PreviewLine: View {
+    let label: String
+    let text: String
+    var emphasis = false
+    var lines = 1
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Text(label).font(.system(size: 10.5, weight: .medium)).foregroundColor(.secondary.opacity(0.8)).frame(width: 52, alignment: .leading)
+            Text(text).font(.system(size: 11.5)).foregroundColor(emphasis ? .primary.opacity(0.85) : .secondary).lineLimit(lines)
+        }
     }
 }
 

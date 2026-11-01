@@ -585,6 +585,20 @@ esac
         self.assertIn("context screen: done · Zebra work · 8 sessions · 5 requests", out)  # four new, one merge
         self.assertEqual(len(self.prompts()), 10)
 
+    def test_the_preview_shows_where_a_session_started_and_ended_and_your_note(self):
+        d = self.dump("--hover-first")
+        self.assertIn("  started: test the refund flow", d)  # the first thing asked (it is not the title)
+        self.assertIn("  facts: fix/refund · ", d)  # the branch, the length, the folder
+        self.assertEqual(self.app("--act", "save", self.ref(3), "-", "zebra fixed, checkout still slow")[0], 0)
+        rows = json.loads(self.chainlog("_menu")[1])
+        row = next(r for r in rows["recent"] + rows["unsaved"] if r["ref"] == self.ref(3))
+        self.assertEqual(row["note"], "zebra fixed, checkout still slow")
+        self.assertEqual(row["first_ask"], "test the refund flow")
+        self.assertEqual(row["branch"], "fix/refund")
+        self.assertEqual(row["took"], "60m")
+        for key in ("last_ask", "summary", "pr", "lines"):
+            self.assertIn(key, row)  # always there, null when unknown
+
     def test_a_context_found_by_describing_it(self):
         self.context_stub()
         self.assertEqual(self.chainlog("ask", "--connect", "claude", "--yes")[0], 0)  # describing uses Ask's tool and agreement

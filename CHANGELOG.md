@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Menu bar app, Sessions: the hover preview shows the whole arc, not only the end: where the session started, the last thing
+  said, your latest note (else its summary), and its result, PR or branch, lines changed and length. The local summary
+  also says where a session started.
 - Contexts: a focus. `--focus "…"` (and the Focus field in step 2 of the builder; a description you searched with becomes the
   focus): each session is read only for what concerns it, other work in it is left out, and the notes and the reference say
   the focus. Changing it reads every session again. On made-up mixed-topic sessions with the real Claude: no unrelated facts

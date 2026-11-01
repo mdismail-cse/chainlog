@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from chainlog import __version__
 from chainlog import keep, query, resume, retention, review, ui
+from chainlog.redact import clean
 
 SCHEMA = "chainlog.menu/1"
 EXPIRING_DAYS = 14  # "expires soon": Claude deletes the original within this many days
@@ -20,6 +21,44 @@ def _retention(index):
     soon = [s for s, d in left if d is not None and d < EXPIRING_DAYS]
     return {"days": days or retention.DEFAULT, "is_default": days is None, "expiring": len(soon),
             "expiring_unkept": sum(1 for s in soon if not keep.has_copy(rt, s)), "expiring_within": EXPIRING_DAYS}
+
+
+def _took(s):
+    start = s["times"].get("started_at")
+    end = s["times"].get("ended_at") or s["times"].get("last_activity_at")
+    if not (start and end and end > start):
+        return None
+    m = int((end - start) // 60)
+    return "%dm" % max(m, 1) if m < 120 else "%dh" % (m // 60)
+
+
+def _preview(s):
+    """What the hover panel shows besides the title, without reading the transcript: where the session started and where
+    it ended, your latest note and its summary, and its PR, branch, size and length. Every key is always there (null when
+    unknown), so the app can rely on it."""
+    notes = [n for n in s.get("notes") or [] if n.get("kind") == "note" and n.get("text")]
+    first = s.get("first_ask") or ""
+    st = s.get("stats") or {}
+    added, removed = st.get("lines_added") or 0, st.get("lines_removed") or 0
+    branch = (s.get("git") or {}).get("branch")
+    pr = None
+    for p in reversed(s.get("prs") or []):
+        if p.get("number"):
+            from chainlog.enrich.git import repo_name
+            repo = repo_name(p.get("repo")) or ""
+            pr = "PR #%s%s" % (p["number"], (" · " + repo) if repo else "")
+            break
+    summary = (s.get("summary") or {}).get("text")
+    return {
+        # the start, unless it is the title already (a session with no title of its own is named after it)
+        "first_ask": ui.safe(clean(first, 160)) if first and clean(first, 60) != clean(s["title"]["value"], 60) else None,
+        "last_ask": ui.safe(clean(s.get("last_ask"), 160)) or None,
+        "note": ui.safe(clean(notes[-1]["text"], 240)) if notes else None,
+        "summary": ui.safe(clean(summary, 600)) if summary else None,
+        "pr": pr, "branch": ui.safe(branch) if branch and branch not in ("HEAD", "main", "master") else None,
+        "lines": ("+%d/−%d" % (added, removed)) if added or removed else None,
+        "took": _took(s),
+    }
 
 
 def _row(rt, s, now, chain_id=None):
@@ -39,6 +78,7 @@ def _row(rt, s, now, chain_id=None):
         "chain": link["id"] if link else None, "round": link.get("round") if link else None,
         "at": when, "ago": ui.ago(when, now),
         "last_work": ui.safe(s.get("last_work")) or None,
+        **_preview(s),
         "resume": {"cwd": p["cwd"], "command": resume.shell_command(p),
                    # a session started in the VS Code extension can be reopened in it (macOS); "" otherwise
                    "vscode": resume.vscode_command(s, p) or None,

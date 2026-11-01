@@ -25,6 +25,9 @@ def local_summary(s, limit=200):
     title = s["title"]["value"]
     if title:
         parts.append(title)
+    first = s.get("first_ask")
+    if first and clean(first, 60) != clean(title, 60):  # where it started: the end alone loses the goal
+        parts.append('started: "%s"' % clean(first, 60))
     ask, work = s.get("last_ask"), s.get("last_work")
     if ask and work:
         parts.append('last: "%s" → "%s"' % (clean(ask, 60), clean(work, 70)))

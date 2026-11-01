@@ -301,7 +301,12 @@ func dumpModel(_ m: AppModel) {
     print("search: \"\(m.query)\"")
     if let r = m.data?.retention { print("gear: \(r.title) | \(r.warning ?? "nothing about to be lost")") }
     print("gear: keep a copy when I save or star: \(m.data?.keep_auto ?? true ? "on" : "off")")
-    if let r = m.hover.row { print("preview: \(clip(r.title, 60)) — \(r.last_work.map { clip($0, 80) } ?? "nothing said yet") — \(r.folder)") }
+    if let r = m.hover.row {
+        print("preview: \(clip(r.title, 60)) — \(r.last_work.map { clip($0, 80) } ?? "nothing said yet") — \(r.folder)")
+        if let f = r.first_ask { print("  started: \(clip(f, 80))") }
+        if let n = r.note { print("  note: \(clip(n, 80))") } else if let s = r.summary { print("  summary: \(clip(s, 80))") }
+        print("  facts: \(r.previewFacts)")
+    }
     defer { if m.data != nil { print("enter opens: \(m.visibleRows.first(where: { $0.canResume }).map { clip($0.title, 60) + ($0.round.map { " (r\($0))" } ?? "") } ?? "nothing")") } }
     guard m.data != nil else {
         let p = ProblemView(problem: m.problem)
