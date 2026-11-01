@@ -59,6 +59,12 @@ def _contexts(rt, index):
         return []
 
 
+def _context_presets():
+    """The ready-made question sets a context can start from."""
+    from chainlog import context as ctx_mod
+    return ctx_mod.presets()
+
+
 def _context_questions(index):
     """The questions a new context starts with (yours, or chainlog's ten)."""
     from chainlog import context as ctx_mod
@@ -99,6 +105,7 @@ def build(index, unsaved_limit=8, recent_limit=300, chain_limit=30, round_limit=
         "ask": _ask(index),
         "contexts": _contexts(rt, index),
         "context_questions": _context_questions(index),
+        "context_presets": _context_presets(),
         "unsaved": [_row(rt, s, now) for s in unsaved[:unsaved_limit]],
         "recent": [_row(rt, s, now) for s in recent],
         "starred": [_row(rt, s, now) for s in starred[:starred_limit]],

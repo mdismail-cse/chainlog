@@ -166,7 +166,6 @@ final class ContextModel: ObservableObject {
     @Published private(set) var pickResults: [Row]?
     @Published private(set) var pickSearching = false
     @Published var questions: [String] = []
-    @Published var showQuestions = false
     @Published var saveAsDefault = false
     @Published private(set) var target: ContextInfo?   // the context being added to; nil while making a new one
     @Published private(set) var chain: String?          // a new context that follows this chain
@@ -206,6 +205,20 @@ final class ContextModel: ObservableObject {
     var supported: Bool { app?.data?.contexts != nil }
     var contexts: [ContextInfo] { app?.data?.contexts ?? [] }
     var defaultQuestions: [String] { app?.data?.context_questions ?? [] }
+    var presets: [ContextPreset] { app?.data?.context_presets ?? [] }
+
+    /// Where the questions came from, for "Start from: …": a set, your default, the context's own, or "Edited".
+    var questionsSource: String {
+        let q = cleanQuestions
+        if let t = target, q == t.questions { return "This context's" }
+        if let p = presets.first(where: { $0.questions == q }) { return p.label }
+        if q == defaultQuestions { return "Your default" }
+        return "Edited"
+    }
+
+    /// Start from a ready-made set (the questions can still be changed one by one).
+    func applyPreset(_ p: ContextPreset) { questions = p.questions }
+    func useDefaultQuestions() { questions = defaultQuestions }
     func isOpen(_ c: ContextInfo) -> Bool { expanded[c.slug] ?? false }
     func toggleOpen(_ c: ContextInfo) { expanded[c.slug] = !isOpen(c) }
 
@@ -238,6 +251,7 @@ final class ContextModel: ObservableObject {
     var estimate: String {
         let n: Int
         if let t = target { n = questionsChanged ? t.sessions + adding.count : adding.count } else { n = selected.count }
+        // (each answer is up to 80 words, so the notes grow with the questions too)
         return "Reads \(n) session\(n == 1 ? "" : "s") with \(engine.label): about \(n + 1) request\(n == 0 ? "" : "s") on your plan."
     }
 
@@ -290,10 +304,12 @@ final class ContextModel: ObservableObject {
         pickQuery = ""
         pickResults = nil
         pickSearching = false
-        showQuestions = false
         saveAsDefault = false
         failure = ""
     }
+
+    /// Change the questions of a context that exists: the builder, with nothing to add yet.
+    func beginEditQuestions(_ c: ContextInfo) { beginAdd(to: c) }
 
     func closeBuilder() {
         pickTask?.cancel()
@@ -344,8 +360,9 @@ final class ContextModel: ObservableObject {
     func build() {
         if let why = blocker { app?.say(why); return }
         let qs = cleanQuestions
-        if saveAsDefault, let run = app?.runner {
-            DispatchQueue.global().async { _ = run(["context", "questions", "--set"] + qs) }
+        if saveAsDefault, let app = app {
+            let run = app.runner, args = ["context", "questions", "--set"] + qs
+            if app.inline { _ = run(args) } else { DispatchQueue.global().async { _ = run(args) } }
         }
         let req: ContextRequest
         if let t = target {

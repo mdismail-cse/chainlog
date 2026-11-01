@@ -1289,6 +1289,11 @@ def cmd_context(rt, args):
     now = rt.now()
     action = args.cx or "ls"
     if action == "questions":
+        if args.preset and not args.set:
+            try:
+                args.set = ctx_mod.preset_questions(args.preset)
+            except ctx_mod.AskError as e:
+                raise Exit(2, e.message)
         if args.reset:
             config_mod.save(rt, config_mod._put(cfg, "context.questions", []))
             _p("Questions are back to chainlog's ten.")
@@ -1306,7 +1311,8 @@ def cmd_context(rt, args):
                 return 0
             for i, q in enumerate(qs, 1):
                 _p("%2d. %s" % (i, q))
-            _p(st.dim("Change them: chainlog context questions --set \"question 1\" \"question 2\" …   (--reset for these ten)"))
+            _p(st.dim("Change them: chainlog context questions --set \"question 1\" \"question 2\" …   (--reset for chainlog's ten)"))
+            _p(st.dim("Or start from a set: --preset %s" % "|".join(ctx_mod.PRESET_IDS)))
         return 0
     index = load(rt, cfg)
     if action == "ls":
@@ -1334,6 +1340,8 @@ def cmd_context(rt, args):
             name = ctx_mod.clean_name(args.name)
             if args.chain and args.chain not in index.chains:
                 raise ctx_mod.AskError("bad_request", "no chain %r (chainlog chain lists them)" % args.chain)
+            if args.preset:
+                ctx_mod.preset_questions(args.preset)  # a wrong name stops here, before anything is listed or sent
         except ctx_mod.AskError as e:
             raise Exit(2, e.message)
         sessions = _ctx_refs(index, args.refs, " ".join(args.find) if args.find else None)
@@ -1352,8 +1360,8 @@ def cmd_context(rt, args):
                 if reply is None or reply.strip().lower().startswith("n"):
                     raise Exit(1, "cancelled. Pick sessions by id instead: chainlog context new NAME ID ID …")
         try:
-            meta = ctx_mod.create(rt, cfg, name, [s["ref"] for s in sessions], chain=args.chain,
-                                  questions=args.question or None)
+            questions = args.question or (ctx_mod.preset_questions(args.preset) if args.preset else None)
+            meta = ctx_mod.create(rt, cfg, name, [s["ref"] for s in sessions], chain=args.chain, questions=questions)
         except ctx_mod.AskError as e:
             raise Exit(1, e.message)
         if args.no_build:
@@ -1365,6 +1373,12 @@ def cmd_context(rt, args):
     except ctx_mod.AskError as e:
         raise Exit(1, e.message)
     if action == "update":
+        if args.question or args.preset:  # new questions: every session is read again with them
+            try:
+                meta["questions"] = ctx_mod.clean_questions(args.question or ctx_mod.preset_questions(args.preset))
+            except ctx_mod.AskError as e:
+                raise Exit(2, e.message)
+            ctx_mod.save(rt, meta)
         return _ctx_build(rt, cfg, args, ctx_mod, index, meta, st)
     if action == "add":
         sessions = _ctx_refs(index, args.refs, " ".join(args.find) if args.find else None)
@@ -1701,9 +1715,12 @@ def build_parser():
     c_new.add_argument("--find", nargs="+", metavar="WORDS", help="also every session a search for these words finds")
     c_new.add_argument("--chain", metavar="KEY", help="also every round of this chain, and new rounds later")
     c_new.add_argument("-q", "--question", action="append", help="a question to ask each session (repeat; default: your ten)")
+    c_new.add_argument("--preset", metavar="SET", help="start from a question set: general, bugfix, feature, qa, investigation")
     c_new.add_argument("--no-build", action="store_true", help="only save it; build later with update")
     c_upd = cxs.add_parser("update", help="read new and changed sessions, and merge again")
     c_upd.add_argument("name")
+    c_upd.add_argument("-q", "--question", action="append", help="new questions for it (repeat): every session is read again")
+    c_upd.add_argument("--preset", metavar="SET", help="new questions from a set: general, bugfix, feature, qa, investigation")
     c_add = cxs.add_parser("add", help="add sessions (read on the next update)")
     c_add.add_argument("name")
     c_add.add_argument("refs", nargs="*", metavar="ID")
@@ -1727,6 +1744,7 @@ def build_parser():
     c_q = cxs.add_parser("questions", help="the questions new contexts ask each session")
     c_q.add_argument("--set", nargs="+", metavar="QUESTION", help="save these as your default questions")
     c_q.add_argument("--reset", action="store_true", help="back to chainlog's ten")
+    c_q.add_argument("--preset", metavar="SET", help="save a ready-made set as your default: general, bugfix, feature, qa, investigation")
     cxs.add_parser("ls", help="list contexts")
     for c in (cx, c_new, c_upd, c_add, c_rem, c_use, c_ref, c_show, c_rm, c_q):
         c.add_argument("--json", action="store_true", help=argparse.SUPPRESS if c is not cx else "machine-readable output")

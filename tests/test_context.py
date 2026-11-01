@@ -541,6 +541,45 @@ class Cli(ContextBase):
         self.cli("context", "questions", "--reset")
         self.assertEqual(ctx.questions_default(self.cfg()), list(ctx.DEFAULT_QUESTIONS))
 
+    def test_question_sets_are_sound(self):
+        sets = ctx.presets()
+        self.assertEqual([p["id"] for p in sets], ["general", "bugfix", "feature", "qa", "investigation"])
+        for p in sets:
+            self.assertEqual(ctx.clean_questions(p["questions"]), p["questions"], p["id"])  # no blanks, no repeats, at most 15
+            self.assertTrue(all(q.endswith("?") for q in p["questions"]), p["id"])
+        self.assertEqual(sets[0]["questions"], list(ctx.DEFAULT_QUESTIONS))
+        with self.assertRaises(AskError):
+            ctx.preset_questions("nope")
+        self.assertEqual(menu_mod.build(self.idx())["context_presets"], sets)
+
+    def test_a_new_context_can_start_from_a_set_and_a_wrong_name_stops_before_anything(self):
+        self.agree_context()
+        code, _o, err = self.cli("context", "new", "QA", "--find", "cloud", "backup", "--preset", "nope", "--yes")
+        self.assertEqual(code, 2)
+        self.assertIn("No question set 'nope'", err)
+        self.assertIsNone(ctx.find(self.rt, "QA"))
+        self.assertEqual(self.fake.calls, [])
+        code, _o, err = self.cli("context", "new", "QA", sid(11)[:8], "--preset", "qa", "--no-build")
+        self.assertEqual(code, 0, err)
+        self.assertEqual(ctx.get(self.rt, "QA")["questions"], ctx.preset_questions("qa"))
+
+    def test_update_with_new_questions_reads_every_session_again(self):
+        self.built()
+        self.use(*([answers(8)] * 3 + [briefing(self.ids())]))
+        code, out, err = self.cli("context", "update", "Cloud backup", "--preset", "bugfix")
+        self.assertEqual(code, 0, err)
+        self.assertEqual(len(self.fake.calls), 4)  # three sessions again, one merge
+        self.assertIn("1. What was the bug, and how did it show up", self.fake.calls[0]["input"])
+        self.assertEqual(ctx.get(self.rt, "Cloud backup")["questions"], ctx.preset_questions("bugfix"))
+        code, out, _e = self.cli("context", "update", "Cloud backup", "-q", "What broke?", "-q", "  ")
+        self.assertEqual(ctx.get(self.rt, "Cloud backup")["questions"], ["What broke?"])
+
+    def test_a_set_can_become_your_default(self):
+        self.cli("context", "questions", "--preset", "feature")
+        self.assertEqual(self.cfg()["context"]["questions"], ctx.preset_questions("feature"))
+        code, out, _ = self.cli("context", "questions")
+        self.assertIn("--preset general|bugfix|feature|qa|investigation", out)
+
     def test_settings(self):
         code, _o, err = self.cli("config", "set", "context.timeout", "5")
         self.assertNotEqual(code, 0)

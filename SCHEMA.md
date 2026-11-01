@@ -83,7 +83,8 @@ New fields may be added within `/1`.
 One line of JSON for the Mac menu bar app (hidden command; not part of the public CLI). Top level:
 `schema`, `chainlog` (version), `generated_at`, `unsaved_window_hours`, `keep_auto`, `ask {engine, connected}` (the Ask tab: the engine you chose, and whether you agreed to send it session text), `retention {days, is_default, expiring, expiring_unkept, expiring_within}`
 (how long Claude keeps transcripts, and how many expire within `expiring_within` days / have no kept copy), `counts {unsaved, starred, chains, all}`, `unsaved[]`, `recent[]`,
-`starred[]`, `chains[]`, `contexts[]`, `context_questions[]` (what a new context asks each session: yours, or chainlog's ten).
+`starred[]`, `chains[]`, `contexts[]`, `context_questions[]` (what a new context asks each session: yours, or chainlog's ten),
+`context_presets[] {id, label, questions[]}` (the ready-made question sets).
 `chainlog _menu --find TEXT` adds `query` and `results[]`: every matching session (not only the listed ones), best match
 first, at most 40; with `--every-word`, only sessions that contain every word, at most 200 (the context builder's picker).
 

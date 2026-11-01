@@ -463,5 +463,79 @@
     "Which decisions were made, and why (including approaches that were rejected)?",
     "Which facts are worth remembering (names, paths, settings, commands, error messages)?",
     "What should the next session do first?"
+  ],
+  "context_presets": [
+    {
+      "id": "general",
+      "label": "General (chainlog's ten)",
+      "questions": [
+        "What was the goal or the problem in this session?",
+        "What was the root cause, if it was found?",
+        "What was changed to fix it (files, functions, settings, commands, PRs)?",
+        "How does the fix work?",
+        "How was it tested, and what was the result?",
+        "What could this change break, or what risk did it leave?",
+        "What is still open or unfinished?",
+        "Which decisions were made, and why (including approaches that were rejected)?",
+        "Which facts are worth remembering (names, paths, settings, commands, error messages)?",
+        "What should the next session do first?"
+      ]
+    },
+    {
+      "id": "bugfix",
+      "label": "Bug fix",
+      "questions": [
+        "What was the bug, and how did it show up (error messages, steps to reproduce)?",
+        "What was the root cause?",
+        "What was changed to fix it (files, functions, settings)?",
+        "How does the fix work?",
+        "How was the fix verified, and what was the result?",
+        "What could the fix break, or which edge cases are left?",
+        "What is still open?",
+        "Which facts are worth remembering (paths, commands, settings, error messages)?"
+      ]
+    },
+    {
+      "id": "feature",
+      "label": "Feature",
+      "questions": [
+        "What was the feature meant to do, and for whom?",
+        "Which approach was chosen, and which were rejected and why?",
+        "What was built or changed (files, APIs, settings, PRs)?",
+        "How does it work?",
+        "How was it tested, and what was the result?",
+        "What could it break, or what limits does it have?",
+        "What is still to do?",
+        "Which facts are worth remembering (names, paths, settings, commands)?"
+      ]
+    },
+    {
+      "id": "qa",
+      "label": "PR review / QA testing",
+      "questions": [
+        "Which PR or change was tested, and what was it supposed to do?",
+        "What was tested (scenarios, environments, accounts, data)?",
+        "What passed?",
+        "What failed or looked wrong (steps to reproduce, error messages, screenshots named)?",
+        "What was reported or fixed, and where (issues, PR comments, commits)?",
+        "What could not be tested, and why?",
+        "What risks remain for users?",
+        "What should be checked in the next round?"
+      ]
+    },
+    {
+      "id": "investigation",
+      "label": "Investigation",
+      "questions": [
+        "What question or problem was being investigated?",
+        "What was looked at (code, logs, data, docs)?",
+        "What was found?",
+        "What was ruled out, and why?",
+        "Which conclusions or decisions came out of it?",
+        "What is still unknown?",
+        "Which facts are worth remembering (names, paths, commands, numbers)?",
+        "What should be done next?"
+      ]
+    }
   ]
 }

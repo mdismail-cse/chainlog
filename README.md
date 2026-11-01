@@ -295,8 +295,11 @@ one small file, so a brand-new session can start from all of it.
 
 2. **chainlog asks your questions of every session**, one request per session, then merges the answers into one file
    (one or two more requests). Ten questions come ready (what broke, the root cause, how it was fixed, how the fix works,
-   how it was tested, what it could break, what is still open, the decisions, facts to remember, what to do next); change
-   them in the app or with `chainlog context questions --set "…" "…"`.
+   how it was tested, what it could break, what is still open, the decisions, facts to remember, what to do next). Or start
+   from a set made for the kind of work: **Bug fix**, **Feature**, **PR review / QA testing** or **Investigation**
+   (`--preset bugfix|feature|qa|investigation`). Every question can be changed, added or removed in step 2 of the app's
+   builder, or with `-q "…"`; "Use these for new contexts too" (or `chainlog context questions --set "…" "…"`) makes
+   them your default. Fewer, sharper questions make shorter notes.
 
 3. **Start a session with it.** **Start in Claude** (or Codex) in the app, or `chainlog context use "Cloud backup"`.
    The new session does not get the whole file. Its first message is a few lines (about 200 tokens) that say what the

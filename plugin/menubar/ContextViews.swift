@@ -115,6 +115,7 @@ struct ContextMenuItems: View {
             Divider()
         }
         Button("Add sessions…") { cx.beginAdd(to: c) }
+        Button("Edit questions…") { cx.beginEditQuestions(c) }
         Button(c.built ? "Update" : "Build") { cx.update(c) }
         if c.built { Button("Open the notes") { cx.openFile(c) } }
         Button("Show in Finder") { cx.showInFinder(c) }
@@ -180,8 +181,9 @@ struct ContextBuilder: View {
                         TextField("Name, e.g. Cloud backup", text: $cx.name)
                             .textFieldStyle(.roundedBorder).font(.system(size: 13)).focused($nameFocused)
                     }
-                    questions
                     sessions
+                    Divider().padding(.vertical, 2)
+                    questions
                 }
                 .padding(.horizontal, 14).padding(.vertical, 8)
             }
@@ -193,10 +195,8 @@ struct ContextBuilder: View {
 
     var sessions: some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Text(cx.target == nil ? "Sessions · \(cx.selected.count) picked" : "Sessions to add · \(cx.adding.count) picked")
-                    .font(.system(size: 11, weight: .semibold)).foregroundColor(.secondary)
-                Spacer()
+            StepTitle(number: 1, title: cx.target == nil ? "Sessions" : "Sessions to add",
+                      note: "\(cx.target == nil ? cx.selected.count : cx.adding.count) picked") {
                 if !cx.selected.isEmpty { Button("Clear") { cx.clearSelection() }.buttonStyle(.plain).font(.system(size: 11.5)).foregroundColor(.accentColor) }
             }
             HStack(spacing: 6) {
@@ -212,58 +212,96 @@ struct ContextBuilder: View {
             .padding(.horizontal, 8).padding(.vertical, 6)
             .background(RoundedRectangle(cornerRadius: 6).fill(Color.primary.opacity(0.06)))
             let rows = cx.candidates
-            if rows.isEmpty {
-                Text(cx.pickQuery.isEmpty ? "No sessions yet" : (cx.pickSearching ? "Searching…" : "No session matches"))
-                    .font(.system(size: 11.5)).foregroundColor(.secondary).padding(.vertical, 6)
+            // a box of its own, so the questions below stay in sight however many sessions there are
+            ScrollView {
+                VStack(spacing: 0) {
+                    if rows.isEmpty {
+                        Text(cx.pickQuery.isEmpty ? "No sessions yet" : (cx.pickSearching ? "Searching…" : "No session matches"))
+                            .font(.system(size: 11.5)).foregroundColor(.secondary).padding(.vertical, 6).frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    ForEach(rows) { r in PickRow(cx: cx, row: r) }
+                }
             }
-            VStack(spacing: 0) {
-                ForEach(rows) { r in PickRow(cx: cx, row: r) }
-            }
+            .frame(height: 150)
+            .background(RoundedRectangle(cornerRadius: 6).stroke(Color.primary.opacity(0.08)))
         }
     }
 
     var questions: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Button { withAnimation(.easeOut(duration: 0.12)) { cx.showQuestions.toggle() } } label: {
+            StepTitle(number: 2, title: "Questions for each session", note: "\(cx.cleanQuestions.count)") { EmptyView() }
+            HStack(spacing: 4) {
+                Text("Start from").font(.system(size: 11.5)).foregroundColor(.secondary)
+                Menu {
+                    ForEach(cx.presets, id: \.id) { p in Button(p.label) { cx.applyPreset(p) } }
+                    if !cx.defaultQuestions.isEmpty { Divider(); Button("Your default") { cx.useDefaultQuestions() } }
+                    if cx.target != nil { Button("This context's") { cx.resetQuestions() } }
+                } label: { Text(cx.questionsSource).font(.system(size: 11.5, weight: .medium)) }
+                .menuStyle(.borderlessButton).menuIndicator(.visible).fixedSize()
+                .help("Ready-made sets: a bug fix, a feature, PR review / QA, an investigation")
+                Spacer()
+            }
+            Text("Each one is answered for every session, in up to 80 words. Fewer, sharper questions make shorter notes.")
+                .font(.system(size: 11)).foregroundColor(.secondary).fixedSize(horizontal: false, vertical: true)
+            if cx.questionsChanged, let t = cx.target {
+                Text("Changed: all \(t.sessions + cx.adding.count) sessions are read again with these.").font(.system(size: 11)).foregroundColor(.orange)
+            }
+            ForEach(Array(cx.questions.enumerated()), id: \.offset) { i, q in
                 HStack(spacing: 6) {
-                    Image(systemName: cx.showQuestions ? "chevron.down" : "chevron.right").font(.system(size: 9.5, weight: .semibold))
-                    Text("Questions asked of each session · \(cx.cleanQuestions.count)").font(.system(size: 11, weight: .semibold))
-                    if cx.questionsChanged { Text("changed: every session is read again").font(.system(size: 10.5)).foregroundColor(.orange) }
+                    Text("\(i + 1).").font(.system(size: 11.5)).foregroundColor(.secondary).frame(width: 18, alignment: .trailing)
+                    TextField("A question", text: Binding(get: { q }, set: { cx.setQuestion(i, $0) }))
+                        .textFieldStyle(.roundedBorder).font(.system(size: 12))
+                    IconButton(symbol: "minus.circle", help: "Remove this question") { cx.removeQuestion(i) }
                 }
-                .foregroundColor(.secondary).contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
-            if cx.showQuestions {
-                ForEach(Array(cx.questions.enumerated()), id: \.offset) { i, q in
-                    HStack(spacing: 6) {
-                        Text("\(i + 1).").font(.system(size: 11.5)).foregroundColor(.secondary).frame(width: 18, alignment: .trailing)
-                        TextField("A question", text: Binding(get: { q }, set: { cx.setQuestion(i, $0) }))
-                            .textFieldStyle(.roundedBorder).font(.system(size: 12))
-                        IconButton(symbol: "minus.circle", help: "Remove this question") { cx.removeQuestion(i) }
-                    }
-                }
-                HStack(spacing: 12) {
-                    Button("Add a question") { cx.addQuestion() }.disabled(cx.questions.count >= 15)
-                    Button("Reset") { cx.resetQuestions() }
-                    Spacer()
-                }
-                .buttonStyle(.plain).font(.system(size: 11.5)).foregroundColor(.accentColor)
-                Toggle("Use these questions for new contexts too", isOn: $cx.saveAsDefault).font(.system(size: 11.5)).toggleStyle(.checkbox)
+            HStack(spacing: 12) {
+                Button("Add a question") { cx.addQuestion() }.disabled(cx.questions.count >= 15)
+                Spacer()
             }
+            .buttonStyle(.plain).font(.system(size: 11.5)).foregroundColor(.accentColor)
+            Toggle("Use these questions for new contexts too", isOn: $cx.saveAsDefault).font(.system(size: 11.5)).toggleStyle(.checkbox)
         }
     }
 
     var footer: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(cx.blocker ?? cx.estimate).font(.system(size: 11)).foregroundColor(cx.blocker == nil ? .secondary : .orange)
+            HStack(spacing: 6) {
+                StepNumber(number: 3)
+                Text(cx.blocker ?? cx.estimate).font(.system(size: 11)).foregroundColor(cx.blocker == nil ? .secondary : .orange)
+            }
             HStack {
                 Text("Each answer cites its session. Secrets are removed first.").font(.system(size: 10.5)).foregroundColor(.secondary.opacity(0.8))
                 Spacer()
                 Button("Cancel") { cx.closeBuilder() }.keyboardShortcut(.cancelAction)
-                Button(cx.target == nil ? "Build" : "Add and update") { cx.build() }.keyboardShortcut(.defaultAction).disabled(cx.blocker != nil)
+                Button(cx.target == nil ? "Build" : "Update") { cx.build() }.keyboardShortcut(.defaultAction).disabled(cx.blocker != nil)
             }
         }
         .padding(.horizontal, 14).padding(.vertical, 8)
+    }
+}
+
+/// "① Sessions · 3 picked" with something on the right.
+struct StepTitle<Trailing: View>: View {
+    let number: Int
+    let title: String
+    var note: String = ""
+    @ViewBuilder var trailing: () -> Trailing
+    var body: some View {
+        HStack(spacing: 6) {
+            StepNumber(number: number)
+            Text(title).font(.system(size: 12, weight: .semibold))
+            if !note.isEmpty { Text("· " + note).font(.system(size: 11.5)).foregroundColor(.secondary) }
+            Spacer()
+            trailing()
+        }
+    }
+}
+
+struct StepNumber: View {
+    let number: Int
+    var body: some View {
+        Text("\(number)").font(.system(size: 10, weight: .bold)).foregroundColor(.white)
+            .frame(width: 16, height: 16).background(Circle().fill(Color.accentColor))
     }
 }
 

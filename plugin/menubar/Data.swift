@@ -97,6 +97,13 @@ struct ContextInfo: Decodable {
     let members: [String]      // session refs
 }
 
+/// A ready-made set of questions (bug fix, feature, QA…).
+struct ContextPreset: Decodable {
+    let id: String
+    let label: String
+    let questions: [String]
+}
+
 struct ContextPending: Decodable {
     let new: Int
     let changed: Int
@@ -130,6 +137,7 @@ struct MenuData: Decodable {
     var ask: AskConfig?
     var contexts: [ContextInfo]?        // absent from an older chainlog
     var context_questions: [String]?    // what a new context asks each session (yours, or chainlog's ten)
+    var context_presets: [ContextPreset]?  // ready-made question sets to start from
     var unsaved: [Row]
     var recent: [Row]
     var starred: [Row]

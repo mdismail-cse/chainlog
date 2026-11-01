@@ -63,6 +63,67 @@ DEFAULT_QUESTIONS = (
 )
 
 
+# Ready-made question sets to start from. Each question is answerable from one session, does not overlap the others, and
+# asks for concrete things (files, commands, errors, results): every one is answered for every session, so fewer, sharper
+# questions make shorter notes.
+PRESETS = (
+    ("general", "General (chainlog's ten)", DEFAULT_QUESTIONS),
+    ("bugfix", "Bug fix", (
+        "What was the bug, and how did it show up (error messages, steps to reproduce)?",
+        "What was the root cause?",
+        "What was changed to fix it (files, functions, settings)?",
+        "How does the fix work?",
+        "How was the fix verified, and what was the result?",
+        "What could the fix break, or which edge cases are left?",
+        "What is still open?",
+        "Which facts are worth remembering (paths, commands, settings, error messages)?",
+    )),
+    ("feature", "Feature", (
+        "What was the feature meant to do, and for whom?",
+        "Which approach was chosen, and which were rejected and why?",
+        "What was built or changed (files, APIs, settings, PRs)?",
+        "How does it work?",
+        "How was it tested, and what was the result?",
+        "What could it break, or what limits does it have?",
+        "What is still to do?",
+        "Which facts are worth remembering (names, paths, settings, commands)?",
+    )),
+    ("qa", "PR review / QA testing", (
+        "Which PR or change was tested, and what was it supposed to do?",
+        "What was tested (scenarios, environments, accounts, data)?",
+        "What passed?",
+        "What failed or looked wrong (steps to reproduce, error messages, screenshots named)?",
+        "What was reported or fixed, and where (issues, PR comments, commits)?",
+        "What could not be tested, and why?",
+        "What risks remain for users?",
+        "What should be checked in the next round?",
+    )),
+    ("investigation", "Investigation", (
+        "What question or problem was being investigated?",
+        "What was looked at (code, logs, data, docs)?",
+        "What was found?",
+        "What was ruled out, and why?",
+        "Which conclusions or decisions came out of it?",
+        "What is still unknown?",
+        "Which facts are worth remembering (names, paths, commands, numbers)?",
+        "What should be done next?",
+    )),
+)
+PRESET_IDS = tuple(p[0] for p in PRESETS)
+
+
+def preset_questions(pid):
+    for i, _label, qs in PRESETS:
+        if i == pid:
+            return list(qs)
+    raise AskError("bad_request", "No question set %r. Sets: %s" % (pid, ", ".join(PRESET_IDS)))
+
+
+def presets():
+    """The sets as the app and `--json` show them."""
+    return [{"id": i, "label": label, "questions": list(qs)} for i, label, qs in PRESETS]
+
+
 def disclosure(engine):
     """What building a context sends, in words. Shown before you agree, by the CLI and by the app."""
     name = LABEL[engine]

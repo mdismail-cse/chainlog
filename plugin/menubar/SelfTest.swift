@@ -720,6 +720,35 @@ func selfTest(sample path: String?) -> Int {
               && cx.expanded["shop-refunds"] == true)
         cx.doneWithResult()
         check("  ... Done goes back to the list", cx.screen == .list && cx.result == nil)
+        // questions: ready-made sets, where they came from, editing those of a context that exists
+        check("the five question sets come from chainlog", cx.presets.map(\.id) == ["general", "bugfix", "feature", "qa", "investigation"])
+        cx.beginNew()
+        check("a new context starts from your default (here chainlog's ten)", cx.questionsSource == "General (chainlog's ten)")
+        cx.applyPreset(cx.presets[3])
+        check("picking a set replaces the questions, and says which", cx.questions.count == 8 && cx.questionsSource == "PR review / QA testing")
+        cx.setQuestion(0, "What was tested?")
+        check("  ... changing one makes them yours", cx.questionsSource == "Edited")
+        cx.removeQuestion(7); cx.addQuestion()
+        check("  ... a blank new question is not counted", cx.cleanQuestions.count == 7)
+        cx.useDefaultQuestions()
+        check("  ... and they go back to your default", cx.questions == cx.defaultQuestions)
+        cx.closeBuilder()
+        let shop = cx.contexts[0]
+        cx.beginEditQuestions(shop)
+        check("Edit questions opens a context's own questions, nothing to add", cx.questionsSource == "This context's" && cx.adding.isEmpty && cx.blocker == "Pick sessions to add")
+        cx.applyPreset(cx.presets[1])
+        check("  ... new ones read every session again, and the cost says so", cx.questionsChanged && cx.blocker == nil
+              && cx.estimate == "Reads \(shop.sessions) sessions with Claude: about \(shop.sessions + 1) requests on your plan.", cx.estimate)
+        requests = []
+        cx.saveAsDefault = true
+        final class Saved: @unchecked Sendable { var ran: [[String]] = [] }  // Swift 5.9: a @Sendable closure cannot change a local
+        let saved = Saved()
+        m.runner = { args in saved.ran.append(args); return (true, "") }
+        cx.build()
+        check("  ... Update sends only the new questions (nothing added)", requests.count == 1 && !requests[0].isNew && requests[0].refs.isEmpty
+              && requests[0].questions == cx.presets[1].questions && requests[0].name == shop.slug)
+        check("  ... and \"use these for new contexts too\" saves them as your default", saved.ran.last == ["context", "questions", "--set"] + cx.presets[1].questions)
+        cx.stop()
         // a yes at the very first question builds the context that was just made (not a second new one)
         requests = []
         cx.beginNew(); cx.name = "Billing"; cx.selectAll(rows)

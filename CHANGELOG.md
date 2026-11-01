@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Contexts: ready-made question sets (Bug fix, Feature, PR review / QA testing, Investigation, and chainlog's ten):
+  `--preset` on `context new`, `context update` (new questions read every session again) and `context questions`. The app's
+  builder is three steps (Sessions, Questions, Build) with the questions always in sight, *Start from* a set, and *Edit
+  questions…* on every context.
 - Menu bar app, Ask tab: the tool in use is a menu at the top (*Claude · sonnet ▾*) to switch to the other one, see what is
   sent, or disconnect. It was hidden in a ⋯ button, and the other tool was only offered after a status check.
 - Contexts: merge what many sessions taught you into one small file a new session reads only when it needs it.

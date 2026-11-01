@@ -582,6 +582,16 @@ esac
         self.assertIn("context screen: done · Zebra work · 8 sessions · 5 requests", out)  # four new, one merge
         self.assertEqual(len(self.prompts()), 10)
 
+    def test_new_questions_for_a_context_read_every_session_again(self):
+        self.context_stub()
+        self.make_context()
+        rc, out, err = self.app("--context", "questions", "--context-name", "Zebra work", "--context-preset", "bugfix", "--build")
+        self.assertEqual(rc, 0, err)
+        self.assertIn("context screen: done · Zebra work · 4 sessions · 5 requests", out)  # all four again, one merge
+        self.assertIn("1. What was the bug, and how did it show up", self.prompts()[-2])
+        meta = json.loads((self.data / "contexts" / "zebra-work" / "context.json").read_text())
+        self.assertEqual(len(meta["questions"]), 8)
+
     def test_stopping_a_build_ends_the_ai_process_and_keeps_the_context(self):
         self.context_stub()
         (self.home / "stub-sleep").write_text("")
