@@ -210,6 +210,36 @@ enum ContextRunner {
     }
 }
 
+// MARK: - editors for the notes
+
+/// An app that can open a context's notes (Markdown text).
+struct Editor: Identifiable, Equatable {
+    let id: String      // bundle id
+    let name: String
+    let url: URL
+}
+
+enum Editors {
+    /// Text editors worth offering, in this order when installed. TextEdit is on every Mac.
+    static let known: [(String, String)] = [
+        ("com.microsoft.VSCode", "Visual Studio Code"), ("com.todesktop.230313mzl4w4u92", "Cursor"), ("dev.zed.Zed", "Zed"),
+        ("com.sublimetext.4", "Sublime Text"), ("com.barebones.bbedit", "BBEdit"), ("com.apple.TextEdit", "TextEdit"),
+    ]
+
+    static func installed() -> [Editor] {
+        known.compactMap { id, name in NSWorkspace.shared.urlForApplication(withBundleIdentifier: id).map { Editor(id: id, name: name, url: $0) } }
+    }
+
+    /// What double-clicking a .md file opens (on some Macs a terminal or a browser, not an editor).
+    static func defaultApp(for file: String) -> Editor? {
+        guard let url = NSWorkspace.shared.urlForApplication(toOpen: URL(fileURLWithPath: file)) else { return nil }
+        let name = FileManager.default.displayName(atPath: url.path).replacingOccurrences(of: ".app", with: "")
+        return Editor(id: Bundle(url: url)?.bundleIdentifier ?? url.path, name: name, url: url)
+    }
+
+    static let remembered = "contextEditor"
+}
+
 // MARK: - the model
 
 @MainActor
@@ -259,6 +289,19 @@ final class ContextModel: ObservableObject {
     var launchPlanner: @Sendable ([String]) -> (ContextLaunch?, String) = { ContextRunner.launch($0) }
     /// Asks where a session should start. Tests replace it.
     var folderPicker: () -> String? = { ContextRunner.pickFolder() }
+    /// Opens a file with an app. Tests replace it.
+    var opener: (URL, URL) -> Void = { file, app in
+        NSWorkspace.shared.open([file], withApplicationAt: app, configuration: NSWorkspace.OpenConfiguration()) { _, _ in }
+    }
+    /// The editors that can open the notes, and the default app for .md files. Tests replace them.
+    var editorList: () -> [Editor] = { Editors.installed() }
+    var defaultEditor: (String) -> Editor? = { Editors.defaultApp(for: $0) }
+    /// Where the editor you picked last is remembered. Tests use a key of their own, so they never touch yours.
+    var editorKey = Editors.remembered
+    var rememberedEditor: String? {
+        get { UserDefaults.standard.string(forKey: editorKey) }
+        set { UserDefaults.standard.set(newValue, forKey: editorKey) }
+    }
     /// Tests set this so a launch or a search has finished when it returns.
     var inline = false
 
@@ -655,10 +698,30 @@ final class ContextModel: ObservableObject {
         app?.say("Copied: paste it into any Claude or Codex session")
     }
 
-    func openFile(_ c: ContextInfo) {
-        guard c.built else { app?.say("Build it first"); return }
-        NSWorkspace.shared.open(URL(fileURLWithPath: c.file))
+    /// Every editor that can open the notes: the ones installed, then the default app for .md files when it is another one.
+    func editors(for c: ContextInfo) -> [Editor] {
+        var list = editorList()
+        if let d = defaultEditor(c.file), !list.contains(where: { $0.id == d.id }) { list.append(d) }
+        return list
     }
+
+    /// What a click on Open uses: the editor you picked last, else the first one installed (TextEdit is on every Mac).
+    func preferredEditor(for c: ContextInfo) -> Editor? {
+        let list = editors(for: c)
+        return list.first { $0.id == rememberedEditor } ?? list.first
+    }
+
+    /// Open the notes (CONTEXT.md, or each session's in sessions.md) in an editor, which is remembered for next time.
+    func openNotes(_ c: ContextInfo, with editor: Editor? = nil, sessions: Bool = false) {
+        guard c.built else { app?.say("Build it first: there are no notes yet"); return }
+        guard let e = editor ?? preferredEditor(for: c) else { app?.say("No app can open text files"); return }
+        let file = sessions ? (c.dir as NSString).appendingPathComponent("sessions.md") : c.file
+        opener(URL(fileURLWithPath: file), e.url)
+        if editor != nil { rememberedEditor = e.id }
+        app?.say("Opening \(sessions ? "each session's notes" : "the notes") in \(e.name)")
+    }
+
+    func openFile(_ c: ContextInfo) { openNotes(c) }
 
     func showInFinder(_ c: ContextInfo) {
         NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: c.built ? c.file : c.dir)])

@@ -83,15 +83,16 @@ struct ContextRow: View {
                     } primaryAction: { cx.start(c) }
                     .menuStyle(.borderlessButton).fixedSize().tint(.accentColor)
                     .help("A new session that starts with a few lines pointing to this context\(c.start.folder.map { ", in \(($0 as NSString).lastPathComponent)" } ?? "")")
-                    Button { cx.copyReference(c) } label: { Label("Copy reference", systemImage: "doc.on.doc").font(.system(size: 12)) }
-                        .buttonStyle(.plain).foregroundColor(.accentColor).help("Lines to paste into a session that is already running")
+                    Button { cx.copyReference(c) } label: { Label("Copy", systemImage: "doc.on.doc").font(.system(size: 12)) }
+                        .buttonStyle(.plain).foregroundColor(.accentColor).help("Copy the reference: lines to paste into a session that is already running")
+                    OpenNotesMenu(cx: cx, c: c)
                     Spacer()
                     if c.needs_update {
                         Button("Update") { cx.update(c) }.help("Read \(c.pending.text) and merge again")
                     }
                 }
             } else {
-                Text("Not built yet: nothing has been read. Build it to write its notes.").font(.system(size: 11.5)).foregroundColor(.secondary)
+                Text("Not built yet: nothing has been read. Build it to write its notes; then you can open them.").font(.system(size: 11.5)).foregroundColor(.secondary)
                 HStack {
                     Button("Build") { cx.update(c) }
                     Spacer()
@@ -99,6 +100,27 @@ struct ContextRow: View {
             }
         }
         .padding(.leading, 38).padding(.trailing, 14).padding(.bottom, 8)
+    }
+}
+
+/// "Open ▾": the notes in the editor you picked last, or in any other one; each session's notes; the folder.
+struct OpenNotesMenu: View {
+    @ObservedObject var cx: ContextModel
+    let c: ContextInfo
+    var body: some View {
+        let editors = cx.editors(for: c)
+        Menu {
+            ForEach(editors) { e in Button("Open in \(e.name)") { cx.openNotes(c, with: e) } }
+            Divider()
+            Menu("Each session's notes (sessions.md)") {
+                ForEach(editors) { e in Button("Open in \(e.name)") { cx.openNotes(c, with: e, sessions: true) } }
+            }
+            Button("Show in Finder") { cx.showInFinder(c) }
+        } label: {
+            Label("Open", systemImage: "doc.text")
+        } primaryAction: { cx.openNotes(c) }
+        .menuStyle(.borderlessButton).fixedSize()
+        .help("Open the notes (CONTEXT.md) in \(cx.preferredEditor(for: c)?.name ?? "an editor")")
     }
 }
 
@@ -117,7 +139,10 @@ struct ContextMenuItems: View {
         Button("Add sessions…") { cx.beginAdd(to: c) }
         Button("Edit questions…") { cx.beginEditQuestions(c) }
         Button(c.built ? "Update" : "Build") { cx.update(c) }
-        if c.built { Button("Open the notes") { cx.openFile(c) } }
+        if c.built {
+            Menu("Open the notes in") { ForEach(cx.editors(for: c)) { e in Button(e.name) { cx.openNotes(c, with: e) } } }
+            Menu("Open each session's notes in") { ForEach(cx.editors(for: c)) { e in Button(e.name) { cx.openNotes(c, with: e, sessions: true) } } }
+        }
         Button("Show in Finder") { cx.showInFinder(c) }
         Divider()
         Button("Delete…") { cx.delete(c) }
@@ -462,7 +487,7 @@ struct ContextDone: View {
                     Button { cx.start(c); cx.doneWithResult() } label: { Label("Start in \(c.tool.label)", systemImage: "play.fill") }
                         .keyboardShortcut(.defaultAction)
                     Button("Copy reference") { cx.copyReference(c) }
-                    Button("Open the notes") { cx.openFile(c) }
+                    OpenNotesMenu(cx: cx, c: c)
                     Spacer()
                     Button("Done") { cx.doneWithResult() }
                 }

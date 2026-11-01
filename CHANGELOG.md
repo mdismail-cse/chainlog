@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Contexts: **Open** on every built context in the Chains tab opens its notes in an editor (the one you picked last; its menu
+  lists every editor installed, each session's notes and Show in Finder), and `chainlog context open NAME` opens them in your
+  text editor. The only way was a right-click item that used the app your Mac opens `.md` files with, which can be a
+  terminal or a browser.
 - Your own instructions for every summary: `chainlog summarize --instructions "…"` (setting `summary.instructions`) and ⚙ →
   Summary instructions… in the app; `--with "…"` / right-click → Summarize with instructions… for one. The automatic
   (forgot-to-save) summaries follow them too, and now read a session's first messages as well as its last ones.

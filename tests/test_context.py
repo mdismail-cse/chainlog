@@ -582,6 +582,29 @@ class Cli(ContextBase):
         self.assertFalse(os.path.exists(ctx.folder(self.rt, "cloud-backup")))
         self.assertIn("claude:" + sid(11), self.idx().sessions)
 
+    def test_open_puts_the_notes_in_a_text_editor_not_whatever_opens_md_files(self):
+        import sys
+        self.make("Unbuilt")
+        code, _o, err = self.cli("context", "open", "Unbuilt")
+        self.assertEqual(code, 1)
+        self.assertIn("no notes yet", err)
+        meta = self.built()
+        f = ctx.files(self.rt, meta)
+        ran = []
+        self.rt._run = lambda argv, **kw: (ran.append(argv) or (0, "", ""))
+        code, out, _ = self.cli("context", "open", "Cloud backup")
+        self.assertEqual(code, 0)
+        mac = sys.platform == "darwin"
+        self.assertEqual(ran[-1], ["open", "-t", f["context"]] if mac else ["xdg-open", f["context"]])  # -t: the text editor
+        self.cli("context", "open", "Cloud backup", "--sessions", "--app", "Visual Studio Code")
+        self.assertEqual(ran[-1], ["open", "-a", "Visual Studio Code", f["sessions"]] if mac else ["xdg-open", f["sessions"]])
+        code, out, _ = self.cli("context", "open", "Cloud backup", "--print")
+        self.assertEqual(out.strip(), f["context"])
+        self.rt._run = lambda argv, **kw: (1, "", "Unable to find application named 'Nope'")
+        code, _o, err = self.cli("context", "open", "Cloud backup", "--app", "Nope")
+        self.assertEqual(code, 1)
+        self.assertIn(f["context"], err)  # where the file is, so it can be opened by hand
+
     def test_questions_can_be_set_and_reset(self):
         code, out, _ = self.cli("context", "questions")
         self.assertIn(" 1. What was the goal or the problem in this session?", out)

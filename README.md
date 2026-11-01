@@ -329,7 +329,8 @@ one small file, so a brand-new session can start from all of it.
    The new session does not get the whole file. Its first message is a few lines (about 200 tokens) that say what the
    context is and where it is; the session **reads it only when your task needs it**, and only the part it needs.
    Add what to do and it starts at once: `chainlog context use "Cloud backup" fix the restore timeout`.
-   Already in a session? **Copy reference** (or `chainlog context ref "Cloud backup" --copy`) and paste it in.
+   Already in a session? **Copy** the reference (or `chainlog context ref "Cloud backup" --copy`) and paste it in.
+   To read or edit the notes yourself: **Open** (VS Code, TextEdit or any editor you have), or `chainlog context open "Cloud backup"`.
 
 4. **Keep it up to date.** Work on backup again, then **Update**: only new or changed sessions are read (one request
    each, plus the merge). Sessions you started from the context, and new rounds of a chain it follows, join by themselves.

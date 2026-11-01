@@ -912,6 +912,31 @@ func selfTest(sample path: String?) -> Int {
         check("a launch chainlog refuses says why", (m.toast ?? "").contains("Build the context first"))
         cx.start(cx.contexts[1])
         check("an unbuilt context cannot be started", (m.toast ?? "") == "Build it first")
+        // opening the notes: in the editor you picked last, else the first one installed; never the .md default by surprise
+        let code = Editor(id: "com.microsoft.VSCode", name: "Visual Studio Code", url: URL(fileURLWithPath: "/Applications/Visual Studio Code.app"))
+        let text = Editor(id: "com.apple.TextEdit", name: "TextEdit", url: URL(fileURLWithPath: "/System/Applications/TextEdit.app"))
+        let warp = Editor(id: "dev.warp.Warp-Stable", name: "Warp", url: URL(fileURLWithPath: "/Applications/Warp.app"))
+        cx.editorList = { [code, text] }
+        cx.defaultEditor = { _ in warp }
+        final class Opened: @unchecked Sendable { var files: [String] = []; var remembered: String? }
+        let opened = Opened()
+        cx.opener = { f, a in opened.files.append(f.lastPathComponent + "|" + a.lastPathComponent) }
+        cx.editorKey = "selftest.contextEditor"
+        defer { UserDefaults.standard.removeObject(forKey: "selftest.contextEditor") }
+        check("Open offers the editors, then the .md default app when it is another one", cx.editors(for: c).map(\.name) == ["Visual Studio Code", "TextEdit", "Warp"])
+        cx.defaultEditor = { _ in text }
+        check("  ... and lists an editor once", cx.editors(for: c).map(\.name) == ["Visual Studio Code", "TextEdit"])
+        UserDefaults.standard.removeObject(forKey: cx.editorKey)
+        cx.openNotes(c)
+        check("a click on Open uses the first editor", opened.files == ["CONTEXT.md|Visual Studio Code.app"] && (m.toast ?? "").contains("in Visual Studio Code"))
+        cx.openNotes(c, with: text, sessions: true)
+        check("  ... picking one opens with it (each session's notes here) and is remembered", opened.files.last == "sessions.md|TextEdit.app" && cx.preferredEditor(for: c)?.name == "TextEdit")
+        cx.openNotes(c)
+        check("  ... so the next click uses it", opened.files.last == "CONTEXT.md|TextEdit.app")
+        UserDefaults.standard.removeObject(forKey: cx.editorKey)
+        opened.files = []
+        cx.openNotes(cx.contexts[1])
+        check("a context not built yet has no notes to open, and says so", opened.files.isEmpty && m.toast == "Build it first: there are no notes yet")
         var copied: [String] = []
         m.copier = { copied.append($0) }
         cx.copyReference(c)

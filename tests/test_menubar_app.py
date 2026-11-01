@@ -536,7 +536,7 @@ esac
         listed = self.dump("--tab", "chains", "--open-contexts")
         self.assertIn("contexts: 1", listed)
         self.assertIn("Zebra work · 4 sessions · built", listed)
-        self.assertIn("→ Start in Claude · Copy reference", listed)
+        self.assertIn("→ Start in Claude · Copy · Open (in ", listed)
         text = (self.data / "contexts" / "zebra-work" / "notes" / "CONTEXT.md").read_text()
         self.assertIn("# Context: Zebra work", text)
         self.assertIn("- zebra fixed [", text)
@@ -579,6 +579,17 @@ esac
         rc, out, _ = self.app("--context", "copy", "--context-name", "Zebra work")
         self.assertIn('copied: Context "Zebra work" is attached', out)
         self.assertIn("toast: Copied: paste it into any Claude or Codex session", out)
+
+    def test_the_notes_open_in_a_text_editor(self):
+        self.context_stub()
+        self.make_context()
+        rc, out, err = self.app("--context", "open", "--context-name", "Zebra work", "--context-editor", "TextEdit")
+        self.assertEqual(rc, 0, err)
+        self.assertIn("TextEdit", next(l for l in out.splitlines() if l.startswith("editors: ")))
+        self.assertIn("opened: CONTEXT.md with TextEdit", out)
+        self.assertIn("toast: Opening the notes in TextEdit", out)
+        rc, out, _ = self.app("--context", "open", "--context-name", "Zebra work", "--context-editor", "TextEdit", "--sessions")
+        self.assertIn("opened: sessions.md with TextEdit", out)
 
     def test_adding_sessions_reads_only_those_and_merges_once(self):
         self.context_stub()

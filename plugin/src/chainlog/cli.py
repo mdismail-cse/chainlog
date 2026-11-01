@@ -20,7 +20,7 @@ from chainlog import menu as menu_mod
 from chainlog import query, resolve, resume, retention as retention_mod, review, sweep, ui
 from chainlog.index import NotSaved, load, write_events
 from chainlog.noteargs import parse as parse_note_args
-from chainlog.redact import redact
+from chainlog.redact import clean, redact
 from chainlog.runtime import Runtime
 from chainlog.store.events import NOTE_MAX, new_event
 
@@ -1461,6 +1461,20 @@ def cmd_context(rt, args):
         ctx_mod.delete(rt, meta)
         _p("Deleted the context %s. Your sessions are untouched." % st.bold(meta["name"]))
         return 0
+    if action == "open":
+        if not meta.get("built_at"):
+            raise Exit(1, "build it first: there are no notes yet (chainlog context update %s)" % shlex.quote(meta["name"]))
+        path = ctx_mod.files(rt, meta)["sessions" if args.sessions else "context"]
+        if args.print:
+            _p(path)
+            return 0
+        # `open -t`: the default *text editor*, not the default app for .md files (on some Macs a terminal or a browser)
+        argv = (["open", "-a", args.app, path] if args.app else ["open", "-t", path]) if sys.platform == "darwin" else ["xdg-open", path]
+        rc, _o, err = rt.run(argv, timeout=15)
+        if rc != 0:
+            raise Exit(1, "could not open it (%s); the file is %s" % (clean(err or "no app", 120), path))
+        _p("Opened %s" % path)
+        return 0
     if action == "ref":
         if not meta.get("built_at"):
             raise Exit(1, "build it first: chainlog context update %s" % shlex.quote(meta["name"]))
@@ -1878,6 +1892,11 @@ def build_parser():
     c_ref = cxs.add_parser("ref", help="print the lines that attach the context, to paste into any session")
     c_ref.add_argument("name")
     c_ref.add_argument("--copy", action="store_true", help="also copy them to the clipboard")
+    c_open = cxs.add_parser("open", help="open its notes (CONTEXT.md) in a text editor")
+    c_open.add_argument("name")
+    c_open.add_argument("--sessions", action="store_true", help="each session's notes (sessions.md) instead")
+    c_open.add_argument("--app", metavar="APP", help='an app by name, e.g. "Visual Studio Code" (default: your text editor)')
+    c_open.add_argument("--print", action="store_true", help="only print the file's path")
     c_show = cxs.add_parser("show", help="what is in a context")
     c_show.add_argument("name")
     c_rm = cxs.add_parser("rm", help="delete a context (its notes; never your sessions)")
@@ -1889,7 +1908,7 @@ def build_parser():
     c_sug = cxs.add_parser("suggest", help="describe the work: the AI recommends the sessions about it, grouped by PR")
     c_sug.add_argument("words", nargs="+", metavar="DESCRIPTION")
     cxs.add_parser("ls", help="list contexts")
-    for c in (cx, c_new, c_upd, c_add, c_rem, c_use, c_ref, c_show, c_rm, c_q, c_sug):
+    for c in (cx, c_new, c_upd, c_add, c_rem, c_use, c_ref, c_show, c_rm, c_q, c_sug, c_open):
         c.add_argument("--json", action="store_true", help=argparse.SUPPRESS if c is not cx else "machine-readable output")
     for c in (cx, c_new, c_upd, c_sug):
         c.add_argument("-e", "--engine", choices=list(config_mod.ASK_ENGINES), help="build with claude or codex")

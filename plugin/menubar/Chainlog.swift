@@ -355,7 +355,9 @@ func dumpContexts(_ m: AppModel) -> Bool {
             if cx.isOpen(c) {
                 if !c.gist.isEmpty { print("    gist: \(c.gist)") }
                 if let f = c.focus, !f.isEmpty { print("    focus: \(f)") }
-                if c.built { print("    → Start in \(c.tool.label) · Copy reference\(c.needs_update ? " · Update" : "")") } else { print("    → Build") }
+                if c.built {
+                    print("    → Start in \(c.tool.label) · Copy · Open (in \(cx.preferredEditor(for: c)?.name ?? "-"))\(c.needs_update ? " · Update" : "")")
+                } else { print("    → Build") }
             }
         }
         return false
@@ -447,6 +449,14 @@ func runContextFlow(_ args: [String]) -> Int32 {
         if let p = arg("--context-preset", in: args), let set = cx.presets.first(where: { $0.id == p }) { cx.applyPreset(set) }
         if let f = arg("--context-focus", in: args) { cx.focus = f }
         if args.contains("--build") { cx.build(); wait() }
+    case "open":
+        guard let c = named(arg("--context-name", in: args) ?? "") else { print("no such context"); return 2 }
+        var opened: [String] = []
+        cx.opener = { file, app in opened.append(file.lastPathComponent + " with " + app.deletingPathExtension().lastPathComponent) }
+        let editor = arg("--context-editor", in: args).flatMap { n in cx.editors(for: c).first { $0.name == n } }
+        cx.openNotes(c, with: editor, sessions: args.contains("--sessions"))
+        print("editors: " + cx.editors(for: c).map(\.name).joined(separator: " | "))
+        for o in opened { print("opened: " + o) }
     case "start", "start-task", "copy":
         guard let c = named(arg("--context-name", in: args) ?? "") else { print("no such context"); return 2 }
         if what == "copy" { cx.copyReference(c) } else if what == "start-task" { cx.startWithTask(c) } else {
