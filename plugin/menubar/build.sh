@@ -89,7 +89,7 @@ case "${1:-build}" in
     dump --tab starred | want "Starred · 2" "the Starred tab does not list the 2 starred sessions" || exit 1
     dump --tab chains | want "Continue the latest round" "the Chains tab has no continue line" || exit 1
     dump --query refund --find-file "$found" | want "Results · 7" "searching does not show the search results" || exit 1
-    dump --tab starred --query refund --find-file "$found" | want "Starred matching · 2" "the Starred tab does not filter the search" || exit 1
+    dump --tab starred --query refund --find-file "$found" | want "Starred results · 2" "the Starred tab does not filter the search" || exit 1
     printf '{"schema":"chainlog.menu/1","query":"zzzz","results":[]}' > "$tmp/none.json"
     dump --query zzzz --find-file "$tmp/none.json" | want "No session matches" "a search with no hits has no empty state" || exit 1
     dump --query zzzz --find-file /dev/null | want "Search is not available" "a failed search is not reported" || exit 1

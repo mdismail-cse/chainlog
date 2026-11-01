@@ -89,7 +89,8 @@ struct SearchBar: View {
     var body: some View {
         HStack(spacing: 8) {
             Image(systemName: "magnifyingglass").foregroundColor(.secondary)
-            TextField(model.tab == .chains ? "Search chains, rounds, results…" : "Search all sessions, notes, PR numbers…", text: $model.query)
+            TextField(model.tab == .chains ? "Search chains, rounds, results…"
+                      : (model.tab == .starred ? "Search your starred sessions…" : "Search all sessions, notes, PR numbers…"), text: $model.query)
                 .textFieldStyle(.plain)
                 .font(.system(size: 14))
                 .focused(focused)
@@ -147,7 +148,7 @@ struct SessionList: View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
                 ForEach(sections) { section in
-                    SectionHeader(text: section.title)
+                    if !section.rows.isEmpty { SectionHeader(text: section.title) }  // at 0 results only the empty state speaks
                     ForEach(section.rows) { row in SessionRow(model: model, row: row) }
                     if let note = section.note {
                         Text(note).font(.system(size: 11.5)).foregroundColor(.secondary).padding(.horizontal, 14).padding(.vertical, 6)
@@ -265,19 +266,32 @@ struct EmptyState: View {
             Image(systemName: icon).font(.system(size: 26)).foregroundColor(.secondary.opacity(0.7))
             Text(title).font(.system(size: 13, weight: .semibold))
             Text(detail).font(.system(size: 12)).foregroundColor(.secondary).multilineTextAlignment(.center)
+            if let a = action {
+                Button(a.label) { a.run() }.buttonStyle(.plain).font(.system(size: 12.5)).foregroundColor(.accentColor).padding(.top, 4)
+            }
         }
         .frame(maxWidth: .infinity).padding(.top, 70).padding(.horizontal, 30)
     }
 
     var q: String { model.query.trimmingCharacters(in: .whitespacesAndNewlines) }
+    /// The Starred tab with no session at all: the Sessions wording, not "hover a session" when there is none to hover.
+    var noSessionsAtAll: Bool { (model.data?.unsaved ?? []).isEmpty && (model.data?.recent ?? []).isEmpty }
+    /// The way out of a dead end on the Starred tab: the whole list, or the sessions to star.
+    var action: (label: String, run: () -> Void)? {
+        guard model.tab == .starred, !model.searching, !model.searchFailed else { return nil }
+        if !q.isEmpty { return ("Search all sessions", { model.tab = .sessions }) }  // the query is kept; the tab re-runs it
+        return noSessionsAtAll ? nil : ("Go to Sessions", { model.tab = .sessions })
+    }
     var icon: String { !q.isEmpty ? "magnifyingglass" : (model.tab == .starred ? "star" : (model.tab == .chains ? "link" : (model.tab == .ask ? "sparkles" : "tray"))) }
     var title: String {
         if !q.isEmpty {
-            let what = model.tab == .chains ? "chain" : "session"
-            return model.searching ? "Searching…" : (model.searchFailed ? "Search is not available" : "No \(what) matches “\(clip(q, 24))”")
+            if model.searching { return "Searching…" }
+            if model.searchFailed { return "Search is not available" }
+            let what = model.tab == .chains ? "chain" : (model.tab == .starred ? "starred session" : "session")
+            return "No \(what) matches “\(clip(q, 24))”"
         }
         switch model.tab {
-        case .starred: return "Nothing starred yet"
+        case .starred: return noSessionsAtAll ? "No sessions yet" : "Nothing starred yet"
         case .chains: return "No PR chains yet"
         case .sessions, .ask: return "No sessions yet"
         }
@@ -290,10 +304,14 @@ struct EmptyState: View {
                     ? "Only the newest \(model.data?.chains.count ?? 30) chains are loaded here. “All \(model.totalChains) chains in Terminal…” below reaches the rest."
                     : "Searches chain names and the titles, results and tools of their rounds."
             }
+            if model.tab == .starred { return "Only starred sessions are searched here." }  // so a known title is not taken for gone
             return "Searches titles, your notes, PR numbers, branches and folders."
         }
         switch model.tab {
-        case .starred: return "Hover a session and click the star to keep it here."
+        case .starred:
+            if noSessionsAtAll { return "Use Claude Code or Codex as usual and they show up here." }
+            return "In Sessions, hover a session and click ★ (or ⋯ → Add to Starred). It stays listed here"
+                + ((model.data?.keep_auto ?? true) ? ", and chainlog keeps a copy that Claude's cleanup can't delete." : ".")
         case .chains: return "Hover a session, click the pencil, and add it to a chain: any name you like. Sessions in one chain are listed together here."
         case .sessions, .ask: return "Use Claude Code or Codex as usual and they show up here."
         }

@@ -331,7 +331,10 @@ func dumpModel(_ m: AppModel) {
         return
     }
     let sections = m.sections
-    if sections.allSatisfy({ $0.rows.isEmpty }) { print("(empty: \(EmptyState(model: m).title) — \(EmptyState(model: m).detail))") }
+    if sections.allSatisfy({ $0.rows.isEmpty }) {
+        let e = EmptyState(model: m)
+        print("(empty: \(e.title) — \(e.detail))" + (e.action.map { " → \($0.label)" } ?? ""))
+    }
     for s in sections {
         print(s.title)
         for r in s.rows {

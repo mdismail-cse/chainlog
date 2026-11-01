@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Menu bar app, Starred: the search box says it searches your starred sessions only, and a search with no hit says so and
+  offers **Search all sessions** (a known title used to look gone); the empty tab explains what starring does (it stays
+  listed, and a copy is kept) with **Go to Sessions**; the section title counts every starred session and says when only
+  the newest 50 are listed; starring and unstarring say what they did ("Starred · a copy is kept, so Claude can't delete
+  it", "Removed from Starred"); at 0 results only the empty state speaks.
 - Menu bar app, Summarize: the question "Send this session to Claude?" now comes first (it used to appear after a
   "Summarizing…" toast and a failed request); the spinner stays on the row while the pointer is elsewhere (a request can
   take minutes); a second click says "Already summarizing this one"; and every "Could not …" message stays until you

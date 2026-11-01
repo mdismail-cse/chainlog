@@ -57,9 +57,15 @@ enum Layout {
             }
             return out
         case .starred:
-            if q.isEmpty { return data.starred.isEmpty ? [] : [RowSection(id: "starred", title: "Starred · \(data.starred.count)", rows: data.starred)] }
+            if q.isEmpty {
+                if data.starred.isEmpty { return [] }
+                // chainlog lists the 50 with the newest activity; the badge counts all of them, so say so (as Sessions does)
+                let more = data.counts.starred - data.starred.count
+                return [RowSection(id: "starred", title: "Starred · \(data.counts.starred)", rows: data.starred,
+                                   note: more > 0 ? "Showing the \(data.starred.count) with the newest activity; \(more) more are starred. Search finds them." : nil)]
+            }
             let rows = results.map { $0.filter { $0.starred } } ?? data.starred.filter { $0.matches(q) }
-            return [RowSection(id: "starred-results", title: "Starred matching · \(rows.count)", rows: rows)]
+            return [RowSection(id: "starred-results", title: "Starred results · \(rows.count)", rows: rows)]
         case .chains, .ask:
             return []
         }
@@ -483,9 +489,14 @@ final class AppModel: ObservableObject {
             let r = Actions.star(ref: row.ref, on: on)
             DispatchQueue.main.async {
                 MainActor.assumeIsolated {
-                    if r.ok { self.refresh() } else {
+                    if r.ok {
+                        // the one non-obvious consequence of a star: chainlog keeps a copy (the CLI says so; the app used to say nothing)
+                        let kept = r.message.contains("a copy")
+                        self.say(on ? (kept ? "Starred · a copy is kept, so Claude can't delete it" : "Starred") : "Removed from Starred")
+                        self.refresh()
+                    } else {
                         self.setStarred(!on, ref: row.ref, row: row)
-                        self.fail("Could not \(on ? "star" : "unstar"): " + clip(r.message, 80))
+                        self.fail("Could not \(on ? "add it to" : "remove it from") Starred: " + clip(r.message, 120))
                     }
                 }
             }

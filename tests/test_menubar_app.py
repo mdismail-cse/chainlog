@@ -160,10 +160,10 @@ class AppEndToEnd(Home):
         self.assertIn("No session matches", self.dump("--query", "nothing-matches-this-qq"))
 
     def test_search_in_the_starred_tab_only_shows_starred_matches(self):
-        self.assertIn("Starred matching · 0", self.dump("--tab", "starred", "--query", "zebra"))
+        self.assertIn("No starred session matches “zebra” — Only starred sessions are searched here.) → Search all sessions", self.dump("--tab", "starred", "--query", "zebra"))
         self.app("--act", "star", self.ref(3))
         d = self.dump("--tab", "starred", "--query", "zebra")
-        self.assertIn("Starred matching · 1", d)
+        self.assertIn("Starred results · 1", d)
         self.assertIn("★", d)
 
     def test_hostile_search_text_runs_nothing_and_never_crashes(self):
