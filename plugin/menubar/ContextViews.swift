@@ -48,8 +48,14 @@ struct ContextRow: View {
                 if hovering && c.built && !open {
                     IconButton(symbol: "play.circle", help: "Start a new \(c.tool.label) session with this context") { cx.start(c) }
                 }
-                Text("\(c.sessions) session\(c.sessions == 1 ? "" : "s")\(c.built ? " · " + c.ago : "")")
+                Text("\(c.sessions) session\(c.sessions == 1 ? "" : "s")\(c.built ? " · built " + c.ago : "")")
                     .font(.system(size: 11.5)).foregroundColor(.secondary)
+                // the same items as a right-click, where a normal Mac user can see them
+                Menu { ContextMenuItems(cx: cx, c: c) } label: {
+                    Image(systemName: "ellipsis.circle").font(.system(size: 13)).foregroundColor(.secondary)
+                }
+                .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+                .help("More: add sessions, change the questions, delete…").accessibilityLabel("More actions for \(c.name)")
             }
             .padding(.horizontal, 12).padding(.vertical, 7)
             .background(RoundedRectangle(cornerRadius: 7).fill(hovering ? Color.primary.opacity(0.06) : .clear))
@@ -86,15 +92,21 @@ struct ContextRow: View {
                     Button { cx.copyReference(c) } label: { Label("Copy", systemImage: "doc.on.doc").font(.system(size: 12)) }
                         .buttonStyle(.plain).foregroundColor(.accentColor).help("Copy the reference: lines to paste into a session that is already running")
                     OpenNotesMenu(cx: cx, c: c)
+                    Button { cx.beginAdd(to: c) } label: { Label("Add sessions…", systemImage: "plus").font(.system(size: 12)) }
+                        .buttonStyle(.plain).foregroundColor(.accentColor).help("Pick more sessions for these notes")
+                    Button { cx.beginEditQuestions(c) } label: { Label("Questions…", systemImage: "questionmark.circle").font(.system(size: 12)) }
+                        .buttonStyle(.plain).foregroundColor(.accentColor).help("Change what the notes answer for each session")
                     Spacer()
                     if c.needs_update {
                         Button("Update") { cx.update(c) }.help("Read \(c.pending.text) and merge again")
                     }
                 }
             } else {
-                Text("Not built yet: nothing has been read. Build it to write its notes; then you can open them.").font(.system(size: 11.5)).foregroundColor(.secondary)
-                HStack {
+                Text("Its \(c.sessions) session\(c.sessions == 1 ? " has" : "s have") not been read yet. Build reads them with \(c.tool.label) (about \(c.sessions + 1) requests) and writes the notes.").font(.system(size: 11.5)).foregroundColor(.secondary)
+                HStack(spacing: 10) {
                     Button("Build") { cx.update(c) }
+                    Button { cx.beginAdd(to: c) } label: { Label("Add sessions…", systemImage: "plus").font(.system(size: 12)) }
+                        .buttonStyle(.plain).foregroundColor(.accentColor)
                     Spacer()
                 }
             }
@@ -129,17 +141,16 @@ struct ContextMenuItems: View {
     @ObservedObject var cx: ContextModel
     let c: ContextInfo
     var body: some View {
+        Button("Add sessions…") { cx.beginAdd(to: c) }
+        Button("Edit questions…") { cx.beginEditQuestions(c) }
+        Button(c.built ? "Update" : "Build") { cx.update(c) }
         if c.built {
+            Divider()
             Button("Start in \(c.tool.label)") { cx.start(c) }
             Button("Start in \(c.tool.other.label)") { cx.start(c, tool: c.tool.other) }
             Button("Start with a task…") { cx.startWithTask(c) }
             Button("Copy reference") { cx.copyReference(c) }
             Divider()
-        }
-        Button("Add sessions…") { cx.beginAdd(to: c) }
-        Button("Edit questions…") { cx.beginEditQuestions(c) }
-        Button(c.built ? "Update" : "Build") { cx.update(c) }
-        if c.built {
             Menu("Open the notes in") { ForEach(cx.editors(for: c)) { e in Button(e.name) { cx.openNotes(c, with: e) } } }
             Menu("Open each session's notes in") { ForEach(cx.editors(for: c)) { e in Button(e.name) { cx.openNotes(c, with: e, sessions: true) } } }
         }

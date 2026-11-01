@@ -180,6 +180,10 @@ class AppEndToEnd(Home):
         self.assertIn("— worked on item", line)  # the last thing said in the first listed session
         self.assertIn(str(self.proj), line.replace(str(self.home), "~").replace("~", str(self.home)))
         self.assertNotIn("preview:", self.dump())  # nothing hovered, nothing previewed
+        actions = next(l for l in d.splitlines() if l.startswith("  actions:"))  # the ⋯ button: the same items as a right-click
+        self.assertTrue(actions.startswith("  actions: Open | Copy command | Copy session id | Add to Starred | Save with a note… | Summarize the session"), actions)
+        self.assertIn("Keep a copy (Claude can't delete it)", actions)
+        self.assertTrue(actions.endswith("| Delete…"), actions)
 
     def test_the_apps_own_model_checks_pass(self):
         rc, out, err = self.app("--selftest", str(ROOT / "plugin" / "menubar" / "sample.json"))

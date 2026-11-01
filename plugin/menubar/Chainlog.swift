@@ -308,6 +308,7 @@ func dumpModel(_ m: AppModel) {
         if let f = r.first_ask { print("  started: \(clip(f, 80))") }
         if let n = r.note { print("  note: \(clip(n, 80))") } else if let s = r.summary { print("  summary: \(clip(s, 80))") }
         print("  facts: \(r.previewFacts)")
+        print("  actions: " + SessionMenuItems.titles(for: r, model: m).joined(separator: " | "))  // the ⋯ / right-click items
     }
     defer { if m.data != nil { print("enter opens: \(m.visibleRows.first(where: { $0.canResume }).map { clip($0.title, 60) + ($0.round.map { " (r\($0))" } ?? "") } ?? "nothing")") } }
     guard m.data != nil else {
@@ -357,8 +358,8 @@ func dumpContexts(_ m: AppModel) -> Bool {
                 if !c.gist.isEmpty { print("    gist: \(c.gist)") }
                 if let f = c.focus, !f.isEmpty { print("    focus: \(f)") }
                 if c.built {
-                    print("    → Start in \(c.tool.label) · Copy · Open (in \(cx.preferredEditor(for: c)?.name ?? "-"))\(c.needs_update ? " · Update" : "")")
-                } else { print("    → Build") }
+                    print("    → Start in \(c.tool.label) · Copy · Open (in \(cx.preferredEditor(for: c)?.name ?? "-")) · Add sessions… · Questions… · ⋯\(c.needs_update ? " · Update" : "")")
+                } else { print("    → Build · Add sessions… · ⋯") }
             }
         }
         return false

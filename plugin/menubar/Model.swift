@@ -415,7 +415,7 @@ final class AppModel: ObservableObject {
     func askRetention() {
         guard let info = data?.retention else { say("This chainlog is too old to change this (update it)"); return }
         let detail = "Claude Code deletes a session's transcript this many days after you last used it (its own default is 30). Any number from 1 to 3650."
-            + (info.warning.map { "\n\n" + $0 + ". Keep the ones you care about first: right-click a session → Keep a copy." } ?? "")
+            + (info.warning.map { "\n\n" + $0 + ". Keep the ones you care about first: hover a session → ⋯ → Keep a copy." } ?? "")
         guard let text = askText("How many days should Claude keep sessions?", detail, String(info.days)) else { return }
         guard let n = Int(text.trimmingCharacters(in: .whitespaces)), (1...3650).contains(n) else {
             say("Enter a whole number of days from 1 to 3650")
@@ -429,7 +429,7 @@ final class AppModel: ObservableObject {
                 return
             }
             if p.would_delete > 0 {
-                let msg = "\(p.would_delete) of your sessions are older than \(n) days. Claude deletes them the next time it starts, and \(p.would_delete_unkept) of those have no kept copy.\n\nKeep the ones you want first (right-click a session → Keep a copy)."
+                let msg = "\(p.would_delete) of your sessions are older than \(n) days. Claude deletes them the next time it starts, and \(p.would_delete_unkept) of those have no kept copy.\n\nKeep the ones you want first (hover a session → ⋯ → Keep a copy)."
                 if !self.shortenConfirmer("Keep sessions only \(n) days?", msg) { return }
             }
             self.perform(["retention", "\(n)", "--yes"], doing: "Changing it…", done: "Claude will keep sessions \(n) days", failed: "Could not change it")

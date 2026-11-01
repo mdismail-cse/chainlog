@@ -375,6 +375,12 @@ struct SessionRow: View {
                         } else {
                             IconButton(symbol: "text.badge.star", help: "Summarize this session with AI (1 request)") { model.summarize(row) }
                         }
+                        // everything else, visibly: the same menu as a right-click (which a normal Mac user never tries)
+                        Menu { SessionMenuItems(model: model, row: row) } label: {
+                            Image(systemName: "ellipsis.circle").font(.system(size: 12.5)).foregroundColor(.secondary).frame(width: 22, height: 22)
+                        }
+                        .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+                        .help("Everything you can do with this session").accessibilityLabel("More actions for \(row.title)")
                     }
                     IconButton(symbol: row.starred ? "star.fill" : "star", tint: row.starred ? .yellow : .secondary,
                                help: row.starred ? "Remove from Starred" : "Add to Starred") { model.toggleStar(row) }
@@ -389,41 +395,7 @@ struct SessionRow: View {
                 hovering = inside
                 if inside { model.hover.enter(row) } else { model.hover.exit(row) }  // the preview panel shows it at once
             }
-            .contextMenu {
-                Button("Open") { model.open(row) }.disabled(!row.canResume)
-                if row.resume.vscode != nil { Button("Open in VS Code") { model.openInVSCode(row) }.disabled(!row.canResume) }
-                Button("Copy command") { model.copyCommand(row) }
-                Button("Copy session id") { model.copySessionID(row) }
-                if row.resume.link != nil { Button("Copy VS Code link") { model.copyLink(row) } }
-                Divider()
-                Button(row.starred ? "Remove from Starred" : "Add to Starred") { model.toggleStar(row) }
-                Button("Save with a note…") { model.beginSave(row) }
-                if row.summary_full != nil {
-                    Button(model.showingSummary == row.ref ? "Hide the summary" : "Show the summary") { model.toggleSummary(row) }
-                    Button("Summarize again") { model.summarize(row) }.disabled(model.summarizing.contains(row.ref))
-                } else {
-                    Button("Summarize the session") { model.summarize(row) }.disabled(model.summarizing.contains(row.ref))
-                }
-                Button("Summarize with instructions…") { model.summarizeWithInstructions(row) }.disabled(model.summarizing.contains(row.ref))
-                if model.contexts.supported {
-                    Menu("Add to a context") {
-                        ForEach(model.contexts.contexts) { c in Button(c.name) { model.contexts.add(row, to: c) } }
-                        if !model.contexts.contexts.isEmpty { Divider() }
-                        Button("New context with this session…") { model.contexts.beginNew(rows: [row]) }
-                    }
-                }
-                if row.harness == "claude" {
-                    Button(row.isKept ? "Stop keeping the copy" : "Keep a copy (Claude can't delete it)") { model.toggleKeep(row) }
-                        .disabled(!row.isKept && !row.canResume)
-                }
-                Menu("Delete…") {
-                    if row.harness == "claude" {
-                        Button("From Claude and chainlog") { model.delete(row, scope: "both") }
-                        Button("Only from Claude (keeps chainlog's copy)") { model.delete(row, scope: "claude") }
-                    }
-                    Button("Only from chainlog (keeps Claude's file)") { model.delete(row, scope: "chainlog") }
-                }
-            }
+            .contextMenu { SessionMenuItems(model: model, row: row) }
             if model.editing == row.ref { NoteEditor(model: model, row: row) }
             if model.showingSummary == row.ref, row.summary_full != nil { SummaryPanel(model: model, row: row) }
         }
@@ -439,6 +411,63 @@ struct SessionRow: View {
         }
     }
 
+}
+
+/// Everything you can do with a session: the ⋯ button on a hovered row and the right-click menu show the same items.
+struct SessionMenuItems: View {
+    @ObservedObject var model: AppModel
+    let row: Row
+
+    var body: some View {
+        Button("Open") { model.open(row) }.disabled(!row.canResume)
+        if row.resume.vscode != nil { Button("Open in VS Code") { model.openInVSCode(row) }.disabled(!row.canResume) }
+        Button("Copy command") { model.copyCommand(row) }
+        Button("Copy session id") { model.copySessionID(row) }
+        if row.resume.link != nil { Button("Copy VS Code link") { model.copyLink(row) } }
+        Divider()
+        Button(row.starred ? "Remove from Starred" : "Add to Starred") { model.toggleStar(row) }
+        Button("Save with a note…") { model.beginSave(row) }
+        if row.summary_full != nil {
+            Button(model.showingSummary == row.ref ? "Hide the summary" : "Show the summary") { model.toggleSummary(row) }
+            Button("Summarize again") { model.summarize(row) }.disabled(model.summarizing.contains(row.ref))
+        } else {
+            Button("Summarize the session") { model.summarize(row) }.disabled(model.summarizing.contains(row.ref))
+        }
+        Button("Summarize with instructions…") { model.summarizeWithInstructions(row) }.disabled(model.summarizing.contains(row.ref))
+        if model.contexts.supported {
+            Menu("Add to a context") {
+                ForEach(model.contexts.contexts) { c in Button(c.name) { model.contexts.add(row, to: c) } }
+                if !model.contexts.contexts.isEmpty { Divider() }
+                Button("New context with this session…") { model.contexts.beginNew(rows: [row]) }
+            }
+        }
+        if row.harness == "claude" {
+            Button(row.isKept ? "Stop keeping the copy" : "Keep a copy (Claude can't delete it)") { model.toggleKeep(row) }
+                .disabled(!row.isKept && !row.canResume)
+        }
+        Menu("Delete…") {
+            if row.harness == "claude" {
+                Button("From Claude and chainlog") { model.delete(row, scope: "both") }
+                Button("Only from Claude (keeps chainlog's copy)") { model.delete(row, scope: "claude") }
+            }
+            Button("Only from chainlog (keeps Claude's file)") { model.delete(row, scope: "chainlog") }
+        }
+    }
+
+    /// The item titles, in order, for `--dump` (the menu itself cannot be read back).
+    @MainActor static func titles(for row: Row, model: AppModel) -> [String] {
+        var out = ["Open"]
+        if row.resume.vscode != nil { out.append("Open in VS Code") }
+        out += ["Copy command", "Copy session id"]
+        if row.resume.link != nil { out.append("Copy VS Code link") }
+        out += [row.starred ? "Remove from Starred" : "Add to Starred", "Save with a note…"]
+        out += row.summary_full != nil ? ["Show the summary", "Summarize again"] : ["Summarize the session"]
+        out.append("Summarize with instructions…")
+        if model.contexts.supported { out.append("Add to a context") }
+        if row.harness == "claude" { out.append(row.isKept ? "Stop keeping the copy" : "Keep a copy (Claude can't delete it)") }
+        out.append("Delete…")
+        return out
+    }
 }
 
 /// What the hovered session is about: its title, the last thing said in it, and where it ran. Instant, at a fixed
@@ -463,7 +492,7 @@ struct PreviewPanel: View {
                 }
             } else {
                 Text("Hover a session to preview it").font(.system(size: 12)).foregroundColor(.secondary)
-                Text("Click to reopen it · hover for Copy · right-click for more").font(.system(size: 11)).foregroundColor(.secondary.opacity(0.8))
+                Text("Click to continue it in Terminal · hover for the buttons · ⋯ for everything else").font(.system(size: 11)).foregroundColor(.secondary.opacity(0.8))
             }
         }
         .frame(maxWidth: .infinity, minHeight: 96, maxHeight: 96, alignment: .topLeading)

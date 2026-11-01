@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Menu bar app: a ⋯ button on every hovered session and on every context opens the same menu as a right-click (Open in
+  VS Code, Copy session id, Summarize with instructions…, Add to a context, Keep a copy, Delete…; for a context: Add
+  sessions…, Edit questions…, Show in Finder, Delete…). Eight actions were reachable only by right-click, which the hints
+  and the retention warning told you to do; the hints now say "⋯". An open context also shows **Add sessions…** and
+  **Questions…** beside Copy and Open, and a context that is not built yet says what Build will do and what it costs.
 - Menu bar app, Sessions and Starred: every row now says what happened. Its second line is your note, else the summary's
   headline, else the assistant's last reply (it used to be only `shop#4321 r3 · codex · kept · 4h`, so twenty rows were
   twenty titles), with the facts at the right. Plain words throughout: "No note yet · N · ended in the last 24 h" instead
