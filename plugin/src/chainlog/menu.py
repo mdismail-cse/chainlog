@@ -50,13 +50,18 @@ def _preview(s):
             break
     from chainlog import summarize as sum_mod
     summary = (s.get("summary") or {}).get("text")
+    # a local summary restates the facts shown here, so it is not a summary line; only a whole-session one (HEADLINE…)
+    # is the summary the app can open under the row (an automatic one-liner used to pose as one)
+    if (s.get("summary") or {}).get("engine") == "local":
+        summary = None
+    full = bool(summary) and (s.get("summary") or {}).get("kind") == "full"
     return {
         # the start, unless it is the title already (a session with no title of its own is named after it)
         "first_ask": ui.safe(clean(first, 160)) if first and clean(first, 60) != clean(s["title"]["value"], 60) else None,
         "last_ask": ui.safe(clean(s.get("last_ask"), 160)) or None,
         "note": ui.safe(clean(notes[-1]["text"], 240)) if notes else None,
         "summary": ui.safe(clean(sum_mod.headline_of(summary), 240)) if summary else None,  # its one line
-        "summary_full": "\n".join(ui.safe(l) for l in summary.splitlines())[:sum_mod.FULL_MAX] if summary else None,
+        "summary_full": "\n".join(ui.safe(l) for l in summary.splitlines())[:sum_mod.FULL_MAX] if full else None,
         "summary_stale": bool(summary) and sum_mod.stale(s),  # the session went on after it was written
         "pr": pr, "branch": ui.safe(branch) if branch and branch not in ("HEAD", "main", "master") else None,
         "lines": ("+%d/−%d" % (added, removed)) if added or removed else None,

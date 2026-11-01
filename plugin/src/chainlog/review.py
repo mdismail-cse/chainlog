@@ -31,8 +31,13 @@ def build_auto_save(rt, cfg, s, chains=None):
     (a CHAINLOG_CHAIN hint from the hook wins). Nothing is written. Returns
     (event, summary text, engine used, why it fell back or None, chain key or None, a key_conflict() or None)."""
     from chainlog import chain as chain_mod
-    text, used, why = summarize(rt, s, cfg)
-    data = {"summary": text, "summary_engine": used}
+    from chainlog import summarize as sum_mod
+    cur = s.get("summary") or {}
+    if cur.get("kind") == "full" and cur.get("text"):
+        text, used, why = sum_mod.headline_of(cur["text"]), cur.get("engine"), None  # already summarized: no request
+    else:
+        text, used, why = summarize(rt, s, cfg)
+    data = {"summary": text, "summary_engine": used, "mark": sum_mod.mark(s)}
     if why:
         data["fallback_reason"] = why
     conflict = None

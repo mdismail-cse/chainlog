@@ -133,8 +133,10 @@ def _apply(sessions, ev):
         if auto:
             if s["saved"] != "user":
                 s["saved"] = "auto"
-            if d.get("summary"):
-                s["summary"] = {"text": d["summary"], "engine": d.get("summary_engine")}
+            if d.get("summary") and (s.get("summary") or {}).get("kind") != "full":
+                # an automatic one-liner never replaces a whole-session summary you asked for
+                s["summary"] = {"text": d["summary"], "engine": d.get("summary_engine"), "at": at, "mark": d.get("mark"),
+                                "kind": "auto"}
                 s["notes"].append({"at": at, "text": d["summary"], "via": "auto", "kind": "summary",
                                    "event": ev["id"]})
         else:
@@ -159,7 +161,8 @@ def _apply(sessions, ev):
         s["last_save_at"] = at
     elif t == "summary":  # a whole-session summary you asked for: it does not save the session
         if d.get("summary"):
-            s["summary"] = {"text": d["summary"], "engine": d.get("summary_engine"), "at": at, "mark": d.get("mark")}
+            s["summary"] = {"text": d["summary"], "engine": d.get("summary_engine"), "at": at, "mark": d.get("mark"),
+                            "kind": "full"}
             s["notes"].append({"at": at, "text": d["summary"], "via": "ai", "kind": "summary", "event": ev["id"]})
     elif t == "note":
         s["saved"] = "user"

@@ -127,6 +127,37 @@ class Summary(ContextBase):
         self.assertNotIn("note (", text)  # a summary is not one of your notes
         self.assertIn("title: Cloud backup: restore timeouts", text)
 
+    def test_an_automatic_one_liner_is_not_shown_as_the_whole_summary_and_never_replaces_one(self):
+        from chainlog import review as review_mod
+        from chainlog.index import write_events
+        write = lambda evs: write_events(self.rt, evs)
+        review_mod.auto_save(self.rt, self.cfg(), self.s(11), write)  # engine local: the facts line restated
+        self.assertEqual(self.s(11)["summary"]["engine"], "local")
+        row = self.row(11)
+        self.assertIsNone(row["summary"])  # the preview shows those facts already
+        self.assertIsNone(row["summary_full"])  # so the app offers "Summarize the whole session", not "Show its summary"
+        cfg = config_mod._put(self.cfg(), "summary.engine", "claude")
+        self.use("Refund fixed in PR 12.")
+        review_mod.auto_save(self.rt, cfg, self.s(12), write)
+        row = self.row(12)
+        self.assertIn("Refund fixed in PR 12.", row["summary"])  # an AI one-liner is worth a line (FakeAI wraps it in JSON)
+        self.assertIsNone(row["summary_full"])  # but it is not a whole-session summary
+        self.assertFalse(row["summary_stale"])
+        self.agree_context()
+        sum_mod.save_full(self.rt, self.s(13), self.full(GOOD, n=13))
+        self.use("should not be asked")
+        review_mod.auto_save(self.rt, cfg, self.s(13), write)  # the sweep comes by later
+        self.assertEqual(self.fake.calls, [])  # no request: the whole summary is there already
+        s = self.s(13)
+        self.assertEqual(s["saved"], "auto")
+        self.assertTrue(s["summary"]["text"].startswith("HEADLINE: Upload retries added"))  # not replaced by a one-liner
+        self.assertEqual(self.row(13)["summary"], "Upload retries added; restores over 2 GB still time out")
+        self.assertIsNotNone(self.row(13)["summary_full"])
+
+    def row(self, n):
+        d = menu_mod.build(load(self.rt, self.cfg()))
+        return next(r for r in d["unsaved"] + d["recent"] + d["starred"] if r["ref"] == "claude:" + sid(n))
+
     def test_an_empty_session_is_not_summarized(self):
         self.agree_context()
         s = self.s(11)

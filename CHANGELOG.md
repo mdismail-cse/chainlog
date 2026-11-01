@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- An automatic one-line summary no longer poses as the whole-session one, and never replaces it. The local summary (the
+  facts the preview shows already, restated) is not shown as a summary line any more; an AI one-liner is shown as the
+  line but the app offers *Summarize the whole session* instead of *Show its summary*; and when the sweep comes by a session
+  you already summarized it keeps that summary (and makes no request) instead of overwriting it with a one-liner.
+  Automatic summaries now record how long the session was, so they too show as out of date when it went on.
 - Summaries and contexts no longer read chainlog's own old summary as if you wrote it. The facts sent with a session gave
   the latest summary's headline as the session's *title* and the whole summary as one of your *notes*, so "Summarize again"
   and every context build anchored on the stale text and repeated it. Now the title is the real title, the notes are yours
